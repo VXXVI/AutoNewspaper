@@ -26,10 +26,18 @@ UA = (
 # ---------------------------------------------------------------- 报社配置
 # style 决定日期目录格式：
 #   ymd  -> 202609/22    dash -> 2026-09/22
-PAPERS: tuple[dict[str, str], ...] = (
+PAPERS: tuple[dict, ...] = (
     {"name": "光明日报", "style": "ymd", "tpl": "https://epaper.gmw.cn/gmrb/html/layout/{a}/node_01.html"},
     {"name": "南方日报", "style": "ymd", "tpl": "https://epaper.nfnews.com/nfdaily/html/{a}/node_A01.html"},
-    {"name": "羊城晚报", "style": "dash", "tpl": "http://ep.ycwb.com/epaper/ycwb/html/{a}/node_1.htm"},
+    # 羊城晚报：GitHub runner (Chicago) 原始 curl 超时 30s 才返回 HTTP 000；
+    # 靠现有 25s×2 重试勉强通过，属临界状态。单独提高超时与重试次数兜底。
+    {
+        "name": "羊城晚报",
+        "style": "dash",
+        "tpl": "http://ep.ycwb.com/epaper/ycwb/html/{a}/node_1.htm",
+        "timeout": 60,
+        "retries": 4,
+    },
     {"name": "中国教育报", "style": "dash", "tpl": "https://paper.jyb.cn/zgjyb/html/{a}/node_1.htm"},
     {"name": "湛江日报", "style": "dash", "tpl": "http://paper.gdzjdaily.com.cn/html/{a}/node_1.htm"},
 )

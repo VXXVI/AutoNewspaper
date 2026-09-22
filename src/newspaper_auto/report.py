@@ -75,7 +75,12 @@ def render_md(
         "",
     ]
 
-    lines += ["## 各家扫描情况", "", "| 报社 | 日期 | 版面 | 文章 | 命中 |", "|---|---|---|---|---|"]
+    lines += [
+        "## 各家扫描情况",
+        "",
+        "| 报社 | 日期 | 版面 | 文章 | 命中 | 失败 |",
+        "|---|---|---|---|---|---|",
+    ]
     hit_by_paper: dict[tuple[str, str], int] = {}
     for hit in total_hits:
         key = (hit["paper"], hit["date"])
@@ -83,11 +88,38 @@ def render_md(
     for item in stats:
         count = hit_by_paper.get((item["paper"], item["date"]), 0)
         note = f" *{item['note']}*" if item["note"] else ""
+        sec_fail = item.get("sections_failed", 0)
+        art_fail = item.get("articles_failed", 0)
+        fail_cell = f"{sec_fail}版/{art_fail}文" if (sec_fail or art_fail) else "—"
         lines.append(
             f"| {item['paper']} | {item['date']} | {item['sections']} | "
-            f"{item['scanned']}/{item['articles']} | {count} |" + note
+            f"{item['scanned']}/{item['articles']} | {count} | {fail_cell} |" + note
         )
     lines.append("")
+
+    # 抓取失败（缺报）节——仅在存在失败时展示
+    failed_stats = [s for s in stats if s.get("sections_failed", 0) or s.get("articles_failed", 0)]
+    entry_failed = [s for s in stats if s.get("entry_code", 200) != 200]
+    if failed_stats or entry_failed:
+        lines += ["## 抓取失败（缺报）", ""]
+        lines.append("> ⚠️ 下列失败可能导致**漏报**——「无命中」不代表真的没有，而是因为页面未能下载。")
+        lines.append("")
+        for item in entry_failed:
+            lines.append(
+                f"- **{item['paper']}** 入口失败：{item.get('note', '')}（code={item['entry_code']}）"
+            )
+        for item in failed_stats:
+            sf = item.get("sections_failed", 0)
+            af = item.get("articles_failed", 0)
+            parts = []
+            if sf:
+                parts.append(f"版面页失败 {sf} 个")
+            if af:
+                parts.append(f"文章页失败 {af} 篇")
+            lines.append(f"- **{item['paper']}** {item['date']}：{' / '.join(parts)}")
+            for rec in item.get("failed_urls", []):
+                lines.append(f"  - code={rec['code']} {rec['url']}")
+        lines.append("")
 
     if new_hits:
         lines += ["## 新增命中", ""]

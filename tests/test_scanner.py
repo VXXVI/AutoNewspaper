@@ -86,6 +86,8 @@ def test_section_fetch_failure_is_ignored(zhanjiang_paper, fixed_day, site_fetch
     hits, _articles, stats = scanner.scan_paper(zhanjiang_paper, fixed_day, KW, workers=4, fetcher=fetcher)
     assert stats["sections"] == 3
     assert stats["articles"] == 2  # node_3 的 103/104
+    assert stats["sections_failed"] == 1
+    assert stats["failed_urls"][0]["code"] == 500
     assert _hit_names(hits) == {"content_104.html"}
 
 
@@ -94,6 +96,7 @@ def test_article_fetch_failure_is_skipped(zhanjiang_paper, fixed_day, site_fetch
     fetcher = site_fetcher(fixed_day, status_overrides={base + "content_101.html": (500, "")})
     hits, _articles, stats = scanner.scan_paper(zhanjiang_paper, fixed_day, KW, workers=4, fetcher=fetcher)
     assert stats["scanned"] == 3
+    assert stats["articles_failed"] == 1
     assert _hit_names(hits) == {"content_102.html", "content_104.html"}
 
 
@@ -107,3 +110,40 @@ def test_short_article_body_is_skipped(zhanjiang_paper, fixed_day, site_fetcher)
 def test_min_html_bytes_threshold_is_config():
     # 防止有人把阈值改到把真实页面判为异常
     assert config.MIN_HTML_BYTES == 300
+
+
+def test_per_paper_timeout_retries_override():
+    """羊城晚报在 config 里设了 timeout/retries 覆盖，其他报社无覆盖。"""
+    ycwb = next(p for p in config.PAPERS if p["name"] == "羊城晚报")
+    assert ycwb["timeout"] >= 60, "羊城晚报超时应≥60s"
+    assert ycwb["retries"] >= 4, "羊城晚报重试应≥4次"
+    # 其他报社均不应设置覆盖键（保持默认全局超时/重试）
+    for p in config.PAPERS:
+        if p["name"] != "羊城晚报":
+            assert "timeout" not in p and "retries" not in p, f"{p['name']} 不应有超时覆盖键"
+
+
+def test_per_paper_override_not_applied_to_fake_fetcher(zhanjiang_paper, fixed_day, site_fetcher):
+    """注入 fake fetcher 时，per-paper 包装不会被套上，保证测试隔离。"""
+    calls: list[str] = []
+    base_fetch = site_fetcher(fixed_day)
+
+    def counting(url: str):
+        calls.append(url)
+        return base_fetch(url)
+
+    from newspaper_auto.scanner import _paper_fetch
+
+    wrapped = _paper_fetch(zhanjiang_paper, counting)
+    # zhanjiang_paper 没有 timeout/retries 键 → 应原样返回
+    assert wrapped is counting
+
+
+def test_per_paper_override_applied_for_real_http_fetcher():
+    """有覆盖键 + 使用真实 http.fetch 时，包装函数与原 fetcher 不同。"""
+    from newspaper_auto import http
+    from newspaper_auto.scanner import _paper_fetch
+
+    ycwb = next(p for p in config.PAPERS if p["name"] == "羊城晚报")
+    wrapped = _paper_fetch(ycwb, http.fetch)
+    assert wrapped is not http.fetch, "羊城晚报应被包装（使用独立超时/重试）"
