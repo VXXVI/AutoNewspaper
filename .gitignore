@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# macOS
+.DS_Store
+._*
+
+# 编辑器
+.vscode/
+.idea/
+
+# 注：hits/ 与 state/seen.json 有意入库，便于跨机器延续增量状态与历史命中。
+# 如需忽略，取消下面两行的注释。
+# hits/
+# state/seen.json
