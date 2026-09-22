@@ -9,6 +9,9 @@
 
 ### 新增
 
+- **定时任务运行时间可自定义**：`install_launchd.sh install [HH:MM ...]`
+  支持指定一个或多个时间点（每天各跑一次），也可用 `NEWSPAPER_TIMES` 环境变量；
+  非法时间格式直接报错退出。
 - 拆分为 `src/newspaper_auto/` 包（`config` / `paths` / `http` / `parse` /
   `scanner` / `state` / `report` / `cli`），`daily_scan.py` 保留为同名兼容入口，
   既有命令与定时任务无需改动。

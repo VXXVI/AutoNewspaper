@@ -114,16 +114,27 @@ NEWSPAPER_DATA_DIR=/tmp/scan-out python3 daily_scan.py --days 1
 
 ### 定时任务（macOS launchd）
 
-每天 07:00 自动执行一次无状态扫描，日志追加到 `logs/scan-YYYY-MM-DD.log`。
-plist 由模板生成，**路径自动替换，无需手工编辑**：
+每天自动执行无状态扫描，日志追加到 `logs/scan-YYYY-MM-DD.log`。
+plist 由模板生成，**路径与运行时间都自动替换，无需手工编辑**：
 
 ```bash
-./scripts/install_launchd.sh install     # 安装并加载（每天 07:00）
+./scripts/install_launchd.sh install                    # 默认每天 07:00
+./scripts/install_launchd.sh install 06:30              # 自定义为每天 06:30
+./scripts/install_launchd.sh install 07:00 12:30 19:00  # 一天多次
+NEWSPAPER_TIMES="07:00,12:30" ./scripts/install_launchd.sh install
+
 ./scripts/install_launchd.sh status      # 查看注册状态与最近日志
 ./scripts/install_launchd.sh run-now     # 立即触发一次
-./scripts/install_launchd.sh print       # 只打印将要安装的 plist
+./scripts/install_launchd.sh print 06:30 # 只打印将要安装的 plist（含时间）
 ./scripts/install_launchd.sh uninstall   # 卸载
 ```
+
+- 时间格式 `HH:MM`（24 小时制），可给多个，**每个时间点每天各跑一次**；
+  非法格式（如 `25:00`、`7am`）会直接报错退出。
+- 修改时间后**重新执行一次 `install`** 即生效（幂等，会自动卸载旧的）。
+- 建议 07:00 之后：报纸一般凌晨上线，过早跑可能版面不全。
+- 自定义回溯天数：在模板里给 `EnvironmentVariables` 加
+  `NEWSPAPER_DAYS`（默认 1）。
 
 自定义关键词：编辑 `scripts/com.quark.newspaperauto.plist.template`，取消
 `NEWSPAPER_KW` 注释后重新 `install`；或直接用启动脚本传参：

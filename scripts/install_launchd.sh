@@ -2,15 +2,20 @@
 # ==============================================================================
 # install_launchd.sh - macOS launchd 定时任务安装与管理脚本（幂等）
 #
-# 从模板 com.quark.newspaperauto.plist.template 生成 plist（自动替换项目路径），
-# 安装到 ~/Library/LaunchAgents/ 并加载。每天 07:00 运行 scripts/run_scan.sh。
+# 从模板 com.quark.newspaperauto.plist.template 生成 plist（自动替换项目路径
+# 与运行时间点），安装到 ~/Library/LaunchAgents/ 并加载。
 #
 # 用法：
-#   ./scripts/install_launchd.sh install     安装并加载（每天 07:00）
-#   ./scripts/install_launchd.sh status      查看注册状态与最近日志
-#   ./scripts/install_launchd.sh run-now     立即触发一次
-#   ./scripts/install_launchd.sh print       打印将要安装的 plist 内容
-#   ./scripts/install_launchd.sh uninstall   卸载并移除
+#   ./scripts/install_launchd.sh install [HH:MM ...]   安装并加载（默认 07:00）
+#   ./scripts/install_launchd.sh status                查看注册状态与最近日志
+#   ./scripts/install_launchd.sh run-now               立即触发一次
+#   ./scripts/install_launchd.sh print [HH:MM ...]     打印将要安装的 plist
+#   ./scripts/install_launchd.sh uninstall             卸载并移除
+#
+# 运行时间自定义（可指定多个，每天各跑一次）：
+#   ./scripts/install_launchd.sh install 06:30
+#   ./scripts/install_launchd.sh install 07:00 12:30 19:00
+#   NEWSPAPER_TIMES="07:00,12:30" ./scripts/install_launchd.sh install
 # ==============================================================================
 
 set -euo pipefail
@@ -22,27 +27,93 @@ LABEL="com.quark.newspaperauto"
 AGENTS_DIR="${HOME}/Library/LaunchAgents"
 DEST_PLIST="${AGENTS_DIR}/${LABEL}.plist"
 UID_NUM="$(id -u)"
+DEFAULT_TIME="07:00"
+
+ACTION="${1:-install}"
+shift || true
+ARGS=("$@")
+VALID_TIMES=()
 
 usage() {
     cat <<'EOF'
-用法: install_launchd.sh {install|uninstall|status|run-now|print}
-  install   : 生成并加载定时任务（每天 07:00 运行 run_scan.sh）
-  uninstall : 卸载并移除定时任务
-  status    : 查看注册状态与最近一次日志
-  run-now   : 立即触发一次任务执行
-  print     : 打印将要安装的 plist 内容（不落盘）
+用法: install_launchd.sh {install|uninstall|status|run-now|print} [HH:MM ...]
+  install [HH:MM ...] : 生成并加载定时任务（默认 07:00，可给多个时间）
+  uninstall           : 卸载并移除定时任务
+  status              : 查看注册状态与最近一次日志
+  run-now             : 立即触发一次任务执行
+  print [HH:MM ...]   : 打印将要安装的 plist 内容（不落盘）
+
+示例:
+  install_launchd.sh install 06:30
+  install_launchd.sh install 07:00 12:30 19:00
+  NEWSPAPER_TIMES="07:00,12:30" install_launchd.sh install
 EOF
 }
 
 die() { echo "错误：$*" >&2; exit 1; }
 
-# 生成 plist：把模板中的 {{PROJECT_DIR}} 替换为真实路径
-render_plist() {
-    [ -f "${TEMPLATE}" ] || die "模板不存在：${TEMPLATE}"
-    local escaped="${PROJECT_DIR//&/\\&}"
-    sed -e "s|{{PROJECT_DIR}}|${escaped}|g" "${TEMPLATE}"
+# ---------------------------------------------------------------- 时间解析
+parse_times() {
+    local -a raw=()
+    if [ "$#" -gt 0 ]; then
+        raw=("$@")
+    elif [ -n "${NEWSPAPER_TIMES:-}" ]; then
+        IFS=',;' read -r -a raw <<< "${NEWSPAPER_TIMES}"
+    else
+        raw=("${DEFAULT_TIME}")
+    fi
+
+    VALID_TIMES=()
+    local t h m
+    for t in ${raw[@]+"${raw[@]}"}; do
+        t="$(printf '%s' "${t}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -n "${t}" ] || continue
+        [[ "${t}" =~ ^([0-9]{1,2}):([0-9]{1,2})$ ]] || die "时间格式应为 HH:MM，实际：'${t}'"
+        h=$((10#${BASH_REMATCH[1]}))
+        m=$((10#${BASH_REMATCH[2]}))
+        if ((h > 23)); then die "小时超出范围（0-23）：'${t}'"; fi
+        if ((m > 59)); then die "分钟超出范围（0-59）：'${t}'"; fi
+        VALID_TIMES+=("${h}:${m}")
+    done
+    [ "${#VALID_TIMES[@]}" -gt 0 ] || die "未提供有效的运行时间"
 }
 
+# ---------------------------------------------------------------- 生成 plist
+_emit_hour_minute() {
+    local indent="$1" time="$2"
+    printf '%s<key>Hour</key>\n%s<integer>%s</integer>\n' "${indent}" "${indent}" "${time%%:*}"
+    printf '%s<key>Minute</key>\n%s<integer>%s</integer>\n' "${indent}" "${indent}" "${time##*:}"
+}
+
+build_schedule() {
+    if [ "${#VALID_TIMES[@]}" -eq 1 ]; then
+        echo "    <key>StartCalendarInterval</key>"
+        echo "    <dict>"
+        _emit_hour_minute "        " "${VALID_TIMES[0]}"
+        echo "    </dict>"
+    else
+        echo "    <key>StartCalendarInterval</key>"
+        echo "    <array>"
+        for t in "${VALID_TIMES[@]}"; do
+            echo "        <dict>"
+            _emit_hour_minute "            " "${t}"
+            echo "        </dict>"
+        done
+        echo "    </array>"
+    fi
+}
+
+render_plist() {
+    [ -f "${TEMPLATE}" ] || die "模板不存在：${TEMPLATE}"
+    local content schedule
+    content="$(cat "${TEMPLATE}")"
+    content="${content//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
+    schedule="$(build_schedule)"
+    content="${content//\{\{START_CALENDAR_INTERVAL\}\}/$schedule}"
+    printf '%s\n' "${content}"
+}
+
+# ---------------------------------------------------------------- 加载/卸载
 do_unload() {
     launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
     if [ -f "${DEST_PLIST}" ]; then
@@ -77,8 +148,10 @@ show_status() {
     fi
 }
 
-case "${1:-install}" in
+# ---------------------------------------------------------------- 分发
+case "${ACTION}" in
     install)
+        parse_times ${ARGS[@]+"${ARGS[@]}"}
         mkdir -p "${AGENTS_DIR}" "${PROJECT_DIR}/logs"
         render_plist > "${DEST_PLIST}"
         if command -v plutil >/dev/null 2>&1; then
@@ -87,7 +160,12 @@ case "${1:-install}" in
         do_unload
         do_load
         echo "✓ 已安装并加载：${DEST_PLIST}"
-        echo "  每天 07:00 自动运行；可用 '$0 status' 查看、'$0 run-now' 立即测试。"
+        echo "  运行时间：每天 ${VALID_TIMES[*]}（共 ${#VALID_TIMES[@]} 次）"
+        echo "  可用 '$0 status' 查看、'$0 run-now' 立即测试。"
+        ;;
+    print)
+        parse_times ${ARGS[@]+"${ARGS[@]}"}
+        render_plist
         ;;
     uninstall)
         do_unload
@@ -105,9 +183,6 @@ case "${1:-install}" in
         launchctl print "gui/${UID_NUM}/${LABEL}" >/dev/null 2>&1 || die "尚未安装，请先执行 '$0 install'"
         launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || launchctl start "${LABEL}"
         echo "✓ 已触发，稍后查看：${PROJECT_DIR}/logs/"
-        ;;
-    print)
-        render_plist
         ;;
     *)
         usage
