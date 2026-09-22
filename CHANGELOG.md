@@ -17,6 +17,14 @@
 - 部署文档新增「外部定时（VPS crontab）」：私有仓库下 GitHub 原生 `schedule`
   实测零触发，生产改由 crontab 调 `repository_dispatch` 触发
   （`README.md`、`docs/交付说明-*.md`）。
+- **Windows 本机调度**：新增 `scripts/run_scan.ps1`（对标 `run_scan.sh`：同样的参数
+  透传、位置参数裸关键词、`NEWSPAPER_PYTHON` / `NEWSPAPER_DAYS` / `NEWSPAPER_KW`
+  环境变量、`logs\scan-YYYY-MM-DD.log` 日志、`NEWSPAPER_PYTHON → .venv → PATH python`
+  解释器解析顺序与 `--no-state` 无状态语义）与 `scripts/install_task_scheduler.ps1`
+  （`install [HH:mm ...]` / `uninstall` / `status` / `run-now`，任务名 `NewsPaperAuto`，
+  幂等，含 `-Help`）。
+- `README.md` 新增「调度方案对照表」与「Windows 本机运行」章节（含不依赖 `.ps1` 的
+  `schtasks` 兜底命令）。
 
 ### 修复
 
@@ -25,6 +33,11 @@
 - **Actions 失败时不再丢结果**：`scan.yml` 的「提交结果」步骤改为 `if: always()`，
   扫描失败也提交已落盘的 `hits/`、`state/`；提交信息在失败时追加 `[含失败]` 后缀。
 - 报告表格新增「失败」列，修正此前失败不可见、失败时仍显示「无命中」的问题（`report.py`）。
+- **纠正「launchd 与 Actions 必须二选一」的错误结论**：`scripts/run_scan.sh` 自诞生起
+  即无条件携带 `--no-state`，本机调度路径**不读写 `state/seen.json`、不产 `hits/*`**，
+  因此与 Actions 互不覆盖、**可以并存**（本机管「即时可见」，Actions 管「归档 + 增量」）。
+  同步修正 `README.md` 与 `.github/workflows/scan.yml` 注释中的旧说法。
+- `http.py` 的 curl 缺失提示改为跨平台表述（Windows 10 1803+ 自带 `curl.exe`）。
 
 ### 文档
 
@@ -33,6 +46,9 @@
   章节（完整 crontab 行、时区换算、PAT 最小权限、日志落盘与排查步骤）。
 - `docs/交付说明-v0.2-工程化改造.md`、`docs/交付说明-无状态模式与定时任务.md`：
   同步外部定时路径、launchd 二选一、抓取失败不再静默等结论。
+- `README.md` 第一节表格补齐「运行 / 调度」两行，明确生产 = GitHub Actions + 外部触发，
+  并回答「是否需要打包 exe：不需要」及两条理由；新增「调度方案对照表」与
+  「Windows 本机运行」章节。
 
 ## [0.2.0] - 2026-09-22
 

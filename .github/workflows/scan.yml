@@ -7,8 +7,8 @@
 #     而 runner 默认 UTC。07:00(北京) 时 UTC 还是前一天 23:00，
 #     不设置就会去扫「昨天的报纸」，静默漏掉当天内容。
 #
-# 注意：本地 launchd 与本 workflow 会写同一个 state/seen.json，
-# 两者同时启用会互相覆盖增量状态——请二选一。
+# 注意：本地 launchd / Windows 任务计划程序均以 run_scan 脚本带 --no-state 运行，
+# 不读写 state/seen.json、不产 hits/，因此可与本 workflow 并存，不会互相覆盖。
 name: daily-scan
 
 on:
