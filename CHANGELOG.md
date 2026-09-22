@@ -5,6 +5,35 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **羊城晚报 per-paper 抓取参数覆盖**：`config.PAPERS` 支持可选的 `timeout` / `retries`
+  键；羊城晚报设为 `timeout=60 / retries=4`，规避 GitHub runner（海外）上原始请求
+  30s 才返回 `HTTP 000` 的临界失败（`config.py`；`scanner.py` 新增 `_paper_fetch`，
+  无覆盖键或测试注入时原样透传）。
+- **抓取失败可见化**：扫描统计新增 `sections_failed` / `articles_failed` / `failed_urls`
+  （含代表性失败样本，最多 3 条）；Markdown 报告新增「抓取失败（缺报）」章节，
+  并在「各家扫描情况」表新增「失败」列（`scanner.py`、`report.py`）。
+- 部署文档新增「外部定时（VPS crontab）」：私有仓库下 GitHub 原生 `schedule`
+  实测零触发，生产改由 crontab 调 `repository_dispatch` 触发
+  （`README.md`、`docs/交付说明-*.md`）。
+
+### 修复
+
+- **CLI 入口失败不再伪装成功**：存在 `entry_code != 200` 时 `cli.main()` 返回退出码 1，
+  让 GitHub Actions 步骤变红；文章级失败不影响退出码（`cli.py`）。
+- **Actions 失败时不再丢结果**：`scan.yml` 的「提交结果」步骤改为 `if: always()`，
+  扫描失败也提交已落盘的 `hits/`、`state/`；提交信息在失败时追加 `[含失败]` 后缀。
+- 报告表格新增「失败」列，修正此前失败不可见、失败时仍显示「无命中」的问题（`report.py`）。
+
+### 文档
+
+- `README.md`：launchd 章节增加「与 Actions 二选一」醒目提示及
+  `./scripts/install_launchd.sh uninstall` 卸载命令，新增「外部定时（VPS crontab）」
+  章节（完整 crontab 行、时区换算、PAT 最小权限、日志落盘与排查步骤）。
+- `docs/交付说明-v0.2-工程化改造.md`、`docs/交付说明-无状态模式与定时任务.md`：
+  同步外部定时路径、launchd 二选一、抓取失败不再静默等结论。
+
 ## [0.2.0] - 2026-09-22
 
 ### 新增

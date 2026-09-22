@@ -116,6 +116,16 @@ NEWSPAPER_DATA_DIR=/tmp/scan-out python3 daily_scan.py --days 1
 
 ### 定时任务（macOS launchd）
 
+> ⚠️ **与 GitHub Actions / VPS 定时**二选一 ⚠️
+> 本机 launchd 与 `.github/workflows/scan.yml`（含 VPS crontab 触发的 Actions 运行）
+> 会写**同一个 `state/seen.json`**。两边各自基于旧状态判增量、再互相覆盖状态文件，
+> 会导致**重复报或漏报**。**任一时刻只允许启用一种调度**。
+> 改用 Actions / VPS crontab 前，请先卸载本机任务：
+>
+> ```bash
+> ./scripts/install_launchd.sh uninstall
+> ```
+
 每天自动执行无状态扫描，日志追加到 `logs/scan-YYYY-MM-DD.log`。
 plist 由模板生成，**路径与运行时间都自动替换，无需手工编辑**：
 
@@ -146,6 +156,54 @@ NEWSPAPER_TIMES="07:00,12:30" ./scripts/install_launchd.sh install
 ./scripts/run_scan.sh --kw 广东海洋大学 --days 3 --only 湛江日报
 NEWSPAPER_KW="广东海洋大学,广海" ./scripts/run_scan.sh
 ```
+
+### 外部定时（VPS crontab）
+
+不想让本机常开时，可用任意一台 VPS 的 crontab 触发 GitHub Actions。
+这是本项目**生产环境实际采用**的方式：私有仓库下 GitHub 原生 `schedule`
+触发器实测不会触发（`*/5` 探测约 36 分钟、`gh run list` 零条记录，见
+`.github/workflows/scan.yml` 注释），`repository_dispatch` 是唯一可靠的定时入口。
+
+**1. 创建 PAT（细粒度，最小权限）**
+
+GitHub → Settings → Developer settings → **Fine-grained tokens** → 新建，仅授予：
+
+- Repository access：只勾 `VXXVI/AutoNewspaper`
+- Permissions：**仅需 `Contents: Read and write`**（触发 dispatch 即用此权限）
+- 有效期按需设置（到期需更新 crontab 里的值）
+
+> 🔒 `<PAT>` **只存在 VPS 本机**，绝不写入仓库、日志或提交信息。
+
+**2. 写入 VPS crontab**（`crontab -e`）
+
+```cron
+# 每天 07:00（VPS 本地时区）触发 AutoNewspaper 扫描
+0 7 * * * curl -fsS -X POST \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer <PAT>" \
+  https://api.github.com/repos/VXXVI/AutoNewspaper/dispatches \
+  -d '{"event_type":"scan"}' >> /var/log/newspaperauto-dispatch.log 2>&1
+```
+
+**时区说明**：crontab 用的是 **VPS 机器的本地时区**，而 workflow 内部固定
+`TZ=Asia/Shanghai`（07:00 北京 = 前一天 23:00 UTC）。因此：
+
+- VPS 时区为 `Asia/Shanghai`：上面 `0 7 * * *` 即北京时间 07:00，直接用；
+- VPS 时区为 `UTC`（多数云主机默认）：要写成 `0 23 * * *`（= 次日北京 07:00）；
+- 不确定时先 `timedatectl`（或 `date`）确认，也可
+  `sudo timedatectl set-timezone Asia/Shanghai` 统一为北京时间。
+
+**3. 日志与失败排查**
+
+- 触发日志由上面的 `>> /var/log/newspaperauto-dispatch.log 2>&1` 落盘；
+  无写权限时改用 `~/newspaperauto-dispatch.log`。
+- `204 No Content` 才是成功——GitHub 的 dispatch 成功只表示"事件已受理"，
+  不代表扫描已完成；随后到仓库 **Actions** 页确认 `daily-scan` 出现运行记录。
+- `401`：PAT 无效或过期；`403`：权限不足或未勾选该仓库（需 `Contents: Read and write`）；
+  `404`：仓库名/大小写写错（应为 `VXXVI/AutoNewspaper`）。
+- `concurrency: daily-scan` 会挡住重复并发：重叠触发时后者**排队**而非并跑。
+
+> ⚠️ 走 Actions / VPS 时，请先按上文卸载本机 launchd，避免两者共写 `state/seen.json`。
 
 ### 输出
 
