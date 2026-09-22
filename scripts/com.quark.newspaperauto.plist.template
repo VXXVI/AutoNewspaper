@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd 模板：com.quark.newspaperauto
+
+  【不要手工拷贝本文件】其中 {{PROJECT_DIR}} 是占位符。
+  请运行 ./scripts/install_launchd.sh install，由安装脚本替换为真实路径后
+  写入 ~/Library/LaunchAgents/com.quark.newspaperauto.plist 并加载。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.quark.newspaperauto</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{PROJECT_DIR}}/scripts/run_scan.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_DIR}}</string>
+
+    <!-- 每天 07:00 执行一次（报纸一般凌晨上线，过早跑可能版面不全） -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_DIR}}/logs/launchd.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_DIR}}/logs/launchd.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONIOENCODING</key>
+        <string>utf-8</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+
+        <!-- 可选：自定义关键词（逗号或分号分隔），取消注释即生效
+        <key>NEWSPAPER_KW</key>
+        <string>广东海洋大学,广海,海大</string>
+        -->
+
+        <!-- 可选：显式指定 Python 解释器（默认用项目 .venv 或 PATH 中的 python3）
+        <key>NEWSPAPER_PYTHON</key>
+        <string>/absolute/path/to/python3</string>
+        -->
+    </dict>
+</dict>
+</plist>
