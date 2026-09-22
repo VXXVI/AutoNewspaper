@@ -80,7 +80,7 @@ Google News 收录比报纸出版晚数小时到数天；返回的链接还是 `
 ## 四、用法
 
 ```bash
-cd /Users/quark/WorkBuddy/opencode/gdou-tracker
+cd /Users/quark/Codex/Project/NewsPaperAuto
 
 python3 daily_scan.py                  # 扫今天+昨天，只报「新增」命中（日常用这个）
 python3 daily_scan.py --days 7         # 回溯最近 7 天
@@ -90,6 +90,43 @@ python3 daily_scan.py --full           # 忽略增量记录，全量重报
 python3 daily_scan.py --workers 8      # 并发数（默认 8）
 python3 daily_scan.py --dry            # 只探测入口和版面，不抓文章
 ```
+
+### 无状态运行（不产生历史文件）
+
+若希望临时查询或集成进管道，不读写增量状态 `state/seen.json`，且不产生任何 `hits/*.md`、`hits/index.html`、`hits/archive.json` 等新历史文件，可指定 `--no-state`。该模式优先级高于 `--full`，并支持与 `--json` 或 `--csv` 配合使用输出到标准输出（人类可读进度日志自动分流至 stderr）：
+
+```bash
+# 纯无状态运行（不修改 state/seen.json，不写入 hits/）
+python3 daily_scan.py --days 1 --no-state
+
+# 无状态并以 JSON 数组输出到 stdout（管道处理）
+python3 daily_scan.py --days 1 --no-state --json | jq .
+
+# 无状态并以 CSV 格式输出到 stdout
+python3 daily_scan.py --days 1 --no-state --csv > today_hits.csv
+```
+
+### 定时任务（launchd）
+
+项目提供了基于 macOS `launchd` 的自动化调度配置，每天 07:00 自动执行无状态监测，日志自动追加到 `logs/scan-YYYY-MM-DD.log`。
+
+```bash
+# 1. 检查或修改 scripts/com.quark.newspaperauto.plist 中的绝对路径（已默认填入当前仓库路径）
+
+# 2. 安装并加载服务（每天 07:00 自动运行）
+./scripts/install_launchd.sh install
+
+# 3. 查看服务状态
+./scripts/install_launchd.sh status
+
+# 4. 手动立即触发一次运行（测试）
+./scripts/install_launchd.sh run-now
+
+# 5. 如需卸载
+./scripts/install_launchd.sh uninstall
+```
+
+> 提示：也可以通过环境变量 `NEWSPAPER_KW` 或在执行 `scripts/run_scan.sh "关键词1" "关键词2"` 时传参自定义监测词。
 
 ### 输出
 

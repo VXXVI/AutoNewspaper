@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd 配置文件模板：com.quark.newspaperauto.plist
+  用途：每天 07:00 自动执行 run_scan.sh 抓取数字报关键词
+
+  【路径替换说明】：
+  1. ProgramArguments 中 run_scan.sh 的路径（第 16 行）：若项目不在 /Users/quark/Codex/Project/NewsPaperAuto，请替换为您实际的绝对路径。
+  2. WorkingDirectory（第 20 行）：请替换为项目的实际绝对路径。
+  3. StandardOutPath / StandardErrorPath（第 31、34 行）：请替换为实际 logs 目录绝对路径。
+  4. EnvironmentVariables 中的 PATH（第 41 行）：可按需调整 python3 或环境工具路径。
+  5. 可选环境变量 NEWSPAPER_KW：如需自定义默认关键词，可在 EnvironmentVariables 中添加 <key>NEWSPAPER_KW</key><string>关键词</string>。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.quark.newspaperauto</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <!-- 【需替换】run_scan.sh 脚本的完整绝对路径 -->
+        <string>/Users/quark/Codex/Project/NewsPaperAuto/scripts/run_scan.sh</string>
+    </array>
+
+    <!-- 【需替换】项目根目录绝对路径 -->
+    <key>WorkingDirectory</key>
+    <string>/Users/quark/Codex/Project/NewsPaperAuto</string>
+
+    <!-- 每天 07:00 执行一次 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 【需替换】标准输出与错误日志路径 -->
+    <key>StandardOutPath</key>
+    <string>/Users/quark/Codex/Project/NewsPaperAuto/logs/launchd.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/quark/Codex/Project/NewsPaperAuto/logs/launchd.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONIOENCODING</key>
+        <string>utf-8</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/quark/.workbuddy/binaries/python/versions/3.13.12/bin</string>
+    </dict>
+</dict>
+</plist>

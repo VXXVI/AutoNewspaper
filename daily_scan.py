@@ -30,6 +30,9 @@
     python3 daily_scan.py --workers 8        # 并发数（默认 8）
     python3 daily_scan.py --only 光明日报,南方日报
     python3 daily_scan.py --dry              # 只探测入口与版面，不抓文章
+    python3 daily_scan.py --no-state         # 无状态运行，不读写状态与报告文件
+    python3 daily_scan.py --json             # 命中结果以 JSON 数组输出到 stdout
+    python3 daily_scan.py --csv              # 命中结果以 CSV 格式输出到 stdout
 
 输出
 ----
@@ -39,6 +42,7 @@
 """
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -383,7 +387,20 @@ def main():
     ap.add_argument("--only", default="", help="只扫指定报社，逗号分隔")
     ap.add_argument("--full", action="store_true", help="忽略增量记录，全量重报")
     ap.add_argument("--dry", action="store_true", help="只探测入口与版面，不抓文章")
+    ap.add_argument("--no-state", action="store_true",
+                    help="无状态模式：不读写 seen.json，不写 archive.json、index.html 及 markdown 报告")
+    fmt_group = ap.add_mutually_exclusive_group()
+    fmt_group.add_argument("--json", action="store_true",
+                           help="命中结果以 JSON 数组输出到 stdout（日志转至 stderr）")
+    fmt_group.add_argument("--csv", action="store_true",
+                           help="命中结果以 CSV 格式输出到 stdout（日志转至 stderr）")
     a = ap.parse_args()
+
+    # 结构化输出模式下，人类可读日志重定向至 stderr，保证 stdout 纯净
+    log_file = sys.stderr if (a.json or a.csv) else sys.stdout
+
+    def log(msg=""):
+        print(msg, file=log_file)
 
     kws = a.kw or ["广东海洋大学"]
     kw_res = {k: make_kw_re(k) for k in kws}
@@ -397,12 +414,12 @@ def main():
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     dates = [today - timedelta(days=i) for i in range(max(1, a.days))]
 
-    print(f"关键词：{kws_label}")
-    print(f"日期范围：{dates[-1]:%Y-%m-%d} ~ {dates[0]:%Y-%m-%d}（{len(dates)} 天）")
-    print(f"报社：{'、'.join(p['name'] for p in papers)}")
-    print("-" * 72)
+    log(f"关键词：{kws_label}")
+    log(f"日期范围：{dates[-1]:%Y-%m-%d} ~ {dates[0]:%Y-%m-%d}（{len(dates)} 天）")
+    log(f"报社：{'、'.join(p['name'] for p in papers)}")
+    log("-" * 72)
 
-    seen = load_seen()
+    seen = {} if a.no_state else load_seen()
     seen_buckets = {k: seen.setdefault(k, {}) for k in kws}
 
     all_stats, all_hits, all_arts = [], [], []
@@ -414,12 +431,17 @@ def main():
             all_hits += hits
             all_arts += arts
             flag = "✓" if st["entry_code"] == 200 else "✗"
-            print(f"  {flag} {p['name']:<5} {d:%m-%d}  版面{st['sections']:>3}  "
-                  f"文章{st['scanned']:>4}  命中{len(hits):>2}  {st['note']}")
+            log(f"  {flag} {p['name']:<5} {d:%m-%d}  版面{st['sections']:>3}  "
+                f"文章{st['scanned']:>4}  命中{len(hits):>2}  {st['note']}")
 
     if a.dry:
-        print("-" * 72)
-        print("dry-run 结束（未抓取文章）")
+        log("-" * 72)
+        log("dry-run 结束（未抓取文章）")
+        if a.json:
+            sys.stdout.write("[]\n")
+        elif a.csv:
+            writer = csv.DictWriter(sys.stdout, fieldnames=["paper", "date", "section", "title", "url", "text_len", "matched"])
+            writer.writeheader()
         return
 
     # 增量：本次才算「新增」的命中
@@ -433,11 +455,11 @@ def main():
                     break
         if bucket is None:
             bucket = next(iter(seen_buckets.values()))
-        if h["url"] not in bucket or a.full:
+        if h["url"] not in bucket or a.full or a.no_state:
             new_hits.append(h)
 
-    # 记录状态
-    if not a.full:
+    # 记录状态（仅非 --full 且非 --no-state 时写状态）
+    if not a.full and not a.no_state:
         for art in all_arts:
             for k, kr in kw_res.items():
                 bucket = seen.setdefault(k, {})
@@ -446,43 +468,62 @@ def main():
         dropped = prune_seen(seen)
         save_seen(seen)
         if dropped:
-            print(f"  （已清理 {dropped} 条过期增量记录）")
+            log(f"  （已清理 {dropped} 条过期增量记录）")
 
-    # 历史归档（读回已记录的命中 URL 需要完整信息，这里只用本次 + 既有 md 不便于归档，
-    # 因此 index.html 展示「本次全量命中」+ 追加历史）
-    os.makedirs(HITS_DIR, exist_ok=True)
-    archive_file = os.path.join(HITS_DIR, "archive.json")
-    archive = []
-    if os.path.exists(archive_file):
-        try:
-            with open(archive_file, encoding="utf-8") as f:
-                archive = json.load(f)
-        except Exception:
-            archive = []
-    known = {x["url"] for x in archive}
-    for h in all_hits:
-        if h["url"] not in known:
-            archive.append(h)
-            known.add(h["url"])
-    with open(archive_file, "w", encoding="utf-8") as f:
-        json.dump(archive, f, ensure_ascii=False, indent=1)
+    # 历史归档与报告输出（--no-state 时跳过所有文件写入）
+    if not a.no_state:
+        os.makedirs(HITS_DIR, exist_ok=True)
+        archive_file = os.path.join(HITS_DIR, "archive.json")
+        archive = []
+        if os.path.exists(archive_file):
+            try:
+                with open(archive_file, encoding="utf-8") as f:
+                    archive = json.load(f)
+            except Exception:
+                archive = []
+        known = {x["url"] for x in archive}
+        for h in all_hits:
+            if h["url"] not in known:
+                archive.append(h)
+                known.add(h["url"])
+        with open(archive_file, "w", encoding="utf-8") as f:
+            json.dump(archive, f, ensure_ascii=False, indent=1)
 
-    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
-    md = os.path.join(HITS_DIR, f"{stamp}.md")
-    write_md(md, kws_label, dates, all_stats, new_hits, all_hits,
-             "全量重报" if a.full else "增量")
-    write_html(os.path.join(HITS_DIR, "index.html"), kws_label, archive)
+        stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+        md = os.path.join(HITS_DIR, f"{stamp}.md")
+        write_md(md, kws_label, dates, all_stats, new_hits, all_hits,
+                 "全量重报" if a.full else "增量")
+        write_html(os.path.join(HITS_DIR, "index.html"), kws_label, archive)
 
-    print("-" * 72)
-    print(f"  扫描文章 {len(all_arts)} 篇 | 命中 {len(all_hits)} 篇 | "
-          f"新增 {len(new_hits)} 篇 | 耗时 {time.time() - t0:.1f}s")
+    # 结构化输出到 stdout
+    if a.json:
+        sys.stdout.write(json.dumps(all_hits, ensure_ascii=False, indent=2) + "\n")
+    elif a.csv:
+        fieldnames = ["paper", "date", "section", "title", "url", "text_len", "matched"]
+        writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
+        writer.writeheader()
+        for h in all_hits:
+            writer.writerow({
+                "paper": h.get("paper", ""),
+                "date": h.get("date", ""),
+                "section": h.get("section", ""),
+                "title": h.get("title", ""),
+                "url": h.get("url", ""),
+                "text_len": h.get("text_len", 0),
+                "matched": ";".join(h.get("matched", [])),
+            })
+
+    log("-" * 72)
+    log(f"  扫描文章 {len(all_arts)} 篇 | 命中 {len(all_hits)} 篇 | "
+        f"新增 {len(new_hits)} 篇 | 耗时 {time.time() - t0:.1f}s")
     if new_hits:
-        print("\n  ★ 新增命中：")
+        log("\n  ★ 新增命中：")
         for h in new_hits:
-            print(f"    · [{h['paper']}] {h['title']}")
-            print(f"      {h['url']}")
-    print(f"\n  报告：{md}")
-    print(f"  汇总：{os.path.join(HITS_DIR, 'index.html')}")
+            log(f"    · [{h['paper']}] {h['title']}")
+            log(f"      {h['url']}")
+    if not a.no_state:
+        log(f"\n  报告：{md}")
+        log(f"  汇总：{os.path.join(HITS_DIR, 'index.html')}")
 
 
 if __name__ == "__main__":
