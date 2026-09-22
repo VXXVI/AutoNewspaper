@@ -1,0 +1,21 @@
+# sdist 内容清单（wheel 由 pyproject 的 package-data 负责静态资源）
+include LICENSE
+include README.md
+include CHANGELOG.md
+include Makefile
+
+recursive-include src/newspaper_auto/static *.html *.css *.js
+recursive-include tests *.py *.html
+recursive-include scripts *.sh *.template
+recursive-include docs *.md
+
+# 运行期产物与缓存不进包
+prune hits
+prune state
+prune logs
+prune dist
+prune build
+prune .venv
+prune .github
+
+global-exclude __pycache__ *.py[cod] .DS_Store *.egg-info

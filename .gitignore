@@ -4,6 +4,8 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+# setuptools 打包失败时可能留下的 sdist 暂存目录（如 newspaper_auto-0.2.0/）
+/newspaper_auto-*/
 
 # 虚拟环境 / 工具缓存
 .venv/

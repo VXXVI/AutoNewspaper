@@ -33,12 +33,16 @@ dev = ["pytest>=7.0", "ruff>=0.6"]
 
 [project.scripts]
 newspaper-scan = "newspaper_auto.cli:main"
+newspaper-dashboard = "newspaper_auto.web:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+newspaper_auto = ["static/*.html", "static/*.js", "static/*.css"]
 
 [tool.setuptools.dynamic]
 version = { attr = "newspaper_auto.__version__" }

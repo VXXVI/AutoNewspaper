@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>五家报社数字报监测 · 看板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <h1>五家报社数字报监测</h1>
+    <div class="sub" id="meta">加载中…</div>
+  </div>
+  <div class="actions">
+    <span class="badge" id="version"></span>
+    <button id="reload" class="btn" type="button">刷新数据</button>
+  </div>
+</header>
+
+<main>
+  <section class="stats" id="stats" aria-label="概览"></section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>按日期分布</h2>
+      <div class="hint">柱子高度 = 当日命中数</div>
+    </div>
+    <div class="chart" id="chart"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>筛选</h2>
+      <button id="reset" class="btn ghost" type="button">重置</button>
+    </div>
+
+    <div class="filters">
+      <label class="field">
+        <span>搜索标题 / 上下文</span>
+        <input id="q" type="search" placeholder="如 广东海洋大学" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>起始日期</span>
+        <input id="from" type="date">
+      </label>
+      <label class="field">
+        <span>结束日期</span>
+        <input id="to" type="date">
+      </label>
+      <label class="field">
+        <span>排序</span>
+        <select id="sort">
+          <option value="date-desc">日期（新 → 旧）</option>
+          <option value="date-asc">日期（旧 → 新）</option>
+          <option value="paper">报社</option>
+          <option value="title">标题</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="chips-wrap">
+      <div class="chips-label">报社</div>
+      <div class="chips" id="paper-chips"></div>
+    </div>
+    <div class="chips-wrap">
+      <div class="chips-label">命中关键词</div>
+      <div class="chips" id="keyword-chips"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>命中列表</h2>
+      <div class="hint" id="shown">—</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-paper">报社</th>
+            <th class="col-date">日期</th>
+            <th class="col-section">版面</th>
+            <th>标题 / 上下文</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty" hidden>没有符合条件的命中。</div>
+  </section>
+</main>
+
+<footer class="foot" id="foot"></footer>
+<script src="/static/app.js" defer></script>
+</body>
+</html>

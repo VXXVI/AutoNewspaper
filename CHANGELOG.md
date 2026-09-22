@@ -15,7 +15,11 @@
 - 拆分为 `src/newspaper_auto/` 包（`config` / `paths` / `http` / `parse` /
   `scanner` / `state` / `report` / `cli`），`daily_scan.py` 保留为同名兼容入口，
   既有命令与定时任务无需改动。
-- 65 个**离线**单元测试（`tests/`，含 HTML fixture），不访问网络。
+- **本地只读看板**：`python3 -m newspaper_auto.web`（stdlib `http.server`，零依赖、
+  无构建、无 CDN，默认只监听 `127.0.0.1`）。支持概览统计、按日期分布柱状图、
+  按报社 / 关键词 / 日期筛选与搜索、点击跳原文；只读，不写文件、不触发抓取。
+- 76 个**离线**单元测试（`tests/`，含 HTML fixture 与 127.0.0.1 回环 HTTP 测试），
+  不访问网络。
 - `pyproject.toml`（运行时依赖刻意保持为 0）、`Makefile`、ruff 配置、
   GitHub Actions CI（Python 3.9 / 3.12 / 3.13）、`LICENSE`。
 - 新增 `--data-dir` 与 `--version`；数据目录支持 `NEWSPAPER_DATA_DIR` 环境变量。

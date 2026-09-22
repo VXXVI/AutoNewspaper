@@ -7,7 +7,7 @@ PY := $(shell if [ -x .venv/bin/python ]; then echo .venv/bin/python; else echo 
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install test lint fmt check dry scan json csv run-now plist clean
+.PHONY: help install test lint fmt check dry scan json csv web run-now plist clean
 
 help:  ## 显示本帮助
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -41,9 +41,12 @@ json:  ## 无状态扫描并以 JSON 输出（配 jq 使用）
 csv:  ## 无状态扫描并以 CSV 输出
 	$(PY) daily_scan.py --days 1 --no-state --csv
 
+web:  ## 启动本地只读看板（http://127.0.0.1:8787）
+	$(PY) -m newspaper_auto.web --open
+
 plist:  ## 打印将要安装的 launchd plist
 	./scripts/install_launchd.sh print
 
 clean:  ## 清理缓存与构建产物（不动 hits/ state/）
-	rm -rf .pytest_cache .ruff_cache build dist src/*.egg-info
+	rm -rf .pytest_cache .ruff_cache build dist src/*.egg-info newspaper_auto-*
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +

@@ -40,8 +40,10 @@
 │   ├── scanner.py                #   扫描编排（入口→版面→文章）
 │   ├── state.py                  #   增量状态读写与「新增」判定
 │   ├── report.py                 #   Markdown / HTML / JSON / CSV 渲染
+│   ├── web.py                    #   本地只读看板（stdlib http.server）
+│   ├── static/                   #   看板前端（原生 HTML/CSS/JS，无构建）
 │   └── cli.py                    #   参数解析与主流程
-├── tests/                        # 65 个离线单元测试 + HTML fixture
+├── tests/                        # 76 个离线单元测试 + HTML fixture
 ├── scripts/                      # 定时任务
 │   ├── run_scan.sh               #   启动脚本（无状态运行，写日志）
 │   ├── com.quark.newspaperauto.plist.template  # launchd 模板
@@ -154,6 +156,24 @@ NEWSPAPER_KW="广东海洋大学,广海" ./scripts/run_scan.sh
 | `hits/archive.json` | 命中归档（结构化，便于二次加工） |
 | `state/seen.json` | 增量状态（已判定过的文章 URL），保证只报新增 |
 | `logs/scan-YYYY-MM-DD.log` | 定时任务运行日志 |
+
+### 本地看板（只读 Web 界面）
+
+用标准库起一个**只读**看板，零第三方依赖、无构建、无 CDN：
+
+```bash
+python3 -m newspaper_auto.web               # http://127.0.0.1:8787
+python3 -m newspaper_auto.web --port 8799 --open
+make web                                    # 等价（自动打开浏览器）
+```
+
+- **数据来源**：`hits/archive.json`（历史命中）与 `state/seen.json`（已判定文章数）。
+- **功能**：概览统计卡片、按日期分布柱状图、按报社 / 命中关键词 / 日期区间筛选、
+  标题与上下文搜索、排序、点击标题跳转原文。
+- **只读**：不写任何文件，也不会触发抓取；页面上的数据全部用 `textContent`
+  渲染，不会执行抓取内容里的 HTML/脚本。
+- **默认只监听 `127.0.0.1`**，不对外网暴露。端口被占用时会给出提示（可用
+  `--port 0` 让系统自动分配）。
 
 ---
 
