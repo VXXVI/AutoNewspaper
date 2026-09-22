@@ -13,8 +13,14 @@ name: daily-scan
 
 on:
   workflow_dispatch:
+  # 供外部定时服务调用（实测：私有仓库下 schedule 不生效，靠这个兜底）：
+  #   gh api repos/<owner>/<repo>/dispatches -f event_type=scan
+  #   或任意 HTTP POST /repos/<owner>/<repo>/dispatches  {"event_type":"scan"}
+  repository_dispatch:
+    types: [scan]
   schedule:
     # 23:00 UTC = 次日 07:00 北京时间（配合下方 TZ）
+    # 注意：实测「私有仓库 + 免费个人账号」下该触发器一次都不会触发，仅公开仓库可靠
     - cron: "0 23 * * *"
 
 env:
