@@ -52,17 +52,25 @@ jobs:
           echo "UTC 时间: $(date -u '+%F %T')"
 
       - name: 执行扫描（增量，--days 1）
+        id: scan
         run: python3 daily_scan.py --days 1
+        # 入口失败时以非零退出（让步骤变红、工作流最终判 failure），
+        # 但不用 continue-on-error——而是在提交步骤用 if: always() 确保
+        # 已落盘的增量结果（hits/ state/）仍能被提交回仓库。
 
       - name: 把结果提交回仓库
+        if: always()   # 扫描步骤失败（入口失败）时也要执行，以免丢失已写入的部分结果
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A state hits
           if git diff --cached --quiet; then
-            echo "本次无新增，无需提交"
+            echo "本次无变化，无需提交"
             exit 0
           fi
-          git commit -m "chore(scan): $(date '+%F') 自动扫描结果"
+          SCAN_STATUS="${{ steps.scan.outcome }}"
+          SUFFIX=""
+          if [ "$SCAN_STATUS" != "success" ]; then SUFFIX=" [含失败]"; fi
+          git commit -m "chore(scan): $(date '+%F') 自动扫描结果${SUFFIX}"
           git pull --rebase --autostash origin main
           git push
