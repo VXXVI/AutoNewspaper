@@ -85,7 +85,10 @@ def fetch(url, timeout=25, retries=2):
     """
     code, body = 0, ""
     for attempt in range(retries + 1):
-        cmd = ["curl", "-sL", "--compressed", "-m", str(timeout), "-A", UA,
+        # --http1.1 是必须的，不是优化：光明日报数字报的服务器（epaper.gmw.cn）
+        # 在 HTTP/2 下会直接断连（curl 报 52 Empty reply from server），
+        # 降级到 HTTP/1.1 才稳定。curl 默认会经 ALPN 协商到 h2，所以必须显式指定。
+        cmd = ["curl", "-sL", "--http1.1", "--compressed", "-m", str(timeout), "-A", UA,
                "-H", "Accept-Language: zh-CN,zh;q=0.9",
                "-w", "\n@@HTTP:%{http_code}", url]
         try:
@@ -178,12 +181,20 @@ def scan_paper(paper, d, kw_res, workers, dry=False):
 
     code, html = fetch(entry)
     stats["entry_code"] = code
-    if code != 200 or len(html) < 300:
-        stats["note"] = "入口不可用（当天报纸可能还没上线）"
+    if code == 0:
+        stats["note"] = "网络层失败：curl 无响应（代理/网络异常，或该站已改地址）"
+        return [], [], stats
+    if code != 200:
+        stats["note"] = f"入口 HTTP {code}（站点侧拒绝，或当天报纸尚未上线）"
+        return [], [], stats
+    if len(html) < 300:
+        stats["note"] = f"入口内容异常（仅 {len(html)} 字节）"
         return [], [], stats
 
     base = entry.rsplit("/", 1)[0] + "/"
-    nodes = [n for n in links(html, base, r"node_\w+\.html?$") if dp in n]
+    nodes_all = links(html, base, r"node_\w+\.html?$")
+    # 只保留当日版面；若站点改了 URL 结构导致全被滤掉，则放宽，避免整期漏扫
+    nodes = [n for n in nodes_all if dp in n] or nodes_all
     if entry not in nodes:
         nodes.insert(0, entry)
     nodes = list(dict.fromkeys(nodes))
