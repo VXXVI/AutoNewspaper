@@ -99,13 +99,47 @@ def test_dry_run_json_returns_empty_array(tmp_path, capsys, site_fetcher, today)
     assert "dry-run 结束" in err
 
 
-def test_entry_failure_is_reported_not_crashed(tmp_path, capsys, today):
+def test_entry_failure_exits_nonzero(tmp_path, capsys, today):
+    """入口失败时 CLI 应以非零退出，让 Actions 步骤变红。"""
     code = cli.main(
         ["--only", "光明日报", "--days", "1", "--data-dir", str(tmp_path)], fetcher=lambda url: (404, "")
     )
     out, _err = capsys.readouterr()
+    assert code == 1, "入口失败应返回退出码 1"
+    assert "入口失败" in out  # 警告已输出（--json/--csv 时才走 stderr）
+
+
+def test_entry_failure_still_writes_report(tmp_path, capsys, today):
+    """入口失败时，报告和 index.html 应已写入（for Actions 提交步骤）。"""
+    cli.main(
+        ["--only", "光明日报", "--days", "1", "--data-dir", str(tmp_path)], fetcher=lambda url: (404, "")
+    )
+    # hits/ 目录和报告文件在失败前已创建
+    hits_dir = tmp_path / "hits"
+    assert hits_dir.is_dir()
+
+
+def test_partial_failure_article_does_not_block_hits(tmp_path, capsys, site_fetcher, today):
+    """部分文章页失败：失败计入统计且不影响已命中的文章。"""
+    date_part = f"{today.year}-{today.month:02d}/{today.day:02d}"
+    bad_url = f"http://paper.gdzjdaily.com.cn/html/{date_part}/content_103.html"
+
+    def fetcher(url: str):
+        if url == bad_url:
+            return (500, "")
+        return site_fetcher(today)(url)
+
+    code = cli.main(
+        ["--only", "湛江日报", "--days", "1", "--no-state", "--json", "--data-dir", str(tmp_path)],
+        fetcher=fetcher,
+    )
+    out, _err = capsys.readouterr()
+    records = json.loads(out)
+    hit_files = _hit_files(records)
+    # content_104 命中；content_103 失败被跳过，其余正常
+    assert "content_104.html" in hit_files
+    # 文章失败不导致 CLI 非零退出（只有入口失败才非零）
     assert code == 0
-    assert "入口 HTTP 404" in out
 
 
 def test_select_papers_unknown_name_does_not_silently_empty():

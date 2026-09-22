@@ -163,6 +163,14 @@ def main(
     if md_path is not None:
         log(f"\n  报告：{md_path}")
         log(f"  汇总：{paths.index_file(data_dir)}")
+
+    # 入口失败 → 非零退出，让 Actions 步骤变红；但增量状态/报告已在上面写完，
+    # Actions 的"提交结果"步骤应设  if: always()  确保提交仍然发生。
+    entry_failures = [s for s in all_stats if s.get("entry_code", 200) != 200]
+    if entry_failures:
+        names = "、".join(s["paper"] for s in entry_failures)
+        log(f"\n  ⚠️  {len(entry_failures)} 家报社入口失败（{names}），结果可能漏报！")
+        return 1
     return 0
 
 
