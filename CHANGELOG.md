@@ -41,11 +41,12 @@
 
 ### 文档
 
-- `README.md`：launchd 章节增加「与 Actions 二选一」醒目提示及
-  `./scripts/install_launchd.sh uninstall` 卸载命令，新增「外部定时（VPS crontab）」
-  章节（完整 crontab 行、时区换算、PAT 最小权限、日志落盘与排查步骤）。
+- `README.md`：launchd 章节明确「本机与 Actions 可并存 + 本机无状态运行」，并给出
+  不再需要本机任务时的 `./scripts/install_launchd.sh uninstall` 卸载命令，新增
+  「外部定时（VPS crontab）」章节（完整 crontab 行、时区换算、PAT 最小权限、
+  日志落盘与排查步骤）。
 - `docs/交付说明-v0.2-工程化改造.md`、`docs/交付说明-无状态模式与定时任务.md`：
-  同步外部定时路径、launchd 二选一、抓取失败不再静默等结论。
+  同步外部定时路径、本机与 Actions 可并存（本机无状态运行）、抓取失败不再静默等结论。
 - `README.md` 第一节表格补齐「运行 / 调度」两行，明确生产 = GitHub Actions + 外部触发，
   并回答「是否需要打包 exe：不需要」及两条理由；新增「调度方案对照表」与
   「Windows 本机运行」章节。
