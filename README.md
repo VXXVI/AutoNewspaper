@@ -223,6 +223,9 @@ powershell -ExecutionPolicy Bypass -File scripts\install_task_scheduler.ps1 inst
 - 默认 `07:00`，可给多个时间点：`... install 07:00 12:30 19:00`（每天各跑一次）；
   也可用环境变量 `NEWSPAPER_TIMES`（逗号或分号分隔）。
 - **幂等**：重复 `install` 会先注销同名任务再注册，不会报错，也不会重复堆积。
+- **⚠ 需要管理员权限**：`Register-ScheduledTask` 在**非提权的 PowerShell** 下会报
+  `Access is denied`。请用「**以管理员身份运行**」重开 PowerShell 再执行 `install`；
+  `status` / `run-now` / `uninstall` 不需要提权。
 - 其它子命令：`status`（注册状态 + 最近日志）、`run-now`（立即触发）、`uninstall`（注销）。
 - **⚠ 时区**：任务计划程序使用**机器本地时区**，请用 `Get-TimeZone` 确认；
   与北京时间不一致时，请按本地时区填写上面的时间点。
@@ -253,44 +256,94 @@ schtasks /Create /TN NewsPaperAuto /SC DAILY /ST 07:00 /F ^
 触发器实测不会触发（`*/5` 探测约 36 分钟、`gh run list` 零条记录，见
 `.github/workflows/scan.yml` 注释），`repository_dispatch` 是唯一可靠的定时入口。
 
+**部署形态**
+
+crontab 只负责**调用一个独立脚本**，PAT 存在**单独的文件**里而不是 crontab 中 ——
+这样 `crontab -l` 不会泄露凭据，脚本自身还能带日志与错误分类：
+
+```
+~/.newspaperauto/
+├── dispatch.sh    # 触发器脚本（本仓库 scripts/vps_dispatch.sh，权限 700）
+├── pat            # PAT 单行纯文本（权限 600）—— 唯一需要你自己填的东西
+└── dispatch.log   # 每次触发的结果（成功 http=204 / 失败带错误码与中文提示）
+```
+
 **1. 创建 PAT（细粒度，最小权限）**
 
 GitHub → Settings → Developer settings → **Fine-grained tokens** → 新建，仅授予：
 
 - Repository access：只勾 `VXXVI/AutoNewspaper`
 - Permissions：**仅需 `Contents: Read and write`**（触发 dispatch 即用此权限）
-- 有效期按需设置（到期需更新 crontab 里的值）
+- 有效期按需设置（到期换一个，只需覆盖 `pat` 文件，不用动 crontab）
 
-> 🔒 `<PAT>` **只存在 VPS 本机**，绝不写入仓库、日志或提交信息。
+> 🔒 PAT **只存在 VPS 本机**，绝不写入仓库、日志或提交信息。
 
-**2. 写入 VPS crontab**（`crontab -e`）
+**2. 装脚本与 crontab**
 
-```cron
-# 每天 07:00（VPS 本地时区）触发 AutoNewspaper 扫描
-0 7 * * * curl -fsS -X POST \
-  -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer <PAT>" \
-  https://api.github.com/repos/VXXVI/AutoNewspaper/dispatches \
-  -d '{"event_type":"scan"}' >> /var/log/newspaperauto-dispatch.log 2>&1
+```bash
+# 建目录（700：同机其他用户读不到）
+ssh vps-ts 'mkdir -p ~/.newspaperauto && chmod 700 ~/.newspaperauto'
+
+# 部署脚本（仓库里的就是部署版本，天然保持一致）
+scp scripts/vps_dispatch.sh vps-ts:.newspaperauto/dispatch.sh
+ssh vps-ts 'chmod 700 ~/.newspaperauto/dispatch.sh'
+
+# 追加 crontab（先备份；已存在则跳过，避免重复堆积）
+ssh vps-ts 'TMP=$(mktemp); crontab -l > "$TMP" 2>/dev/null || true; \
+  cp "$TMP" ~/crontab.bak-$(date +%F); \
+  grep -q "newspaperauto/dispatch.sh" "$TMP" || \
+  printf "# AutoNewspaper 每日扫描触发\n0 23 * * * %s/.newspaperauto/dispatch.sh\n" "$HOME" >> "$TMP"; \
+  crontab "$TMP"; rm -f "$TMP"; crontab -l'
+```
+
+上面 `0 23 * * *` 是按 **VPS 为 UTC** 写的（UTC 23:00 = 北京次日 07:00）。
+若你的 VPS 已是 `Asia/Shanghai`，改成 `0 7 * * *`；判断方法见下方「时区说明」。
+
+**3. 注入 PAT**（唯一需要凭据的一步）
+
+```bash
+# 在你自己机器上执行。PAT 从键盘读入：不回显、不进 shell 历史、不落命令行参数
+ssh -t vps-ts 'umask 077; read -rsp "粘贴 PAT 后回车: " P; echo; \
+  printf "%s" "$P" > ~/.newspaperauto/pat; unset P; ls -l ~/.newspaperauto/pat'
+```
+
+**4. 立即验证一次**（不必等到明天早上）
+
+```bash
+ssh vps-ts '~/.newspaperauto/dispatch.sh; echo "exit=$?"; tail -n 2 ~/.newspaperauto/dispatch.log'
+```
+
+日志里出现 `OK http=204 已受理` 即成功。再确认 Actions 冒出新运行：
+
+```bash
+gh run list -R VXXVI/AutoNewspaper --workflow=scan.yml --limit 3
 ```
 
 **时区说明**：crontab 用的是 **VPS 机器的本地时区**，而 workflow 内部固定
 `TZ=Asia/Shanghai`（07:00 北京 = 前一天 23:00 UTC）。因此：
 
-- VPS 时区为 `Asia/Shanghai`：上面 `0 7 * * *` 即北京时间 07:00，直接用；
-- VPS 时区为 `UTC`（多数云主机默认）：要写成 `0 23 * * *`（= 次日北京 07:00）；
-- 不确定时先 `timedatectl`（或 `date`）确认，也可
+- VPS 时区为 `Asia/Shanghai`：写 `0 7 * * *`；
+- VPS 时区为 `UTC`（多数云主机默认）：写 `0 23 * * *`（= 次日北京 07:00）；
+- 不确定时先 `date`（或 `timedatectl`）确认，也可
   `sudo timedatectl set-timezone Asia/Shanghai` 统一为北京时间。
 
-**3. 日志与失败排查**
+**5. 日志与失败排查**
 
-- 触发日志由上面的 `>> /var/log/newspaperauto-dispatch.log 2>&1` 落盘；
-  无写权限时改用 `~/newspaperauto-dispatch.log`。
-- `204 No Content` 才是成功——GitHub 的 dispatch 成功只表示"事件已受理"，
-  不代表扫描已完成；随后到仓库 **Actions** 页确认 `daily-scan` 出现运行记录。
-- `401`：PAT 无效或过期；`403`：权限不足或未勾选该仓库（需 `Contents: Read and write`）；
-  `404`：仓库名/大小写写错（应为 `VXXVI/AutoNewspaper`）。
+- 日志在 `~/.newspaperauto/dispatch.log`。**不写 `/var/log`**：多数发行版该目录属
+  `root:syslog`，普通用户无写权限。
+- `204 No Content` 才是成功——GitHub 的 dispatch 成功只表示「事件已受理」，
+  不代表扫描已完成；随后到 **Actions** 页确认 `daily-scan` 出现运行记录。
+- `401` PAT 无效或过期 · `403` 权限不足或未勾选该仓库（需 `Contents: Read and write`）
+  · `404` 仓库名大小写写错 · `000` 网络不可达。脚本会把 HTTP 码与 GitHub 返回体
+  一并写进日志，并附一句中文提示。
 - `concurrency: daily-scan` 会挡住重复并发：重叠触发时后者**排队**而非并跑。
+
+**6. 回滚**
+
+```bash
+crontab -e            # 删掉调用 dispatch.sh 的那一行
+rm -rf ~/.newspaperauto
+```
 
 > 本机 `launchd` / Windows 任务计划程序与 Actions **可并存**：本机脚本以 `--no-state` 运行，
 > 不读写 `state/seen.json`、不产 `hits/*`，不会与 Actions 互相覆盖。

@@ -9,8 +9,9 @@ permissions:
   contents: read
 
 jobs:
+  # 主路径：生产跑在 ubuntu-latest 上，这里覆盖 Python 版本矩阵
   test:
-    name: 测试 (Python ${{ matrix.python-version }})
+    name: 测试 (Linux / Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -38,4 +39,69 @@ jobs:
         run: pytest -q
 
       - name: Shell 脚本语法检查
-        run: bash -n scripts/run_scan.sh scripts/install_launchd.sh
+        run: bash -n scripts/run_scan.sh scripts/install_launchd.sh scripts/vps_dispatch.sh
+
+  # 跨平台保障：Windows 本机调度脚本（.ps1）此前只能在 macOS 上做逻辑走查，
+  # 这条 job 补上真机验证 —— 语法解析 + BOM 校验 + 测试套件。
+  test-windows:
+    name: 测试 (Windows / Python ${{ matrix.python-version }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 安装（含开发依赖）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: 代码检查（ruff）
+        run: ruff check .
+
+      - name: 格式检查（ruff format）
+        run: ruff format --check .
+
+      - name: 单元测试
+        run: pytest -q
+
+      - name: PowerShell 语法解析
+        shell: pwsh
+        run: |
+          $bad = $false
+          foreach ($f in @('scripts/run_scan.ps1', 'scripts/install_task_scheduler.ps1')) {
+            $tokens = $null
+            $errors = $null
+            $path = (Resolve-Path $f).Path
+            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+            if (@($errors).Count -gt 0) {
+              $msg = (@($errors) | ForEach-Object { $_.Message }) -join ' | '
+              Write-Host "::error file=$f::$msg"
+              $bad = $true
+            } else {
+              Write-Host "OK  $f 语法正确"
+            }
+          }
+          if ($bad) { exit 1 }
+
+      - name: PowerShell 文件必须为 UTF-8 with BOM
+        shell: pwsh
+        run: |
+          foreach ($f in @('scripts/run_scan.ps1', 'scripts/install_task_scheduler.ps1')) {
+            $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $f).Path)
+            if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
+              Write-Host "::error file=$f::缺少 UTF-8 BOM，Windows PowerShell 5.1 会按 ANSI 解码导致中文乱码"
+              exit 1
+            }
+            Write-Host "OK  $f 带 UTF-8 BOM"
+          }
+
+      - name: Shell 脚本语法检查
+        shell: bash
+        run: bash -n scripts/run_scan.sh scripts/install_launchd.sh scripts/vps_dispatch.sh
