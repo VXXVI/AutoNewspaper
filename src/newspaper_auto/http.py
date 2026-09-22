@@ -45,7 +45,9 @@ def _curl_once(url: str, timeout: int) -> str:
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=timeout + 8)
     except FileNotFoundError as exc:  # curl 不在 PATH
-        raise CurlNotFoundError("未找到 curl 命令，请先安装后再运行（macOS 自带）") from exc
+        raise CurlNotFoundError(
+            "未找到 curl 命令，请先安装后再运行（macOS 自带；Windows 10 1803+ 自带 curl.exe）"
+        ) from exc
     except subprocess.TimeoutExpired:
         return ""
     return proc.stdout.decode("utf-8", "ignore")
