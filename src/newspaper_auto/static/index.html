@@ -32,7 +32,10 @@
   <section class="card">
     <div class="card-head">
       <h2>筛选</h2>
-      <button id="reset" class="btn ghost" type="button">重置</button>
+      <div class="actions">
+        <button id="export" class="btn ghost" type="button">导出 CSV</button>
+        <button id="reset" class="btn ghost" type="button">重置</button>
+      </div>
     </div>
 
     <div class="filters">
@@ -57,6 +60,17 @@
           <option value="title">标题</option>
         </select>
       </label>
+    </div>
+
+    <div class="presets">
+      <div class="chips-label">快捷区间</div>
+      <div class="chips" id="preset-chips">
+        <button class="chip" data-preset="all" type="button">全部</button>
+        <button class="chip" data-preset="today" type="button">今天</button>
+        <button class="chip" data-preset="7d" type="button">近 7 天</button>
+        <button class="chip" data-preset="30d" type="button">近 30 天</button>
+      </div>
+      <span class="hint" id="range-hint"></span>
     </div>
 
     <div class="chips-wrap">

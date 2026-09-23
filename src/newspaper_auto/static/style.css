@@ -153,6 +153,8 @@ select {
 input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .chips-wrap { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px; }
+.presets { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px; flex-wrap: wrap; }
+.presets .hint { padding-top: 4px; }
 .chips-label { color: var(--muted); font-size: 12.5px; padding-top: 4px; flex: 0 0 72px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 

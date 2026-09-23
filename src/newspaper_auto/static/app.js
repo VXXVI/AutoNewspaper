@@ -16,7 +16,8 @@
     keywords: new Set(),
     from: "",
     to: "",
-    sort: "date-desc"
+    sort: "date-desc",
+    preset: "all"
   };
 
   function $(id) { return document.getElementById(id); }
@@ -54,12 +55,14 @@
         state.from = "";
         state.to = "";
         state.sort = "date-desc";
+        state.preset = "all";
         $("q").value = "";
         $("from").value = "";
         $("to").value = "";
         $("sort").value = "date-desc";
         $("version").textContent = "v" + data.version;
         buildControls();
+        updatePresetUI();
         render();
       })
       .catch(function (err) {
@@ -142,6 +145,73 @@
     return copy;
   }
 
+  /* -------------------------------------------------------------- 日期快捷区间 */
+  function dateBounds() {
+    var ds = Object.keys(state.data.date_counts).sort();
+    return ds.length ? [ds[0], ds[ds.length - 1]] : ["", ""];
+  }
+
+  function shiftDate(iso, days) {
+    var p = iso.split("-");
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    d.setDate(d.getDate() + days);
+    function two(n) { return n < 10 ? "0" + n : "" + n; }
+    return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate());
+  }
+
+  function updatePresetUI() {
+    var box = $("preset-chips");
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll("[data-preset]"), function (btn) {
+      btn.classList.toggle("on", btn.getAttribute("data-preset") === state.preset);
+    });
+  }
+
+  // 以「数据里最新的日期」为基准，避免用今天算导致历史数据筛不出东西
+  function applyPreset(kind) {
+    state.preset = kind;
+    if (state.data) {
+      var latest = dateBounds()[1];
+      if (kind === "all") { state.from = ""; state.to = ""; }
+      else if (latest && kind === "today") { state.from = latest; state.to = latest; }
+      else if (latest && kind === "7d") { state.from = shiftDate(latest, -6); state.to = latest; }
+      else if (latest && kind === "30d") { state.from = shiftDate(latest, -29); state.to = latest; }
+    }
+    $("from").value = state.from;
+    $("to").value = state.to;
+    updatePresetUI();
+    render();
+  }
+
+  /* -------------------------------------------------------------- 导出 CSV */
+  function csvCell(value) {
+    var s = (value === undefined || value === null) ? "" : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;              // 防 CSV 公式注入
+    if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function exportCsv() {
+    if (!state.data) return;
+    var rows = sortRecords(filtered());
+    var head = ["报社", "日期", "版面", "标题", "链接", "命中关键词", "上下文"];
+    var lines = [head.map(csvCell).join(",")];
+    rows.forEach(function (r) {
+      lines.push([
+        r.paper, r.date, r.section || "", r.title, r.url,
+        r.matched.join(";"), r.snippets.slice(0, 2).join(" ")
+      ].map(csvCell).join(","));
+    });
+    var blob = new Blob(["\ufeff" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "newspaper-hits-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }
+
   /* -------------------------------------------------------------- 渲染 */
   function render() {
     if (!state.data) return;
@@ -160,6 +230,17 @@
       ? "共 " + all.length + " 条"
       : "显示 " + Math.min(list.length, MAX_ROWS) + " / " + list.length + " 条（已筛选）";
     $("empty").hidden = list.length > 0;
+
+    var hint = $("range-hint");
+    if (hint) {
+      if (state.from && state.to && state.from > state.to) {
+        hint.textContent = "⚠ 起始日期晚于结束日期，结果为空";
+      } else if (state.from || state.to) {
+        hint.textContent = (state.from || "…") + " ~ " + (state.to || "…");
+      } else {
+        hint.textContent = "";
+      }
+    }
 
     var foot = $("foot");
     foot.textContent = "";
@@ -264,9 +345,17 @@
   function init() {
     $("reload").addEventListener("click", load);
     $("q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
-    $("from").addEventListener("change", function (e) { state.from = e.target.value; render(); });
-    $("to").addEventListener("change", function (e) { state.to = e.target.value; render(); });
+    $("from").addEventListener("change", function (e) {
+      state.from = e.target.value; state.preset = "custom"; updatePresetUI(); render();
+    });
+    $("to").addEventListener("change", function (e) {
+      state.to = e.target.value; state.preset = "custom"; updatePresetUI(); render();
+    });
     $("sort").addEventListener("change", function (e) { state.sort = e.target.value; render(); });
+    $("export").addEventListener("click", exportCsv);
+    Array.prototype.forEach.call($("preset-chips").querySelectorAll("[data-preset]"), function (btn) {
+      btn.addEventListener("click", function () { applyPreset(btn.getAttribute("data-preset")); });
+    });
     $("reset").addEventListener("click", function () {
       if (state.data) {
         state.papers = new Set(state.data.papers);
@@ -276,11 +365,13 @@
       state.from = "";
       state.to = "";
       state.sort = "date-desc";
+      state.preset = "all";
       $("q").value = "";
       $("from").value = "";
       $("to").value = "";
       $("sort").value = "date-desc";
       buildControls();
+      updatePresetUI();
       render();
     });
     load();
