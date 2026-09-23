@@ -87,6 +87,10 @@ def scan_paper(
 
     base = entry.rsplit("/", 1)[0] + "/"
     nodes_all = parse.links(html, base, NODE_RE)
+    # 可选：按正则排除噪声版面链接（如人民日报 pc 版里的「手机版」/pad/ 镜像）
+    node_exclude = paper.get("node_exclude")
+    if node_exclude:
+        nodes_all = [n for n in nodes_all if not re.search(node_exclude, n)]
     nodes = [n for n in nodes_all if date_part in n] or nodes_all
     if entry not in nodes:
         nodes.insert(0, entry)

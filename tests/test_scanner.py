@@ -147,3 +147,31 @@ def test_per_paper_override_applied_for_real_http_fetcher():
     ycwb = next(p for p in config.PAPERS if p["name"] == "羊城晚报")
     wrapped = _paper_fetch(ycwb, http.fetch)
     assert wrapped is not http.fetch, "羊城晚报应被包装（使用独立超时/重试）"
+
+
+def test_node_exclude_filters_mirror_nodes(fixed_day):
+    """人民日报式：版面页同时链到 pc 与 pad 两套 node，pad 应被 node_exclude 排除。"""
+    paper = {
+        "name": "测试报",
+        "style": "ymd",
+        "tpl": "http://example.com/pc/layout/{a}/node_01.html",
+        "node_exclude": r"/pad/",
+    }
+    requested: list[str] = []
+
+    def fake(url: str):
+        requested.append(url)
+        if url.endswith("node_01.html"):
+            return 200, (
+                '<a href="node_02.html">02</a>'
+                '<a href="http://example.com/pad/layout/202609/22/node_01.html">手机版</a>'
+            ) + "x" * 400
+        if url.endswith("node_02.html"):
+            return 200, '<a href="content_1.html">文章</a>' + "x" * 400
+        return 200, "<html><body><h1>标题就在这里</h1><p>正文</p></body></html>"
+
+    _hits, _articles, stats = scanner.scan_paper(paper, fixed_day, KW, workers=2, fetcher=fake)
+
+    assert not any("/pad/" in url for url in requested), "pad 镜像不应被请求"
+    assert any(url.endswith("/pc/layout/202609/22/node_02.html") for url in requested)
+    assert stats["articles"] == 1

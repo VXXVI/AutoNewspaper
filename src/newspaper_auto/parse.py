@@ -23,6 +23,8 @@ _WS_RE = re.compile(r"\s+")
 _H1_RE = re.compile(r"<h1[^>]*>(.*?)</h1>", re.S | re.I)
 _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.S | re.I)
 _FOUNDER_RE = re.compile(r"<founder-content[^>]*>(.*?)</founder-content>", re.S | re.I)
+# 人民网系数字报（如人民日报）：正文包在 <!--enpcontent--> … <!--/enpcontent--> 之间
+_ENP_RE = re.compile(r"<!--\s*enpcontent\s*-->(.*?)<!--\s*/enpcontent\s*-->", re.S | re.I)
 _BODY_RE = re.compile(r"<body[^>]*>(.*?)</body>", re.S | re.I)
 
 
@@ -69,9 +71,13 @@ def extract_title(html: str) -> str:
 
 
 def extract_text(html: str) -> str:
-    """正文：优先 ``<founder-content>``，否则退回 ``<body>``，最后整页。"""
+    """正文：优先 ``<founder-content>``，其次 ``<!--enpcontent-->``（人民网系），
+    再退回 ``<body>``，最后整页。"""
     match = _FOUNDER_RE.search(html)
     segment = match.group(1) if match else None
+    if not segment:
+        match = _ENP_RE.search(html)
+        segment = match.group(1) if match else None
     if not segment:
         match = _BODY_RE.search(html)
         segment = match.group(1) if match else html

@@ -97,6 +97,17 @@ def test_extract_text_falls_back_to_whole_html():
     assert parse.extract_text("<p>裸片段</p>") == "裸片段"
 
 
+def test_extract_text_supports_enpcontent():
+    """人民网系数字报（如人民日报）：正文在 <!--enpcontent--> 块内。"""
+    html = (
+        "<body><div>导航噪声</div>"
+        "<div id='articleContent'><!--enpcontent--><p> 真正的正文 </p><!--/enpcontent-->"
+        "<!--enpproperty <url>http://x</url>/enpproperty--></div>"
+        "<div id='ozoom'><!--enpcontent--><p> 真正的正文 </p><!--/enpcontent--></div></body>"
+    )
+    assert parse.extract_text(html) == "真正的正文"
+
+
 # ---------------------------------------------------------------- keyword
 def test_make_kw_re_tolerates_tag_split_whitespace():
     assert parse.make_kw_re("广东海洋大学").search("来自广东 海洋 大学的专家")

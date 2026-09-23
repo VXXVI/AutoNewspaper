@@ -40,6 +40,14 @@ PAPERS: tuple[dict, ...] = (
     },
     {"name": "中国教育报", "style": "dash", "tpl": "https://paper.jyb.cn/zgjyb/html/{a}/node_1.htm"},
     {"name": "湛江日报", "style": "dash", "tpl": "http://paper.gdzjdaily.com.cn/html/{a}/node_1.htm"},
+    # 人民日报（人民网数字报，pc 版）：版面页里的「手机版」链接指向 /rmrb/pad/…，
+    # 会与本版内容重复，故用 node_exclude 排除，只走 pc 版。
+    {
+        "name": "人民日报",
+        "style": "ymd",
+        "tpl": "http://paper.people.com.cn/rmrb/pc/layout/{a}/node_01.html",
+        "node_exclude": r"/rmrb/pad/",
+    },
 )
 
 # 标题里夹带的站点后缀，需剔除
