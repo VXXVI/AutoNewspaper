@@ -109,7 +109,12 @@ def scan_paper(
         if section_code != 200 or len(section_html) < config.MIN_HTML_BYTES:
             return node_url, "", [], section_code
         section_base = node_url.rsplit("/", 1)[0] + "/"
-        section_title = parse.extract_title(section_html)[:40]
+        # 版面名优先走 page_section（pageLink / 版次版名注释，权威且干净），
+        # 取不到再退回页面 title。反过来「title 先行」会让多家报社拿到错值：
+        # 人民日报→「人民日报-人民网」、羊城晚报→「羊城晚报」、湛江日报→「要闻」（无版次）。
+        section_title = (
+            parse.page_section(section_html, node_url)[:40] or parse.extract_title(section_html)[:40]
+        )
         articles = [a for a in parse.links(section_html, section_base, CONTENT_RE) if date_part in a]
         return node_url, section_title, articles, section_code
 

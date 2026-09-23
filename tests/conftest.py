@@ -20,6 +20,14 @@ ZHANJIANG_PAPER = {
     "tpl": "http://paper.gdzjdaily.com.cn/html/{a}/node_1.htm",
 }
 
+# 中国教育报：入口是稳定别名 node_1.htm，而版面导航里写的是内部哈希名 node_144740.htm，
+# 两者对不上；且文章标题不在 <h1> 而在 <div class="title1"> 里，<title> 是站点通用串。
+JYB_PAPER = {
+    "name": "中国教育报",
+    "style": "dash",
+    "tpl": "https://paper.jyb.cn/zgjyb/html/{a}/node_1.htm",
+}
+
 FIXED_DAY = datetime(2026, 9, 22)
 
 
@@ -60,6 +68,37 @@ def make_zhanjiang_fetcher(
 @pytest.fixture
 def fixed_day() -> datetime:
     return FIXED_DAY
+
+
+def make_jyb_fetcher(day: datetime):
+    """中国教育报站点桩：入口别名与版面哈希名指向同一份版面页。"""
+    date_part = day.strftime("%Y-%m/%d")
+    base = f"https://paper.jyb.cn/zgjyb/html/{date_part}/"
+    section = load_fixture("jyb_section_node_1.htm")
+    article = load_fixture("jyb_article_title1.htm")
+    site = {
+        base + "node_1.htm": section,
+        base + "node_144740.htm": section,
+        base + "node_144741.htm": section,
+        base + "content_144740_1.htm": article,
+        base + "content_144740_2.htm": article,
+    }
+
+    def fetch(url: str):
+        return (200, site[url]) if url in site else (404, "")
+
+    return fetch
+
+
+@pytest.fixture
+def jyb_paper() -> dict:
+    return dict(JYB_PAPER)
+
+
+@pytest.fixture
+def jyb_fetcher():
+    """返回工厂函数：``jyb_fetcher(day) -> fetcher``。"""
+    return make_jyb_fetcher
 
 
 @pytest.fixture

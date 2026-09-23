@@ -46,6 +46,25 @@ def test_section_name_is_recorded(zhanjiang_paper, fixed_day, site_fetcher):
     assert by_name["content_104.html"] == "第03版：教育"
 
 
+def test_jyb_section_and_title_both_use_fallbacks(jyb_paper, fixed_day, jyb_fetcher):
+    """中国教育报：版面名只能靠 pageLink 兜底、标题只能靠 <div class="title1"> 兜底。
+
+    这两处在旧实现下都取不到值 —— 版面名恒为空串（报告里显示「—」），
+    命中记录的标题同样为空串。回归护栏：任一条链路被改坏这里都会红。
+    """
+    hits, articles, stats = scanner.scan_paper(
+        jyb_paper, fixed_day, KW, workers=4, fetcher=jyb_fetcher(fixed_day)
+    )
+    assert stats["entry_code"] == 200
+    assert stats["scanned"] == 2
+    assert len(hits) == 2
+    # 入口是别名 node_1.htm，版面导航里只有哈希名 node_144740.htm
+    assert {hit["section"] for hit in hits} == {"第01版 : 要闻"}
+    # <title> 是站点通用串，标题只能来自 <div class="title1">
+    assert {hit["title"] for hit in hits} == {"真题真做练硬功 产教协同育新人"}
+    assert all(hit["title"] and hit["section"] for hit in articles)
+
+
 def test_dry_run_only_probes_entry(zhanjiang_paper, fixed_day, site_fetcher):
     calls: list[str] = []
     base_fetch = site_fetcher(fixed_day)
