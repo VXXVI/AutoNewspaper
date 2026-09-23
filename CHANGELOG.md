@@ -36,6 +36,18 @@
   带 BOM 可直开 Excel，并对 `=+-@` 开头的单元格做公式注入防护）。
 - **命中输出补「版面」**：命令行控制台的命中行与报告「其余已知命中」列表都带上版面
   （报纸中的相对位置）；`--json` / `--csv` 原本已含 `section` 字段。
+- **CLI 显式日期范围**：新增 `--since` / `--until`（`YYYY-MM-DD`，两端都含），与 `--days`
+  互斥（同时给报错退出码 2）；只给 `--since` 时终点取今天，只给 `--until` 时起点等于终点；
+  区间倒置或跨度超过 62 天都以退出码 2 拒绝，不再静默扫出空结果。`dates` 仍保持从新到旧，
+  `--days` 行为不变（CI / launchd 继续可用）。口径：`cli.resolve_dates`。
+- **版本内位置（area coords）**：新增 `parse.area_rects`，从版面页 `<area>` 图像映射取文章的
+  包围盒坐标（兼容 `coords="x1,y1,x2,y2"` 矩形与站点实际使用的 `shape="polygon"` 多边形，
+  标签大小写/小数坐标均容错）；`scanner` 用该版所有 area 的 `max(y2)` 归一化，产出
+  `geometry = {x1,y1,x2,y2,top,bottom,index,total}`，不下载版面图。无 area 的版面不写该键，
+  旧 `hits/archive.json` 无该字段也能正常渲染。控制台命中行/ Markdown 报告 / HTML 汇总 /
+  本地看板四处都展示 `版内 k/m · 上版 xx%`，缺字段静默降级。
+- **版面号归一化**：新增 `section_no` 字段（`第02版` / `VD02` / `A01` 等），原 `section`
+  字符串保持不变（向后兼容），供排序/统计使用。
 
 ### 修复
 
