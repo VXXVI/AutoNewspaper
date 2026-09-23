@@ -5,7 +5,7 @@
 # （该脚本以 --no-state 无状态运行，不读写 state\ 与 hits\，可与 GitHub Actions 并存）。
 #
 # 用法：
-#   .\scripts\install_task_scheduler.ps1 install [HH:mm ...]   注册并启用（默认 07:00）
+#   .\scripts\install_task_scheduler.ps1 install [HH:mm ...]   注册并启用（默认 10:00）
 #   .\scripts\install_task_scheduler.ps1 uninstall             注销
 #   .\scripts\install_task_scheduler.ps1 status                查看状态与最近日志
 #   .\scripts\install_task_scheduler.ps1 run-now               立即触发一次
@@ -13,8 +13,8 @@
 #
 # 运行时间自定义（可指定多个，每天各跑一次）：
 #   .\scripts\install_task_scheduler.ps1 install 06:30
-#   .\scripts\install_task_scheduler.ps1 install 07:00 12:30 19:00
-#   $env:NEWSPAPER_TIMES = "07:00,12:30"; .\scripts\install_task_scheduler.ps1 install
+#   .\scripts\install_task_scheduler.ps1 install 10:00 12:30 19:00
+#   $env:NEWSPAPER_TIMES = "10:00,12:30"; .\scripts\install_task_scheduler.ps1 install
 #
 # ⚠ 任务计划程序使用「机器本地时区」，请用 Get-TimeZone 自行确认。
 # ==============================================================================
@@ -38,7 +38,7 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $PSCommandPath
 $ProjectDir = Split-Path -Parent $ScriptDir
 $TaskName = 'NewsPaperAuto'
-$DefaultTime = '07:00'
+$DefaultTime = '10:00'
 
 function Die([string]$Message) {
     [Console]::Error.WriteLine("错误：$Message")
@@ -48,7 +48,7 @@ function Die([string]$Message) {
 function Show-Help {
     @"
 用法: install_task_scheduler.ps1 {install|uninstall|status|run-now} [HH:mm ...]
-  install [HH:mm ...] : 注册（并启用）每日计划任务（默认 07:00，可给多个时间）
+  install [HH:mm ...] : 注册（并启用）每日计划任务（默认 10:00，可给多个时间）
   uninstall           : 注销计划任务
   status              : 查看注册状态与最近一次日志
   run-now             : 立即触发一次任务执行
@@ -56,8 +56,8 @@ function Show-Help {
 
 示例:
   .\install_task_scheduler.ps1 install 06:30
-  .\install_task_scheduler.ps1 install 07:00 12:30 19:00
-  `$env:NEWSPAPER_TIMES = "07:00,12:30"; .\install_task_scheduler.ps1 install
+  .\install_task_scheduler.ps1 install 10:00 12:30 19:00
+  `$env:NEWSPAPER_TIMES = "10:00,12:30"; .\install_task_scheduler.ps1 install
 
 注意: 任务计划程序使用「机器本地时区」，请自行确认系统时区（Get-TimeZone）。
 "@

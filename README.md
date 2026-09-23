@@ -162,10 +162,10 @@ NEWSPAPER_DATA_DIR=/tmp/scan-out python3 daily_scan.py --days 1
 plist 由模板生成，**路径与运行时间都自动替换，无需手工编辑**：
 
 ```bash
-./scripts/install_launchd.sh install                    # 默认每天 07:00
+./scripts/install_launchd.sh install 10:00              # 每天 10:00（当前设置；不传时间默认也是 10:00）
 ./scripts/install_launchd.sh install 06:30              # 自定义为每天 06:30
-./scripts/install_launchd.sh install 07:00 12:30 19:00  # 一天多次
-NEWSPAPER_TIMES="07:00,12:30" ./scripts/install_launchd.sh install
+./scripts/install_launchd.sh install 10:00 12:30 19:00  # 一天多次
+NEWSPAPER_TIMES="10:00,12:30" ./scripts/install_launchd.sh install
 
 ./scripts/install_launchd.sh status      # 查看注册状态与最近日志
 ./scripts/install_launchd.sh run-now     # 立即触发一次
@@ -217,10 +217,10 @@ python daily_scan.py --dry
 
 ```bat
 cd /d <项目目录>
-powershell -ExecutionPolicy Bypass -File scripts\install_task_scheduler.ps1 install 07:00
+powershell -ExecutionPolicy Bypass -File scripts\install_task_scheduler.ps1 install 10:00
 ```
 
-- 默认 `07:00`，可给多个时间点：`... install 07:00 12:30 19:00`（每天各跑一次）；
+- 默认 `10:00`，可给多个时间点：`... install 10:00 12:30 19:00`（每天各跑一次）；
   也可用环境变量 `NEWSPAPER_TIMES`（逗号或分号分隔）。
 - **幂等**：重复 `install` 会先注销同名任务再注册，不会报错，也不会重复堆积。
 - **⚠ 需要管理员权限**：`Register-ScheduledTask` 在**非提权的 PowerShell** 下会报
@@ -233,7 +233,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install_task_scheduler.ps1 inst
 **4. 不想用脚本时的兜底（等价 `schtasks` 一行）**
 
 ```bat
-schtasks /Create /TN NewsPaperAuto /SC DAILY /ST 07:00 /F ^
+schtasks /Create /TN NewsPaperAuto /SC DAILY /ST 10:00 /F ^
   /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"<项目目录>\scripts\run_scan.ps1\""
 ```
 
@@ -292,12 +292,12 @@ ssh vps-ts 'chmod 700 ~/.newspaperauto/dispatch.sh'
 ssh vps-ts 'TMP=$(mktemp); crontab -l > "$TMP" 2>/dev/null || true; \
   cp "$TMP" ~/crontab.bak-$(date +%F); \
   grep -q "newspaperauto/dispatch.sh" "$TMP" || \
-  printf "# AutoNewspaper 每日扫描触发\n0 23 * * * %s/.newspaperauto/dispatch.sh\n" "$HOME" >> "$TMP"; \
+  printf "# AutoNewspaper 每日扫描触发\n0 2 * * * %s/.newspaperauto/dispatch.sh\n" "$HOME" >> "$TMP"; \
   crontab "$TMP"; rm -f "$TMP"; crontab -l'
 ```
 
-上面 `0 23 * * *` 是按 **VPS 为 UTC** 写的（UTC 23:00 = 北京次日 07:00）。
-若你的 VPS 已是 `Asia/Shanghai`，改成 `0 7 * * *`；判断方法见下方「时区说明」。
+上面 `0 2 * * *` 是按 **VPS 为 UTC** 写的（UTC 02:00 = 北京当日 10:00）。
+若你的 VPS 已是 `Asia/Shanghai`，改成 `0 10 * * *`；判断方法见下方「时区说明」。
 
 **3. 注入 PAT**（唯一需要凭据的一步）
 
@@ -320,10 +320,10 @@ gh run list -R VXXVI/AutoNewspaper --workflow=scan.yml --limit 3
 ```
 
 **时区说明**：crontab 用的是 **VPS 机器的本地时区**，而 workflow 内部固定
-`TZ=Asia/Shanghai`（07:00 北京 = 前一天 23:00 UTC）。因此：
+`TZ=Asia/Shanghai`（10:00 北京 = 当日 02:00 UTC）。因此：
 
-- VPS 时区为 `Asia/Shanghai`：写 `0 7 * * *`；
-- VPS 时区为 `UTC`（多数云主机默认）：写 `0 23 * * *`（= 次日北京 07:00）；
+- VPS 时区为 `Asia/Shanghai`：写 `0 10 * * *`；
+- VPS 时区为 `UTC`（多数云主机默认）：写 `0 2 * * *`（= 当日北京 10:00）；
 - 不确定时先 `date`（或 `timedatectl`）确认，也可
   `sudo timedatectl set-timezone Asia/Shanghai` 统一为北京时间。
 

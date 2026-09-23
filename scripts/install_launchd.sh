@@ -6,7 +6,7 @@
 # 与运行时间点），安装到 ~/Library/LaunchAgents/ 并加载。
 #
 # 用法：
-#   ./scripts/install_launchd.sh install [HH:MM ...]   安装并加载（默认 07:00）
+#   ./scripts/install_launchd.sh install [HH:MM ...]   安装并加载（默认 10:00）
 #   ./scripts/install_launchd.sh status                查看注册状态与最近日志
 #   ./scripts/install_launchd.sh run-now               立即触发一次
 #   ./scripts/install_launchd.sh print [HH:MM ...]     打印将要安装的 plist
@@ -14,8 +14,8 @@
 #
 # 运行时间自定义（可指定多个，每天各跑一次）：
 #   ./scripts/install_launchd.sh install 06:30
-#   ./scripts/install_launchd.sh install 07:00 12:30 19:00
-#   NEWSPAPER_TIMES="07:00,12:30" ./scripts/install_launchd.sh install
+#   ./scripts/install_launchd.sh install 10:00 12:30 19:00
+#   NEWSPAPER_TIMES="10:00,12:30" ./scripts/install_launchd.sh install
 # ==============================================================================
 
 set -euo pipefail
@@ -27,7 +27,7 @@ LABEL="com.quark.newspaperauto"
 AGENTS_DIR="${HOME}/Library/LaunchAgents"
 DEST_PLIST="${AGENTS_DIR}/${LABEL}.plist"
 UID_NUM="$(id -u)"
-DEFAULT_TIME="07:00"
+DEFAULT_TIME="10:00"
 
 ACTION="${1:-install}"
 shift || true
@@ -37,7 +37,7 @@ VALID_TIMES=()
 usage() {
     cat <<'EOF'
 用法: install_launchd.sh {install|uninstall|status|run-now|print} [HH:MM ...]
-  install [HH:MM ...] : 生成并加载定时任务（默认 07:00，可给多个时间）
+  install [HH:MM ...] : 生成并加载定时任务（默认 10:00，可给多个时间）
   uninstall           : 卸载并移除定时任务
   status              : 查看注册状态与最近一次日志
   run-now             : 立即触发一次任务执行
@@ -45,8 +45,8 @@ usage() {
 
 示例:
   install_launchd.sh install 06:30
-  install_launchd.sh install 07:00 12:30 19:00
-  NEWSPAPER_TIMES="07:00,12:30" install_launchd.sh install
+  install_launchd.sh install 10:00 12:30 19:00
+  NEWSPAPER_TIMES="10:00,12:30" install_launchd.sh install
 EOF
 }
 

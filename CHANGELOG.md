@@ -39,6 +39,13 @@
   同步修正 `README.md` 与 `.github/workflows/scan.yml` 注释中的旧说法。
 - `http.py` 的 curl 缺失提示改为跨平台表述（Windows 10 1803+ 自带 `curl.exe`）。
 
+### 变更
+
+- **每日触发时间统一为 10:00**：本机安装脚本默认值（`install_launchd.sh` /
+  `install_task_scheduler.ps1`）、`scan.yml` 的 `schedule`（`0 2 * * *` UTC = 北京 10:00）
+  与 README 的 VPS crontab 示例（UTC `0 2 * * *` / 北京 `0 10 * * *`）全部对齐；
+  `docs/交付说明-*.md` 同步。
+
 ### 文档
 
 - `README.md`：launchd 章节明确「本机与 Actions 可并存 + 本机无状态运行」，并给出
