@@ -7,6 +7,16 @@
 
 ### 新增
 
+- **本地看板支持配置与一键触发扫描**：`python3 -m newspaper_auto.web` 新增「扫描设置」卡片
+  （关键词 / 天数 / 并发 + 「立即扫描」），由看板进程**进程内调用 `cli.main`** 触发一次真实扫描，
+  日志实时回显、完成后自动刷新命中列表；扫描结果写回看板正在读的数据目录，配置持久化到
+  `state/web_config.json`。新增四条路由：`POST /api/scan`（`202` / `409` / `400` / `403` / `413`）、
+  `GET /api/scan`、`POST /api/config`、`GET /api/config`（缺失回落 `config.DEFAULT_*`）。
+  扫描执行器 `scan_runner` 可注入（测试离线驱动），默认实现用
+  `contextlib.redirect_stdout/stderr` 捕获日志并兜住 argparse 的 `SystemExit(2)`，绝不走
+  `subprocess`。安全上落实 Host / Origin / Content-Type / body 大小四道校验，关键词只作 argv
+  传递、绝不拼 shell，且不返回任何 CORS 头（`web.py`、`static/*`、`config.py`、`paths.py`、
+  `tests/test_web.py`）。
 - **南方日报 layoutData.mappingOriginal 多边形坐标解析与三级几何兜底**：
   新增 `parse.layout_mapping`，从版面页内嵌 `window.layoutData.mappingOriginal` 反引号模板提取多边形顶点，
   计算包围盒并归一化为百分比坐标；升级 `scanner.merge_geometry` 为三级互斥逻辑：
@@ -96,6 +106,8 @@
 
 ### 变更
 
+- **本地看板不再是纯只读**：`web.py` 模块 docstring、`--help` 描述与看板 footer 里「只读、
+  不触发抓取」的说法全部更正；看板新增触发抓取能力，会写入 `state/` 与 `hits/`。
 - **每日触发时间统一为 10:00**：本机安装脚本默认值（`install_launchd.sh` /
   `install_task_scheduler.ps1`）、`scan.yml` 的 `schedule`（`0 2 * * *` UTC = 北京 10:00）
   与 README 的 VPS crontab 示例（UTC `0 2 * * *` / 北京 `0 10 * * *`）全部对齐；

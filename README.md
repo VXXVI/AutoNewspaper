@@ -67,11 +67,11 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   ├── scanner.py                #   扫描编排（入口→版面→文章）
 │   ├── state.py                  #   增量状态读写与「新增」判定
 │   ├── report.py                 #   Markdown / HTML / JSON / CSV 渲染
-│   ├── web.py                    #   本地只读看板（stdlib http.server）
+│   ├── web.py                    #   本地看板 + 一键触发扫描（stdlib http.server）
 │   ├── static/                   #   看板前端（原生 HTML/CSS/JS，无构建）
 │   └── cli.py                    #   参数解析与主流程
 ├── .github/workflows/            # CI 与每日扫描 workflow（生产调度入口）
-├── tests/                        # 82 个离线单元测试 + HTML fixture
+├── tests/                        # 161 个离线单元测试 + HTML fixture
 ├── scripts/                      # 定时任务
 │   ├── run_scan.sh               #   macOS/Linux 启动脚本（无状态运行，写日志）
 │   ├── com.quark.newspaperauto.plist.template  # launchd 模板
@@ -379,9 +379,9 @@ rm -rf ~/.newspaperauto
 | `state/seen.json` | 增量状态（已判定过的文章 URL），保证只报新增 |
 | `logs/scan-YYYY-MM-DD.log` | 定时任务运行日志 |
 
-### 本地看板（只读 Web 界面）
+### 本地看板（可配置 + 可触发扫描的 Web 界面）
 
-用标准库起一个**只读**看板，零第三方依赖、无构建、无 CDN：
+用标准库起一个看板，零第三方依赖、无构建、无 CDN：
 
 ```bash
 python3 -m newspaper_auto.web               # http://127.0.0.1:8787
@@ -395,10 +395,22 @@ make web                                    # 等价（自动打开浏览器）
   命中列表展示**版面**（报纸中的相对位置）与**版内位置**（`版内 k/m`，无 `<area>` 的报社
   按版面页链接顺序给出；`上版 xx%` 仅有 `<area>` 映射时提供）并可点击标题跳原文；
   支持**按当前筛选导出 CSV**。
-- **只读**：不写任何文件，也不会触发抓取；页面上的数据全部用 `textContent`
-  渲染，不会执行抓取内容里的 HTML/脚本。
-- **默认只监听 `127.0.0.1`**，不对外网暴露。端口被占用时会给出提示（可用
-  `--port 0` 让系统自动分配）。
+- **扫描设置（会写数据）**：页面新增「扫描设置」卡片，可填**关键词 / 天数 / 并发**并点
+  「立即扫描」，由看板进程**直接触发一次真实抓取**，日志实时回显，完成后自动刷新命中列表。
+  抓取结果（`hits/`、`state/`）写回**看板正在读取的那个数据目录**；上次用的配置持久化在
+  `state/web_config.json`。ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`。
+- **四条新增路由**（`src/newspaper_auto/web.py`）：
+  - `POST /api/scan`：启动扫描。`202` 已启动 / `409` 已有任务在跑 / `400` 参数非法 /
+    `403` 来源校验失败 / `413` body 过大；同一时刻最多一个任务。
+  - `GET /api/scan`：读当前/最近一次任务状态，无任务时返回 `{"status":"idle"}`。
+  - `POST /api/config` / `GET /api/config`：保存 / 读取配置；文件不存在时回落到
+    `config.DEFAULT_KEYWORDS` / `DEFAULT_DAYS` / `DEFAULT_WORKERS`。
+- **安全**：默认只监听 `127.0.0.1`；所有请求校验 `Host` 必须是环回主机（防 DNS
+  rebinding），带 `Origin` 时必须为环回 origin（防跨站触发抓取），`POST` 必须声明
+  `application/json` 且 body ≤ 16 KiB。关键词只作为 argv 元素传给 `cli.main`，
+  **绝不拼 shell 字符串**；不返回任何 CORS 头。页面上的数据与扫描日志全部用
+  `textContent` 渲染，不会执行内容里的 HTML/脚本。
+- 端口被占用时会给出提示（可用 `--port 0` 让系统自动分配）。
 
 ### 点击即用启动器（零命令行）
 
@@ -410,7 +422,7 @@ make web                                    # 等价（自动打开浏览器）
 | Windows | `scripts/scan.cmd` | `scripts/dashboard.cmd` |
 
 - `scan.*`：跑一次「今天 + 昨天」的**无状态**扫描，结果直接打印在窗口里，结束前暂停等你查看。
-- `dashboard.*`：启动本地只读看板并自动打开浏览器；**端口被占用时自动改用空闲端口**。
+- `dashboard.*`：启动本地看板并自动打开浏览器（可在页面里一键触发扫描）；**端口被占用时自动改用空闲端口**。
 
 > macOS 首次双击 `.command` 若提示「无法打开，因为它来自身份不明的开发者」，
 > 右键 → **打开**，并在弹窗里确认一次即可；之后可正常双击。

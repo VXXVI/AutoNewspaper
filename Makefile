@@ -41,7 +41,7 @@ json:  ## 无状态扫描并以 JSON 输出（配 jq 使用）
 csv:  ## 无状态扫描并以 CSV 输出
 	$(PY) daily_scan.py --days 1 --no-state --csv
 
-web:  ## 启动本地只读看板（http://127.0.0.1:8787）
+web:  ## 启动本地看板（可在页面一键触发扫描，http://127.0.0.1:8787）
 	$(PY) -m newspaper_auto.web --open
 
 plist:  ## 打印将要安装的 launchd plist
