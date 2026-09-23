@@ -6,6 +6,7 @@ fixture 文件位于 ``tests/fixtures/``。
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +30,21 @@ JYB_PAPER = {
 }
 
 FIXED_DAY = datetime(2026, 9, 22)
+
+# 含 <area> 图像映射的真实版面页片段取自 2026-09-23，故 area 相关用例统一用这一天
+AREA_DAY = datetime(2026, 9, 23)
+
+# 湛江日报 / 人民日报的版面页含 <area> 图像映射；其余四家是纯链接式版面（无 area）
+ZJ_AREA_PAPER = {
+    "name": "湛江日报",
+    "style": "dash",
+    "tpl": "http://paper.gdzjdaily.com.cn/html/{a}/node_1.htm",
+}
+RMRB_AREA_PAPER = {
+    "name": "人民日报",
+    "style": "ymd",
+    "tpl": "http://paper.people.com.cn/rmrb/pc/layout/{a}/node_01.html",
+}
 
 
 def load_fixture(name: str) -> str:
@@ -95,6 +111,51 @@ def jyb_paper() -> dict:
     return dict(JYB_PAPER)
 
 
+def make_area_fetcher(section_fixture: str, article_fixture: str):
+    """构造离线 fetcher：所有 ``node_*`` 返回真实版面页片段，所有 ``content_*`` 返回真实文章页。
+
+    用于验证 area 坐标链路（含/不含 ``<area>`` 两类版面）而不访问网络。
+    """
+    section = load_fixture(section_fixture)
+    article = load_fixture(article_fixture)
+
+    def fetch(url: str):
+        if re.search(r"node_\w+\.html?$", url):
+            return 200, section
+        if re.search(r"content_\w+\.html?$", url):
+            return 200, article
+        return 404, ""
+
+    return fetch
+
+
+@pytest.fixture
+def area_day() -> datetime:
+    return AREA_DAY
+
+
+@pytest.fixture
+def zj_area_paper() -> dict:
+    return dict(ZJ_AREA_PAPER)
+
+
+@pytest.fixture
+def rmrb_area_paper() -> dict:
+    return dict(RMRB_AREA_PAPER)
+
+
+@pytest.fixture
+def zj_area_fetcher():
+    """湛江日报：真实含 area 的版面页片段 + 真实文章页。"""
+    return make_area_fetcher("zhanjiang_node_1_area.htm", "zhanjiang_article_3868001.htm")
+
+
+@pytest.fixture
+def rmrb_area_fetcher():
+    """人民日报：真实含 <Area> 的版面页片段 + 真实文章页。"""
+    return make_area_fetcher("rmrb_node_01_area.html", "rmrb_article_30182606.html")
+
+
 @pytest.fixture
 def jyb_fetcher():
     """返回工厂函数：``jyb_fetcher(day) -> fetcher``。"""
@@ -121,3 +182,21 @@ def read_fixture():
 @pytest.fixture
 def today() -> datetime:
     return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+# ---------------------------------------------------------------------------
+# tmp_path 覆盖：WorkBuddy 沙盒下 pytest 默认的 /tmp/pytest-of-root 目录
+# 会因 EEXIST 权限冲突报错，改用已知可写路径。
+# ---------------------------------------------------------------------------
+_SAFE_TMP = Path("/private/var/folders/8s/qd14vxd90v7c5xfjl6ls1nxw0000gp/T/pytest-np")
+
+
+@pytest.fixture
+def tmp_path(request: pytest.FixtureRequest) -> Path:  # type: ignore[override]
+    node_id = re.sub(r"[^\w]", "_", request.node.nodeid)
+    p = _SAFE_TMP / node_id
+    p.mkdir(parents=True, exist_ok=True)
+    yield p
+    import shutil
+
+    shutil.rmtree(p, ignore_errors=True)

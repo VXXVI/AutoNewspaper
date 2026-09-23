@@ -16,8 +16,26 @@ from pathlib import Path
 from typing import Any
 
 # 结构化输出字段（保持与历史 hits 记录一致，便于下游消费）
-JSON_FIELDS = ("paper", "date", "section", "title", "url", "text_len", "snippets", "matched")
+JSON_FIELDS = ("paper", "date", "section", "section_no", "title", "url", "text_len", "snippets", "matched")
 CSV_FIELDS = ("paper", "date", "section", "title", "url", "text_len", "matched")
+
+
+def geometry_label(geometry: Any) -> str:
+    """把「版内位置」渲染成一行人类可读文字，形如 ``版内 2/7 · 上版 38%``。
+
+    记录里没有 ``geometry``（其余四家无 area，或旧归档）时返回空串，
+    调用方据此降级 —— 这是对老 ``hits/archive.json`` 的向后兼容保证。
+    """
+    if not isinstance(geometry, dict):
+        return ""
+    parts: list[str] = []
+    index, total = geometry.get("index"), geometry.get("total")
+    if isinstance(index, int) and isinstance(total, int) and total > 0:
+        parts.append(f"版内 {index}/{total}")
+    top = geometry.get("top")
+    if isinstance(top, (int, float)) and not isinstance(top, bool):
+        parts.append(f"上版 {round(top * 100)}%")
+    return " · ".join(parts)
 
 
 def write_text(path: str | os.PathLike[str], content: str) -> None:
@@ -127,6 +145,9 @@ def render_md(
             lines.append(f"### {index}. [{hit['paper']}] {hit['title']}")
             lines.append("")
             lines.append(f"- 版面：{hit.get('section') or '—'}")
+            position = geometry_label(hit.get("geometry"))
+            if position:
+                lines.append(f"- 版内位置：{position}")
             lines.append(f"- 日期：{hit['date']}")
             lines.append(f"- 链接：{hit['url']}")
             for snip in hit.get("snippets", [])[:2]:
@@ -141,7 +162,11 @@ def render_md(
         for hit in total_hits:
             if hit["url"] in new_urls:
                 continue
-            lines.append(f"- [{hit['paper']} · {hit.get('section') or '—'}] {hit['title']} — {hit['url']}")
+            position = geometry_label(hit.get("geometry"))
+            suffix = f" · {position}" if position else ""
+            lines.append(
+                f"- [{hit['paper']} · {hit.get('section') or '—'}{suffix}] {hit['title']} — {hit['url']}"
+            )
         lines.append("")
     return "\n".join(lines)
 
@@ -181,11 +206,15 @@ def render_html(kw: str, archive: list[dict[str, Any]], now: datetime | None = N
     rows = []
     for hit in sorted(archive, key=lambda x: (x["date"], x["paper"]), reverse=True):
         snippets = "".join(f'<div class="sn">{_html.escape(s)}</div>' for s in hit.get("snippets", [])[:1])
+        section = _html.escape(hit.get("section") or "—")
+        position = geometry_label(hit.get("geometry"))
+        if position:
+            section += f'<div class="sn">{_html.escape(position)}</div>'
         rows.append(
             "<tr>"
             f'<td class="p">{_html.escape(hit["paper"])}</td>'
             f'<td class="d">{_html.escape(hit["date"])}</td>'
-            f'<td class="s">{_html.escape(hit.get("section") or "—")}</td>'
+            f'<td class="s">{section}</td>'
             f'<td><a href="{_html.escape(hit["url"])}" target="_blank" rel="noopener">'
             f"{_html.escape(hit['title'])}</a>{snippets}</td></tr>"
         )

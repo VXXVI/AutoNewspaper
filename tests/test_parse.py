@@ -220,3 +220,66 @@ def test_snippet_without_ellipsis_when_short():
 @pytest.mark.parametrize("style,expected", [("ymd", "202609/22"), ("dash", "2026-09/22")])
 def test_date_path(style, expected):
     assert parse.date_path(datetime(2026, 9, 22), style) == expected
+
+
+# ---------------------------------------------------------------- area_rects
+# fixture 逐字取自真实版面页（2026-09-23）：湛江日报 node_1.htm / 人民日报 node_01.html
+def test_area_rects_from_real_zhanjiang_page(read_fixture):
+    html = read_fixture("zhanjiang_node_1_area.htm")
+    base = "http://paper.gdzjdaily.com.cn/html/2026-09/23/"
+    rects = parse.area_rects(html, base, r"content_\w+\.html?$")
+
+    assert len(rects) == 7
+    # coords 是多边形顶点序列，取包围盒（左上 → 右下）
+    assert rects[base + "content_146377_3867999.htm"] == (287, 34, 326, 46)
+    assert rects[base + "content_146377_3868000.htm"] == (2, 63, 336, 159)
+    assert rects[base + "content_146377_3868005.htm"] == (5, 408, 258, 546)
+
+
+def test_area_rects_from_real_rmrb_page(read_fixture):
+    html = read_fixture("rmrb_node_01_area.html")
+    base = "http://paper.people.com.cn/rmrb/pc/layout/202609/23/"
+    rects = parse.area_rects(html, base, r"content_\w+\.html?$")
+
+    assert len(rects) == 10
+    # 标签是 CamelCase 的 <Area>，坐标为小数，需容错
+    url = "http://paper.people.com.cn/rmrb/pc/content/202609/23/content_30182606.html"
+    assert rects[url] == (3, 97, 194, 205)
+
+
+def test_area_rects_empty_without_area_tags():
+    """纯链接式版面（其余四家）没有 <area> → 空 dict，绝不抛异常。"""
+    html = '<div class="article-list"><a href="content_1.html">文章</a></div>'
+    assert parse.area_rects(html, "http://x/2026-09/23/", r"content_\w+\.html?$") == {}
+
+
+def test_area_rects_skips_malformed_or_unrelated():
+    """坐标不是数字、链接不匹配、缺 coords/href 的 area 一律静默跳过。"""
+    html = (
+        '<area coords="not,numbers" href="content_1.html">'
+        '<area coords="1,2,3,4" href="other_9.html">'
+        '<area href="content_2.html">'
+        '<area coords="1,2,3,4">'
+        '<area coords="1,2,3" href="content_3.html">'
+    )
+    assert parse.area_rects(html, "http://x/", r"content_\w+\.html?$") == {}
+
+
+# ---------------------------------------------------------------- section_no
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("第02版：综合", "第02版"),
+        ("02版：要闻", "第02版"),
+        ("第2版：要闻", "第02版"),
+        ("第01版 : 要闻", "第01版"),
+        ("第VD02版: 遂溪视窗·关注", "VD02"),
+        ("第A03版 焦点", "A03"),
+        ("(A01 要闻)", "A01"),
+        ("(A02) 焦点", "A02"),
+        ("羊城晚报", ""),
+        ("", ""),
+    ],
+)
+def test_section_no(raw, expected):
+    assert parse.section_no(raw) == expected

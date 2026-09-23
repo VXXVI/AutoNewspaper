@@ -80,6 +80,35 @@ def test_build_dashboard_reads_seen_counts(tmp_path):
     assert web.build_dashboard(tmp_path)["seen_counts"] == {"广东海洋大学": 2}
 
 
+# ---------------------------------------------------------------- 任务 B/C：geometry / section_no
+def test_build_dashboard_passes_geometry_and_section_no(tmp_path):
+    geometry = {
+        "x1": 2,
+        "y1": 100,
+        "x2": 336,
+        "y2": 300,
+        "top": 0.38,
+        "bottom": 0.9,
+        "index": 2,
+        "total": 7,
+    }
+    item = {**ARCHIVE[0], "section_no": "第02版", "geometry": geometry}
+    _write_archive(tmp_path, [item])
+    data = web.build_dashboard(tmp_path)
+    rec = data["records"][0]
+    assert rec["section_no"] == "第02版"
+    assert rec["geometry"]["index"] == 2 and rec["geometry"]["total"] == 7
+    assert rec["geometry"]["top"] == 0.38
+
+
+def test_build_dashboard_geometry_absent_or_partial_is_none(tmp_path):
+    """旧归档没有 geometry → None；残缺 geometry 也被丢弃，前端据此不显示位置。"""
+    _write_archive(tmp_path, [ARCHIVE[0], {**ARCHIVE[1], "geometry": {"top": 0.5}}])
+    data = web.build_dashboard(tmp_path)
+    assert all(rec["geometry"] is None for rec in data["records"])
+    assert all(rec["section_no"] == "" for rec in data["records"])
+
+
 # ---------------------------------------------------------------- HTTP 集成
 @pytest.fixture
 def base_url(tmp_path):

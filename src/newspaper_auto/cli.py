@@ -14,16 +14,40 @@ from typing import Any, Callable
 from . import __version__, config, parse, paths, report, scanner, state
 
 
+def _parse_date(text: str) -> datetime:
+    """解析 ``YYYY-MM-DD``；非法输入交给 argparse 报错（退出码 2）。"""
+    try:
+        return datetime.strptime(text.strip(), "%Y-%m-%d")
+    except (ValueError, AttributeError):
+        raise argparse.ArgumentTypeError(f"非法日期 {text!r}，应形如 2026-09-23") from None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="daily_scan.py", description="六家报社数字报关键词每日监测")
     parser.add_argument(
         "--kw", action="append", default=None, help="关键词，可多次指定（默认：广东海洋大学）"
     )
+    # --days 与 --since/--until 语义互斥；后者两者可共存，故不用 argparse 的
+    # mutually exclusive group（它无法表达「days ⊕ (since ∨ until)」），改在 main 里显式判定。
     parser.add_argument(
         "--days",
         type=int,
-        default=config.DEFAULT_DAYS,
-        help=f"回溯天数（默认 {config.DEFAULT_DAYS} = 今天+昨天）",
+        default=None,
+        help=f"回溯天数（默认 {config.DEFAULT_DAYS} = 今天+昨天）；与 --since/--until 互斥",
+    )
+    parser.add_argument(
+        "--since",
+        type=_parse_date,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="起始日期（含），缺省取 --until；与 --days 互斥",
+    )
+    parser.add_argument(
+        "--until",
+        type=_parse_date,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="结束日期（含），缺省为今天；与 --days 互斥",
     )
     parser.add_argument(
         "--workers", type=int, default=config.DEFAULT_WORKERS, help=f"并发数（默认 {config.DEFAULT_WORKERS}）"
@@ -48,6 +72,39 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
+
+
+def resolve_dates(args: argparse.Namespace, parser: argparse.ArgumentParser | None = None) -> list[datetime]:
+    """把 ``--days`` / ``--since`` / ``--until`` 收敛成**从新到旧**的日期列表。
+
+    - ``--days N``：维持原语义（今天往前 N 天，含今天），CI/launchd 都在用；
+    - ``--since`` / ``--until``：显式区间，两端都含；只给 ``--until`` 时 since=until，
+      只给 ``--since`` 时 until=今天；跨度上限 ``config.MAX_RANGE_DAYS`` 天；
+    - ``--days`` 与 ``--since``/``--until`` 同时给 → argparse 报错退出码 2。
+
+    ``dates[0]`` 恒为最新，``dates[-1]`` 恒为最旧，日志与报告依赖该顺序。
+    """
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    use_range = args.since is not None or args.until is not None
+    if args.days is not None and use_range:
+        p = parser or build_parser()
+        p.error("--days 不能与 --since/--until 同时使用")
+    if not use_range:
+        span = max(1, args.days or config.DEFAULT_DAYS)
+        return [today - timedelta(days=i) for i in range(span)]
+
+    until = args.until or today
+    since = args.since or until
+    if since > until:
+        p = parser or build_parser()
+        p.error(f"--since（{since:%Y-%m-%d}）不能晚于 --until（{until:%Y-%m-%d}）")
+    span = (until - since).days + 1
+    if span > config.MAX_RANGE_DAYS:
+        p = parser or build_parser()
+        p.error(
+            f"日期跨度 {span} 天超过上限 {config.MAX_RANGE_DAYS} 天，请缩小范围（避免误扫把六家报社站点打爆）"
+        )
+    return [until - timedelta(days=i) for i in range(span)]
 
 
 def select_papers(only: str) -> list[dict[str, str]]:
@@ -83,7 +140,8 @@ def main(
     fetcher: Callable[[str], tuple[int, str]] | None = None,
 ) -> int:
     """程序入口。``default_data_dir`` 供兼容入口传入仓库根目录，``fetcher`` 供测试注入。"""
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     # 结构化输出模式下，人类可读日志重定向至 stderr，保证 stdout 纯净
     log: Callable[..., None] = _make_logger(sys.stderr if (args.json or args.csv) else sys.stdout)
@@ -95,8 +153,7 @@ def main(
     papers = select_papers(args.only)
     data_dir = paths.resolve_data_dir(args.data_dir, default_data_dir)
 
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    dates = [today - timedelta(days=i) for i in range(max(1, args.days))]
+    dates = resolve_dates(args, parser)
 
     log(f"关键词：{kw_label}")
     log(f"日期范围：{dates[-1]:%Y-%m-%d} ~ {dates[0]:%Y-%m-%d}（{len(dates)} 天）")
@@ -159,7 +216,11 @@ def main(
         log("\n  ★ 新增命中：")
         for hit in new_hits:
             section = hit.get("section") or "—"
-            log(f"    · [{hit['paper']} · {section}] {hit['title']}")
+            label = f"{hit['paper']} · {section}"
+            position = report.geometry_label(hit.get("geometry"))
+            if position:
+                label += f" · {position}"
+            log(f"    · [{label}] {hit['title']}")
             log(f"      {hit['url']}")
     if md_path is not None:
         log(f"\n  报告：{md_path}")

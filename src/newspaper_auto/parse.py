@@ -46,6 +46,19 @@ _DATE_TAIL_RE = re.compile(r"\s*[-－]\s*\d{4}\s*[-年]\s*\d{1,2}\s*[-月]\s*\d{
 _TRAIL_JUNK_RE = re.compile(r"[_|]\s*$")
 # 纯版次写法（不含「版」字），如羊城晚报的「(A01) 要闻」
 _SECTION_PLAIN_NO_RE = re.compile(r"^[（(]?\s*[A-Za-z]{1,3}\d{1,3}\s*[）)]?\s*\S")
+# 从已规整的版面名里抠出版号（字母前缀 + 数字），两种形态：
+#   含「版」字：第02版 / 02版 / 第VD02版 / 第A03版
+#   纯版次  ：(A01 要闻) / (A02) 焦点
+_SECTION_NO_VERSION_RE = re.compile(r"第?\s*([A-Za-z]{0,3})\s*(\d{1,3})\s*版")
+_SECTION_PLAIN_VERSION_RE = re.compile(r"^[（(]?\s*([A-Za-z]{1,3})\s*(\d{1,3})\s*[）)]?")
+# 版面页的图像映射：方正系 / 人民网系用 <area> 标出每篇文章在版面图上的区域
+# 实测（2026-09-23）：
+#   湛江日报 <area coords="287,34,326,34,326,46,287,46" shape="polygon" href="content_…htm">
+#   人民日报 <Area coords="194.88,182.16,…" shape="polygon" href="../../../content/…html">
+# 坐标一律是 shape="polygon" 的顶点序列，站点并不保证给出矩形四元组。
+_AREA_TAG_RE = re.compile(r"<area\b[^>]*>", re.I)
+_AREA_COORDS_RE = re.compile(r'\bcoords\s*=\s*"([^"]*)"', re.I)
+_AREA_HREF_RE = re.compile(r'\bhref\s*=\s*"([^"]*)"', re.I)
 
 
 def clean(html_fragment: str) -> str:
@@ -76,6 +89,39 @@ def links(html: str, base: str, suffix_re: str) -> list[str]:
             absolute = urljoin(base, href)
             if absolute not in out:
                 out.append(absolute)
+    return out
+
+
+def area_rects(html: str, base: str, suffix_re: str) -> dict[str, tuple[int, int, int, int]]:
+    """从版面页的 ``<area>`` 图像映射里抽「文章绝对URL → 版面坐标」。
+
+    返回 ``{绝对URL: (x1, y1, x2, y2)}``，坐标取该 area 顶点序列的**包围盒**
+    （左上 → 右下），与版面图同坐标系。站点实测只给多边形顶点，故统一按包围盒归一，
+    矩形写法 ``coords="x1,y1,x2,y2"`` 是它的特例。
+
+    ``suffix_re`` 与 :func:`links` 一致，用来只保留文章链接。没有 ``<area>``
+    （六家里的其余四家是纯链接式版面）或坐标/链接解析失败时**静默跳过**，绝不抛异常，
+    此时返回空 dict，由调用方降级处理。
+    """
+    out: dict[str, tuple[int, int, int, int]] = {}
+    for tag in _AREA_TAG_RE.findall(html or ""):
+        href_match = _AREA_HREF_RE.search(tag)
+        coords_match = _AREA_COORDS_RE.search(tag)
+        if not href_match or not coords_match:
+            continue
+        href = href_match.group(1).split("?")[0].split("#")[0].strip()
+        if not href or href.startswith("javascript:") or not re.search(suffix_re, href):
+            continue
+        try:
+            nums = [float(part) for part in coords_match.group(1).split(",") if part.strip()]
+        except ValueError:
+            continue
+        nums = nums[: len(nums) // 2 * 2]  # 奇数个坐标时丢掉落单的最后一个
+        if len(nums) < 4:
+            continue
+        xs, ys = nums[0::2], nums[1::2]
+        rect = (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
+        out.setdefault(urljoin(base, href), rect)
     return out
 
 
@@ -146,6 +192,25 @@ def page_section(html: str, url: str) -> str:
             text = _TRAIL_JUNK_RE.sub("", match.group(0)).strip()
         return _DATE_TAIL_RE.sub("", text).strip()
     return ""
+
+
+def section_no(section: str) -> str:
+    """从版面名字符串里抽出规范化的「版号」，供排序/统计用（不改动原 ``section`` 字段）。
+
+    实测形态与产出：
+
+    - ``第02版：综合`` / ``02版：要闻`` / ``第2版：要闻`` → ``第02版``
+    - ``第VD02版: 遂溪视窗·关注`` → ``VD02``
+    - ``(A01 要闻)`` / ``(A02) 焦点`` → ``A01`` / ``A02``
+
+    取不到版号（如站点通用名、空串）时返回空串。
+    """
+    text = (section or "").strip()
+    match = _SECTION_NO_VERSION_RE.search(text) or _SECTION_PLAIN_VERSION_RE.match(text)
+    if not match:
+        return ""
+    letters, digits = match.group(1), match.group(2)
+    return f"{letters.upper()}{digits}" if letters else f"第{int(digits):02d}版"
 
 
 def extract_text(html: str) -> str:

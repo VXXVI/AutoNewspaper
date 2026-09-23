@@ -87,3 +87,50 @@ def test_write_md_and_html_roundtrip(tmp_path):
     report.write_html(html_path, "kw", HITS)
     assert "标题A" in md_path.read_text(encoding="utf-8")
     assert "标题A" in html_path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- 任务 B：版内位置
+GEOM_HIT = {
+    **HITS[0],
+    "section_no": "第02版",
+    "geometry": {
+        "x1": 2,
+        "y1": 100,
+        "x2": 336,
+        "y2": 300,
+        "top": 0.38,
+        "bottom": 0.9,
+        "index": 2,
+        "total": 7,
+    },
+}
+
+
+def test_geometry_label_formats_and_degrades():
+    assert report.geometry_label(GEOM_HIT["geometry"]) == "版内 2/7 · 上版 38%"
+    assert report.geometry_label({"index": 1, "total": 3, "top": 0.5}) == "版内 1/3 · 上版 50%"
+    assert report.geometry_label({"top": 0.5}) == "上版 50%"
+    # 缺失/异常一律空串，绝不抛异常（老归档向后兼容）
+    assert report.geometry_label(None) == ""
+    assert report.geometry_label({}) == ""
+    assert report.geometry_label("nope") == ""
+
+
+def test_render_md_includes_area_position_for_new_hits():
+    md = report.render_md("kw", [DATE], STATS, [GEOM_HIT], [GEOM_HIT], "增量")
+    assert "版内位置：版内 2/7 · 上版 38%" in md
+
+
+def test_render_md_without_geometry_is_backward_compatible():
+    md = report.render_md("kw", [DATE], STATS, HITS, HITS, "增量")
+    assert "版内位置" not in md
+
+
+def test_render_html_includes_area_position():
+    html = report.render_html("kw", [GEOM_HIT])
+    assert "版内 2/7 · 上版 38%" in html
+
+
+def test_render_html_without_geometry_is_backward_compatible():
+    html = report.render_html("kw", HITS)
+    assert "版内" not in html

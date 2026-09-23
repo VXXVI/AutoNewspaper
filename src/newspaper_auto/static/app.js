@@ -39,6 +39,17 @@
     }
   }
 
+  // 版内位置（旧归档没有 geometry 字段 → 返回空串，静默降级）
+  function geomText(g) {
+    if (!g || typeof g !== "object") return "";
+    var parts = [];
+    if (typeof g.index === "number" && typeof g.total === "number" && g.total > 0) {
+      parts.push("版内 " + g.index + "/" + g.total);
+    }
+    if (typeof g.top === "number") parts.push("上版 " + Math.round(g.top * 100) + "%");
+    return parts.join(" · ");
+  }
+
   /* -------------------------------------------------------------- 数据 */
   function load() {
     $("meta").textContent = "加载中…";
@@ -312,7 +323,10 @@
       var tr = document.createElement("tr");
       tr.appendChild(el("td", "col-paper", r.paper));
       tr.appendChild(el("td", "col-date", r.date));
-      tr.appendChild(el("td", "col-section", r.section || "—"));
+      var sectionText = r.section || "—";
+      var position = geomText(r.geometry);
+      if (position) sectionText += " · " + position;
+      tr.appendChild(el("td", "col-section", sectionText));
 
       var td = el("td", "title");
       var url = safeUrl(r.url);

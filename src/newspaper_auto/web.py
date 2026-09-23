@@ -48,6 +48,23 @@ def _read_archive(path: Path) -> list[Any]:
     return data if isinstance(data, list) else []
 
 
+_GEOMETRY_NUMERIC_KEYS = ("x1", "y1", "x2", "y2", "top", "bottom", "index", "total")
+
+
+def _normalize_geometry(raw: Any) -> dict[str, int | float] | None:
+    """收敛 ``geometry``；旧归档没有该字段（或残缺）时返回 None，前端据此不显示位置。"""
+    if not isinstance(raw, dict):
+        return None
+    geometry = {
+        key: raw[key]
+        for key in _GEOMETRY_NUMERIC_KEYS
+        if isinstance(raw.get(key), (int, float)) and not isinstance(raw.get(key), bool)
+    }
+    if not {"index", "total", "top"} <= geometry.keys():
+        return None
+    return geometry
+
+
 def _normalize(item: Any) -> dict[str, Any] | None:
     """把归档条目收敛成前端需要的形状；丢弃无 URL 的脏数据。"""
     if not isinstance(item, dict) or not item.get("url"):
@@ -60,11 +77,13 @@ def _normalize(item: Any) -> dict[str, Any] | None:
         "paper": str(item.get("paper", "")),
         "date": str(item.get("date", "")),
         "section": str(item.get("section") or ""),
+        "section_no": str(item.get("section_no") or ""),
         "title": str(item.get("title", "")),
         "url": str(item.get("url", "")),
         "text_len": text_len,
         "snippets": [str(s) for s in (item.get("snippets") or []) if s],
         "matched": [str(k) for k in (item.get("matched") or []) if k],
+        "geometry": _normalize_geometry(item.get("geometry")),
     }
 
 

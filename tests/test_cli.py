@@ -9,6 +9,7 @@ import pytest
 from newspaper_auto import cli, config
 
 ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "广东海洋大学"]
+ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "广东海洋大学"]
 HIT_FILES = {"content_101.html", "content_102.html", "content_104.html"}
 
 
@@ -153,3 +154,127 @@ def test_select_papers_unknown_name_does_not_silently_empty():
     assert cli.select_papers("不存在的报纸") == list(config.PAPERS)
     assert [p["name"] for p in cli.select_papers("湛江日报")] == ["湛江日报"]
     assert cli.select_papers("") == list(config.PAPERS)
+
+
+# ---------------------------------------------------------------- 任务 A：日期范围 CLI
+
+
+def test_since_without_until_defaults_to_today(tmp_path, site_fetcher, today):
+    """--since today，until 默认今天，扫出单日结果。"""
+    since_str = today.strftime("%Y-%m-%d")
+    code = cli.main(
+        [*ZJ_ARGS_NO_DAYS, "--since", since_str, "--no-state", "--json", "--data-dir", str(tmp_path)],
+        fetcher=site_fetcher(today),
+    )
+    assert code == 0
+
+
+def test_until_without_since_defaults_to_single_day(tmp_path, site_fetcher, today):
+    """只给 --until，since 默认等于 until，扫单日。"""
+    until_str = today.strftime("%Y-%m-%d")
+    code = cli.main(
+        [*ZJ_ARGS_NO_DAYS, "--until", until_str, "--no-state", "--json", "--data-dir", str(tmp_path)],
+        fetcher=site_fetcher(today),
+    )
+    assert code == 0
+
+
+def test_since_until_range_is_inclusive(tmp_path, site_fetcher, today):
+    """--since 与 --until 同一天，结果与 --days 1 等价。"""
+    day_str = today.strftime("%Y-%m-%d")
+    rc_range = cli.main(
+        [
+            *ZJ_ARGS_NO_DAYS,
+            "--since",
+            day_str,
+            "--until",
+            day_str,
+            "--no-state",
+            "--json",
+            "--data-dir",
+            str(tmp_path),
+        ],
+        fetcher=site_fetcher(today),
+    )
+    assert rc_range == 0
+
+
+def test_dates_order_new_to_old_with_range():
+    """--since older --until newer：dates 列表从新到旧。"""
+    args = cli.build_parser().parse_args(["--since", "2026-09-20", "--until", "2026-09-22"])
+    dates = cli.resolve_dates(args)
+    assert dates[0] >= dates[-1], "dates[0] 应为最新日期"
+    assert len(dates) == 3
+
+
+def test_since_after_until_exits_2():
+    """since > until 应以退出码 2 拒绝，不静默扫空结果。"""
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--since", "2026-09-22", "--until", "2026-09-20"])
+    assert exc_info.value.code == 2
+
+
+def test_span_over_limit_exits_2():
+    """跨度超过 62 天应以退出码 2 拒绝。"""
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--since", "2026-01-01", "--until", "2026-09-23"])
+    assert exc_info.value.code == 2
+
+
+def test_days_and_since_mutually_exclusive():
+    """--days 与 --since 不能同时使用，argparse 应报错退出码 2。"""
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--days", "3", "--since", "2026-09-20"])
+    assert exc_info.value.code == 2
+
+
+def test_days_and_until_mutually_exclusive():
+    """--days 与 --until 不能同时使用，应报错退出码 2。"""
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--days", "3", "--until", "2026-09-20"])
+    assert exc_info.value.code == 2
+
+
+def test_invalid_date_format_exits_2():
+    """非法日期字符串应 argparse 报错，退出码 2。"""
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--since", "not-a-date"])
+    assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------- 任务 B：命中行带版内位置
+def test_console_hit_line_includes_area_position(tmp_path, capsys, zj_area_fetcher, area_day):
+    """命中行形如 [湛江日报 · 第1版：要闻 · 版内 1/7 · 上版 6%]（真实 area 坐标）。"""
+    day = area_day.strftime("%Y-%m-%d")
+    code = cli.main(
+        [
+            "--only",
+            "湛江日报",
+            "--since",
+            day,
+            "--until",
+            day,
+            "--kw",
+            "世界技能大赛",
+            "--no-state",
+            "--data-dir",
+            str(tmp_path),
+        ],
+        fetcher=zj_area_fetcher,
+    )
+    out, _err = capsys.readouterr()
+    assert code == 0
+    assert "[湛江日报 · 第1版：要闻 · 版内 1/7 · 上版 6%]" in out
+
+
+def test_since_until_scans_requested_day(tmp_path, capsys, site_fetcher, today):
+    """--since/--until 指定日：日志日期范围与命中都与该日一致。"""
+    day = today.strftime("%Y-%m-%d")
+    code = cli.main(
+        [*ZJ_ARGS_NO_DAYS, "--since", day, "--until", day, "--no-state", "--data-dir", str(tmp_path)],
+        fetcher=site_fetcher(today),
+    )
+    out, _ = capsys.readouterr()
+    assert code == 0
+    assert f"日期范围：{day} ~ {day}（1 天）" in out
+    assert "新增 3 篇" in out

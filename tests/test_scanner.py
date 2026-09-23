@@ -194,3 +194,56 @@ def test_node_exclude_filters_mirror_nodes(fixed_day):
     assert not any("/pad/" in url for url in requested), "pad 镜像不应被请求"
     assert any(url.endswith("/pc/layout/202609/22/node_02.html") for url in requested)
     assert stats["articles"] == 1
+
+
+# ---------------------------------------------------------------- 任务 B/C：area 坐标与版号
+def test_area_geometry_from_real_zhanjiang_page(zj_area_paper, area_day, zj_area_fetcher):
+    """湛江日报真实版面页（含 <area>）：每条文章都应带上版内坐标。"""
+    _hits, articles, stats = scanner.scan_paper(
+        zj_area_paper, area_day, KW, workers=4, fetcher=zj_area_fetcher
+    )
+    assert stats["entry_code"] == 200
+    assert len(articles) == 7
+
+    geoms = {rec["url"].rsplit("/", 1)[-1]: rec["geometry"] for rec in articles}
+    assert len(geoms) == 7
+    assert all("geometry" in rec for rec in articles)
+    # 同版多条文章纵向位置互不相同；top 恒小于 bottom
+    assert len({g["top"] for g in geoms.values()}) == 7
+    assert all(0 <= g["top"] < g["bottom"] <= 1 for g in geoms.values())
+    assert all(g["total"] == 7 and 1 <= g["index"] <= 7 for g in geoms.values())
+    # index 按 y1 升序编号
+    ordered = sorted(geoms.values(), key=lambda g: g["y1"])
+    assert [g["index"] for g in ordered] == list(range(1, 8))
+    # 首条（图内最靠上的小块）落在版面顶部
+    assert geoms["content_146377_3867999.htm"]["index"] == 1
+    assert geoms["content_146377_3867999.htm"]["top"] < 0.1
+    # 任务 C：真实 pageLink 版名归一化出版号
+    assert {rec["section"] for rec in articles} == {"第1版：要闻"}
+    assert {rec["section_no"] for rec in articles} == {"第01版"}
+
+
+def test_area_geometry_from_real_rmrb_page(rmrb_area_paper, area_day, rmrb_area_fetcher):
+    """人民日报真实版面页（CamelCase <Area> + 小数多边形坐标）同样解析成功。"""
+    _hits, articles, stats = scanner.scan_paper(
+        rmrb_area_paper, area_day, KW, workers=4, fetcher=rmrb_area_fetcher
+    )
+    assert stats["entry_code"] == 200
+    assert len(articles) == 10
+    geoms = [rec["geometry"] for rec in articles]
+    assert all(g["total"] == 10 for g in geoms)
+    # 真实数据里可能有两条 y1 相同的分栏，用完整包围盒/编号判断「位置互不相同」
+    assert len({(g["x1"], g["y1"], g["x2"], g["y2"]) for g in geoms}) == 10
+    assert {g["index"] for g in geoms} == set(range(1, 11))
+    assert all(0 <= g["top"] < g["bottom"] <= 1 for g in geoms)
+
+
+def test_paper_without_area_omits_geometry_key(zhanjiang_paper, fixed_day, site_fetcher):
+    """纯链接式版面（无 area）：不写 geometry 键，其余流程不受影响。"""
+    hits, articles, stats = scanner.scan_paper(
+        zhanjiang_paper, fixed_day, KW, workers=4, fetcher=site_fetcher(fixed_day)
+    )
+    assert stats["entry_code"] == 200
+    assert articles and hits
+    assert all("geometry" not in rec for rec in articles)
+    assert {rec["section_no"] for rec in hits} == {"第02版", "第03版"}

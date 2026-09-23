@@ -100,14 +100,17 @@ def scan_paper(
         stats["note"] = "dry-run"
         return [], [], stats
 
-    # 版面页 → 文章链接 + 版面名
+    # 版面页 → 文章链接 + 版面名 + 图像映射坐标（仅人民日报 / 湛江日报有）
     article_section: dict[str, str] = {}
+    article_geometry: dict[str, dict[str, Any]] = {}
     section_failed_records: list[tuple[str, int]] = []
 
-    def grab_section(node_url: str) -> tuple[str, str, list[str], int]:
+    def grab_section(
+        node_url: str,
+    ) -> tuple[str, str, list[str], dict[str, tuple[int, int, int, int]], int]:
         section_code, section_html = _fetch(node_url)
         if section_code != 200 or len(section_html) < config.MIN_HTML_BYTES:
-            return node_url, "", [], section_code
+            return node_url, "", [], {}, section_code
         section_base = node_url.rsplit("/", 1)[0] + "/"
         # 版面名优先走 page_section（pageLink / 版次版名注释，权威且干净），
         # 取不到再退回页面 title。反过来「title 先行」会让多家报社拿到错值：
@@ -116,12 +119,42 @@ def scan_paper(
             parse.page_section(section_html, node_url)[:40] or parse.extract_title(section_html)[:40]
         )
         articles = [a for a in parse.links(section_html, section_base, CONTENT_RE) if date_part in a]
-        return node_url, section_title, articles, section_code
+        rects = parse.area_rects(section_html, section_base, CONTENT_RE)
+        return node_url, section_title, articles, rects, section_code
+
+    def merge_geometry(rects: dict[str, tuple[int, int, int, int]], articles: list[str]) -> None:
+        """把本版 area 坐标归一化后并入 ``article_geometry``。
+
+        画布高度直接用本版所有 area 的 ``max(y2)``（不下载版面图）；``index`` 按 ``y1``
+        升序编号。没有任何 area 的版面（其余四家）自然跳过，不影响其余流程。
+        """
+        if not rects:
+            return
+        max_y2 = max(rect[3] for rect in rects.values())
+        if max_y2 <= 0:
+            return
+        article_set = set(articles)
+        ordered = sorted(rects.items(), key=lambda item: item[1][1])
+        total = len(ordered)
+        for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
+            if url not in article_set:
+                continue
+            article_geometry[url] = {
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "top": round(y1 / max_y2, 4),
+                "bottom": round(y2 / max_y2, 4),
+                "index": index,
+                "total": total,
+            }
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for _node, section_title, articles, sec_code in pool.map(grab_section, nodes):
+        for _node, section_title, articles, rects, sec_code in pool.map(grab_section, nodes):
             if not articles and sec_code != 200:
                 section_failed_records.append((_node, sec_code))
+            merge_geometry(rects, articles)
             for article_url in articles:
                 article_section.setdefault(article_url, section_title)
 
@@ -142,14 +175,20 @@ def scan_paper(
         text = parse.extract_text(article_html)
         blob = title + " " + text
         found = [match for match in (kr.search(blob) for kr in kw_res.values()) if match]
+        section = article_section.get(article_url, "")
         record: dict[str, Any] = {
             "paper": paper["name"],
             "date": day.strftime("%Y-%m-%d"),
-            "section": article_section.get(article_url, ""),
+            "section": section,
+            "section_no": parse.section_no(section),
             "title": title,
             "url": article_url,
             "text_len": len(text),
         }
+        geometry = article_geometry.get(article_url)
+        if geometry:
+            # 无 area 的版面（其余四家）不写该键，旧归档同样无需该键即可渲染
+            record["geometry"] = geometry
         if found:
             record["snippets"] = [parse.snippet(blob, match) for match in found[:3]]
             record["matched"] = [k for k, kr in kw_res.items() if kr.search(blob)]
