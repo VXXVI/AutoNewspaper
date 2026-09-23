@@ -149,7 +149,7 @@ def render_md(
 _HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>「{kw}」五家报社监测</title>
+<title>「{kw}」六家报社监测</title>
 <style>
  body{{margin:0;background:#f6f7f9;color:#1b1f24;
    font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}}
@@ -167,7 +167,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
  a{{color:#1a6ef5;text-decoration:none}} a:hover{{text-decoration:underline}}
  .sn{{font-size:12px;color:#8a94a3;margin-top:4px}}
 </style></head><body><div class="wrap">
-<h1>「{kw}」· 五家报社数字报监测</h1>
+<h1>「{kw}」· 六家报社数字报监测</h1>
 <div class="meta">共 {total} 条命中 · 更新于 {updated}</div>
 <table><thead><tr><th>报社</th><th>日期</th><th>版面</th><th>标题</th></tr></thead>
 <tbody>{rows}</tbody></table>

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "newspaper-auto"
-description = "五家报社数字报关键词每日监测（官网直采，零第三方运行时依赖）"
+description = "六家报社数字报关键词每日监测（官网直采，零第三方运行时依赖）"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "7Quark" }]

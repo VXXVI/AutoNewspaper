@@ -25,6 +25,12 @@
   幂等，含 `-Help`）。
 - `README.md` 新增「调度方案对照表」与「Windows 本机运行」章节（含不依赖 `.ps1` 的
   `schtasks` 兜底命令）。
+- **新增人民日报**：`config.PAPERS` 增加人民日报（人民网 pc 数字报，
+  `http://paper.people.com.cn/rmrb/pc/layout/{YYYYMM/DD}/node_01.html`）。解析器新增
+  `<!--enpcontent-->` 正文通道（人民网系），并支持可选的 per-paper `node_exclude`
+  过滤（排除版面页里 `/rmrb/pad/` 手机版镜像，避免重复扫描）。
+- **本地「点击即用」启动器**：`scripts/scan.command` / `dashboard.command`（macOS 双击）
+  与 `scripts/scan.cmd` / `dashboard.cmd`（Windows），一键扫一次或打开本地看板。
 
 ### 修复
 
@@ -57,6 +63,9 @@
 - `README.md` 第一节表格补齐「运行 / 调度」两行，明确生产 = GitHub Actions + 外部触发，
   并回答「是否需要打包 exe：不需要」及两条理由；新增「调度方案对照表」与
   「Windows 本机运行」章节。
+- 「五家」表述更新为「六家」（`README.md`、`daily_scan.py`、`cli.py`、`__init__.py`、
+  `web.py`、`report.py`、`pyproject.toml`、`Makefile`、`scripts/run_scan.*`、看板前端静态页），
+  README 入口表补入人民日报。
 
 ## [0.2.0] - 2026-09-22
 

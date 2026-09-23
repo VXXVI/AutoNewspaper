@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
-"""五家报社数字报 · 关键词每日增量监测（兼容入口）。
+"""六家报社数字报 · 关键词每日增量监测（兼容入口）。
 
 实现已拆分至 ``src/newspaper_auto/`` 包；本文件仅保留同名命令行入口，
 以确保既有用法（README、``scripts/run_scan.sh``、launchd 定时任务）继续可用。
 
 原理
 ----
-五家报社的数字报（= 报纸电子版）全部是方正系电子报系统，结构统一：
+六家报社的数字报（= 报纸电子版）结构统一（五家为方正系，人民日报属人民网系）：
 
     第 1 版 页   →  含当日全部版面链接   (node_*.htm / node_*.html)
     单个版面页   →  含本版全部文章链接   (content_*.htm / content_*.html)
-    单篇文章页   →  含标题 + 正文（正文多在自定义标签 <founder-content> 内）
+    单篇文章页   →  含标题 + 正文（<founder-content> 或 <!--enpcontent--> 内）
 
 所以可以直接做到「当日全版面 → 全文章 → 标题 + 正文全文匹配关键词」，
 正文里提一句校名也能命中，不依赖 Google/Bing 的收录与延迟。
 
-五家入口（第 1 版）：
+六家入口（第 1 版）：
     光明日报   https://epaper.gmw.cn/gmrb/html/layout/{YYYYMM/DD}/node_01.html
     南方日报   https://epaper.nfnews.com/nfdaily/html/{YYYYMM/DD}/node_A01.html
     羊城晚报   http://ep.ycwb.com/epaper/ycwb/html/{YYYY-MM/DD}/node_1.htm
     中国教育报 https://paper.jyb.cn/zgjyb/html/{YYYY-MM/DD}/node_1.htm
     湛江日报   http://paper.gdzjdaily.com.cn/html/{YYYY-MM/DD}/node_1.htm
+    人民日报   http://paper.people.com.cn/rmrb/pc/layout/{YYYYMM/DD}/node_01.html
 
 用法
 ----

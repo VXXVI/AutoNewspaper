@@ -178,7 +178,7 @@ def create_server(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m newspaper_auto.web",
-        description="五家报社数字报监测 · 本地只读看板（零依赖）",
+        description="六家报社数字报监测 · 本地只读看板（零依赖）",
     )
     parser.add_argument("--data-dir", default=None, help="数据目录（含 hits/ 与 state/），默认自动探测项目根")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"监听地址（默认 {DEFAULT_HOST}，仅本机可访问）")

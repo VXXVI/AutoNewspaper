@@ -15,7 +15,7 @@ from . import __version__, config, parse, paths, report, scanner, state
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="daily_scan.py", description="五家报社数字报关键词每日监测")
+    parser = argparse.ArgumentParser(prog="daily_scan.py", description="六家报社数字报关键词每日监测")
     parser.add_argument(
         "--kw", action="append", default=None, help="关键词，可多次指定（默认：广东海洋大学）"
     )

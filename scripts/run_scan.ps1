@@ -1,5 +1,5 @@
 ﻿# ==============================================================================
-# run_scan.ps1 - 五家报社数字报每日监测启动脚本（Windows / PowerShell）
+# run_scan.ps1 - 六家报社数字报每日监测启动脚本（Windows / PowerShell）
 #
 # 用途：Windows 任务计划程序（scripts\install_task_scheduler.ps1）或手动调用。
 #       默认以「无状态」方式运行（daily_scan.py --no-state），不读写 state\ 与 hits\。
