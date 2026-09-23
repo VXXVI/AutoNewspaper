@@ -83,6 +83,16 @@
   `Path(os.environ.get("NEWSPAPER_PYTEST_TMP") or tempfile.gettempdir()) / "pytest-np"`：
   默认走**各平台的系统临时目录**，受限环境（如 Sandbox）可用 `NEWSPAPER_PYTEST_TMP`
   显式指定可写目录，**不再出现任何机器相关绝对路径**。
+- **新增 `.gitattributes`，修正 Windows 侧脚本的行尾（此前 `scripts/*.cmd` 是纯 LF）**：
+  `cmd.exe` 对 LF-only 批处理「通常能跑」，但 `goto` 标号与 `for`/`if` 多行块在 LF 下可能失败，
+  属平时看不出、一改就翻车的坑。现约定：
+  - `*.cmd` / `*.bat` / `*.ps1` → `text eol=crlf`（仓库内仍以 LF 存储，签出到工作区才是 CRLF）；
+  - `*.sh` / `*.command` → `text eol=lf`（CRLF 会让 bash 报 `\r: command not found`，
+    Git Bash / WSL / launchd 全中招）；
+  - **故意不加 `* text=auto`**：`tests/fixtures/rmrb_article_30182606.html` 与
+    `legacy/result.csv` 存的是真实站点的原始 CRLF 快照，全局规则会把它们改写掉。
+  验证：`git ls-files --eol scripts/` 应显示 4 个 Windows 脚本为 `i/lf w/crlf attr/text eol=crlf`，
+  两个 Unix 脚本为 `w/lf`。
 
 ### 变更
 

@@ -263,6 +263,10 @@ schtasks /Create /TN NewsPaperAuto /SC DAILY /ST 10:00 /F ^
 - **任务没触发**：任务默认「仅在当前用户登录时运行」，且机器需处于开机/唤醒状态。
 - **`.ps1` 中文乱码**：两个脚本均以 **UTF-8 with BOM** 保存，Windows PowerShell 5.1
   可正确识别；若被编辑器另存为无 BOM，请改回 UTF-8 with BOM。
+- **行尾**：仓库用 `.gitattributes` 钉死了行尾 —— `*.cmd` / `*.bat` / `*.ps1` 签出为 **CRLF**，
+  `*.sh` / `*.command` 签出为 **LF**。**不要手工把 `.cmd` 改成 LF**（`goto` / 多行 `for` 块可能失败），
+  也不要让编辑器把 `.sh` 存成 CRLF（bash 会报 `\r: command not found`）。
+  自查：`git ls-files --eol scripts/`。
 
 ### 外部定时（VPS crontab）
 

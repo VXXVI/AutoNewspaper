@@ -1,0 +1,28 @@
+# ==============================================================================
+# 跨平台行尾约定
+# ==============================================================================
+# 背景：scripts/*.cmd 此前是 LF-only。cmd.exe 对 LF 批处理「通常能跑」，但
+# goto 标号、for/if 多行块在 LF 下可能失败，属"平时看不出、一改就翻车"的坑。
+# 这里把 Windows 侧脚本钉成 CRLF 签出（仓库内仍以 LF 存储，不制造二进制噪声）。
+#
+# 校验方式：
+#   git ls-files --eol scripts/          # 期望 i/lf  w/crlf  attr/text eol=crlf
+#   git check-attr text eol -- scripts/scan.cmd
+# ==============================================================================
+
+# ---- Windows 批处理 / PowerShell：CRLF 签出 ----
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# ---- 类 Unix 脚本：必须保持 LF ----
+# CRLF 会让 bash/sh 直接报 `\r: command not found`，且 launchd / Git Bash / WSL 全中招。
+*.sh      text eol=lf
+*.command text eol=lf
+
+# ---- 故意不声明的东西（改动前请先想清楚）----
+# 1) 不加 `* text=auto`：tests/fixtures/rmrb_article_30182606.html 与
+#    legacy/result.csv 里存的是真实站点的原始 CRLF 快照，全局规则会改写它们，
+#    属于没必要的变更（fixture 一旦被动，测试断言的可信度就下降）。
+# 2) 不加 `*.md eol=lf` 之类的冗余规则：这些文件本来就是 LF，加了只是噪声；
+#    Windows 上 core.autocrlf=true 时它们被签出成 CRLF 也能正常工作。
