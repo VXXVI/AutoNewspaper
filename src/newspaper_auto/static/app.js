@@ -1,13 +1,16 @@
-/* 六家报社数字报监测 · 本地只读看板
+/* 六家报社数字报监测 · 本地看板
  *
- * 纯原生 JS：无框架、无构建、无 CDN。所有来自抓取的数据一律用
- * textContent / createElement 渲染，绝不拼 innerHTML，避免标题/正文里的
+ * 纯原生 JS：无框架、无构建、无 CDN。所有来自抓取的数据（含扫描日志）一律用
+ * textContent / createElement 渲染，绝不拼 innerHTML，避免标题/正文/日志里的
  * 内容被当作 HTML 执行。
  */
 (function () {
   "use strict";
 
   var MAX_ROWS = 500;
+  var SCAN_POLL_MS = 1200;
+
+  var scanTimer = null;
 
   var state = {
     data: null,
@@ -223,6 +226,139 @@
     URL.revokeObjectURL(a.href);
   }
 
+  /* -------------------------------------------------------------- 扫描设置 */
+  // 关键词支持逗号（中英文）、顿号、换行分隔；split + trim + 去空
+  function splitKeywords(raw) {
+    return raw.split(/[,，、\n\r]+/).map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length > 0; });
+  }
+
+  function parseInt10(value) {
+    var n = parseInt(value, 10);
+    return isNaN(n) ? NaN : n;
+  }
+
+  function setScanStatus(text) { $("scan-status").textContent = text; }
+
+  function setScanRunning(running) {
+    var btn = $("scan-run");
+    btn.disabled = running;
+    btn.textContent = running ? "扫描中…" : "立即扫描";
+  }
+
+  // 启动时回填上次配置；失败就用默认值，不阻塞页面
+  function loadScanConfig() {
+    fetch("/api/config", { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (cfg) {
+        if (Array.isArray(cfg.keywords) && cfg.keywords.length) {
+          $("scan-kw").value = cfg.keywords.join(", ");
+        }
+        if (typeof cfg.days === "number") $("scan-days").value = cfg.days;
+        if (typeof cfg.workers === "number") $("scan-workers").value = cfg.workers;
+      })
+      .catch(function () { /* 忽略：保持 HTML 里的默认值 */ });
+  }
+
+  function startScan() {
+    var keywords = splitKeywords($("scan-kw").value);
+    var days = parseInt10($("scan-days").value);
+    var workers = parseInt10($("scan-workers").value);
+
+    // 与后端一致的基础校验：不合法就地提示，不发请求
+    if (!keywords.length) { setScanStatus("请至少填写一个关键词"); return; }
+    if (keywords.length > 10) { setScanStatus("关键词最多 10 个"); return; }
+    if (keywords.some(function (k) { return k.length > 50; })) {
+      setScanStatus("单个关键词不能超过 50 个字符"); return;
+    }
+    if (isNaN(days) || days < 1 || days > 62) { setScanStatus("天数需为 1 ~ 62 之间的整数"); return; }
+    if (isNaN(workers) || workers < 1 || workers > 16) { setScanStatus("并发需为 1 ~ 16 之间的整数"); return; }
+
+    var body = { keywords: keywords, days: days, workers: workers };
+
+    // 保存配置：失败只提示，不阻断扫描
+    fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).catch(function () { /* 忽略：保存失败不影响本次扫描 */ });
+
+    setScanRunning(true);
+    setScanStatus("正在提交扫描…");
+    $("scan-log").textContent = "";
+
+    fetch("/api/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (res.status === 202) { setScanStatus("扫描已启动…"); beginPolling(); return; }
+          if (res.status === 409) { setScanStatus("已有扫描在运行，继续查看进度…"); beginPolling(); return; }
+          setScanRunning(false);
+          setScanStatus("启动失败：" + ((data && data.error) || ("HTTP " + res.status)));
+        });
+      })
+      .catch(function (err) {
+        setScanRunning(false);
+        setScanStatus("请求失败：" + err.message);
+      });
+  }
+
+  function beginPolling() {
+    if (scanTimer) return;
+    pollScan();
+    scanTimer = window.setInterval(pollScan, SCAN_POLL_MS);
+  }
+
+  function stopPolling() {
+    if (scanTimer) { window.clearInterval(scanTimer); scanTimer = null; }
+  }
+
+  function renderScanLog(lines) {
+    var box = $("scan-log");
+    box.textContent = lines.join("\n");   // textContent：日志里可能带回抓取到的网页文本
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function pollScan() {
+    fetch("/api/scan", { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (task) {
+        if (Array.isArray(task.log)) renderScanLog(task.log);
+        if (task.status === "done") {
+          stopPolling();
+          setScanRunning(false);
+          var code = (task.exit_code === null || task.exit_code === undefined) ? 0 : task.exit_code;
+          if (task.error) {
+            setScanStatus("扫描完成（退出码 " + code + "）：" + task.error);
+          } else {
+            setScanStatus("扫描完成（退出码 " + code + "）");
+          }
+          load();
+        } else if (task.status === "error") {
+          stopPolling();
+          setScanRunning(false);
+          setScanStatus("扫描失败：" + (task.error || "未知错误"));
+          load();
+        } else {
+          setScanStatus("扫描中…");
+        }
+      })
+      .catch(function (err) {
+        stopPolling();
+        setScanRunning(false);
+        setScanStatus("轮询失败：" + err.message);
+      });
+  }
+
   /* -------------------------------------------------------------- 渲染 */
   function render() {
     if (!state.data) return;
@@ -259,7 +395,7 @@
     foot.appendChild(el("code", null, data.data_dir));
     foot.appendChild(document.createTextNode(" · 归档："));
     foot.appendChild(el("code", null, data.archive_file));
-    foot.appendChild(document.createTextNode(" · 本页只读，不会触发抓取。"));
+    foot.appendChild(document.createTextNode(" · 可在上方「扫描设置」中一键触发抓取（结果写入该数据目录）。"));
   }
 
   function renderStats(all, list) {
@@ -358,6 +494,8 @@
   /* -------------------------------------------------------------- 启动 */
   function init() {
     $("reload").addEventListener("click", load);
+    $("scan-run").addEventListener("click", startScan);
+    loadScanConfig();
     $("q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
     $("from").addEventListener("change", function (e) {
       state.from = e.target.value; state.preset = "custom"; updatePresetUI(); render();

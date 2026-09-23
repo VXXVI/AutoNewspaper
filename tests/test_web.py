@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from datetime import datetime
 
 import pytest
 
-from newspaper_auto import web
+from newspaper_auto import config, web
 
 ARCHIVE = [
     {
@@ -230,3 +232,174 @@ def test_main_reports_busy_port_instead_of_traceback(tmp_path, capsys, monkeypat
     assert code == 1
     err = capsys.readouterr().err
     assert "启动失败" in err and "换端口" in err
+
+
+# ---------------------------------------------------------------- 扫描：POST/GET /api/scan
+@contextmanager
+def _serve(tmp_path, scan_runner):
+    """起一个注入了假 scan_runner 的回环看板（绝不碰网络），退出时确保关闭。"""
+    _write_archive(tmp_path, ARCHIVE)
+    server = web.create_server(tmp_path, host="127.0.0.1", port=0, scan_runner=scan_runner)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _request(method, url, payload=None, headers=None):
+    """返回 ``(status, body_bytes)``；4xx/5xx 不抛异常，便于直接断言状态码。
+
+    有 body 时默认补 ``Content-Type: application/json``（可用 headers 覆盖，以测试校验分支）。
+    """
+    headers = dict(headers or {})
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers.setdefault("Content-Type", "application/json")
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=5) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+
+
+def _noop_runner(data_dir, params, log):
+    log("noop")
+    return {"exit_code": 0, "summary": None}
+
+
+def _wait_done(url, attempts=100, interval=0.05):
+    last = None
+    for _ in range(attempts):
+        status, body = _request("GET", url + "/api/scan")
+        assert status == 200
+        last = json.loads(body)
+        if last["status"] in ("done", "error"):
+            return last
+        time.sleep(interval)
+    return last
+
+
+def test_scan_post_runs_to_done_and_logs(tmp_path):
+    def runner(data_dir, params, log):
+        assert str(data_dir) == str(tmp_path)
+        log("假装扫描开始")
+        log(f"关键词：{params['keywords'][0]}")
+        return {"exit_code": 0, "summary": {"hits": 1}}
+
+    with _serve(tmp_path, runner) as url:
+        status, body = _request(
+            "POST", url + "/api/scan", {"keywords": ["广东海洋大学"], "days": 1, "workers": 4}
+        )
+        assert status == 202
+        assert json.loads(body)["status"] == "running"
+
+        task = _wait_done(url)
+        assert task["status"] == "done"
+        assert task["exit_code"] == 0
+        assert task["summary"] == {"hits": 1}
+        assert any("假装扫描开始" in line for line in task["log"])
+
+
+def test_second_scan_while_running_returns_409(tmp_path):
+    release = threading.Event()
+
+    def runner(data_dir, params, log):
+        log("阻塞中")
+        release.wait(timeout=5)
+        return {"exit_code": 0, "summary": None}
+
+    with _serve(tmp_path, runner) as url:
+        first, _ = _request("POST", url + "/api/scan", {"keywords": ["x"]})
+        assert first == 202
+        second, body = _request("POST", url + "/api/scan", {"keywords": ["x"]})
+        assert second == 409
+        assert json.loads(body)["error"]
+        release.set()
+        assert _wait_done(url)["status"] == "done"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"keywords": []},  # 空数组
+        {"keywords": [""]},  # 元素为空串
+        {"keywords": ["x"], "days": 0},  # days 下界
+        {"keywords": ["x"], "days": 63},  # days 上界（> 62）
+        {"keywords": ["x"], "days": 2, "since": "2026-09-01"},  # days 与 since 同给
+        {"keywords": ["x"], "since": "2026-09-10", "until": "2026-09-01"},  # since > until
+        {"keywords": ["x"], "workers": 0},  # workers 下界
+    ],
+)
+def test_scan_invalid_params_return_400(tmp_path, payload):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, body = _request("POST", url + "/api/scan", payload)
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
+def test_scan_requires_json_content_type(tmp_path):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, body = _request(
+            "POST", url + "/api/scan", {"keywords": ["x"]}, headers={"Content-Type": "text/plain"}
+        )
+        assert status == 415
+        assert json.loads(body)["error"]
+
+
+def test_scan_rejects_foreign_origin(tmp_path):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, _body = _request(
+            "POST", url + "/api/scan", {"keywords": ["x"]}, headers={"Origin": "http://evil.example"}
+        )
+        assert status == 403
+
+
+def test_scan_rejects_foreign_host(tmp_path):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, _body = _request(
+            "POST", url + "/api/scan", {"keywords": ["x"]}, headers={"Host": "evil.example"}
+        )
+        assert status == 403
+
+
+def test_scan_status_idle_initially(tmp_path):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, body = _request("GET", url + "/api/scan")
+        assert status == 200
+        data = json.loads(body)
+        assert data["status"] == "idle"
+        assert data["log"] == []
+        assert data["error"] is None
+
+
+def test_scan_body_too_large_returns_413(tmp_path):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, body = _request("POST", url + "/api/scan", {"keywords": ["x"], "pad": "y" * 20000})
+        assert status == 413
+        assert json.loads(body)["error"]
+
+
+# ---------------------------------------------------------------- 配置：POST/GET /api/config
+def test_config_defaults_then_roundtrip(tmp_path):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, body = _request("GET", url + "/api/config")
+        assert status == 200
+        cfg = json.loads(body)
+        assert cfg["keywords"] == list(config.DEFAULT_KEYWORDS)
+        assert cfg["days"] == config.DEFAULT_DAYS
+        assert cfg["workers"] == config.DEFAULT_WORKERS
+
+        payload = {"keywords": ["甲", "乙"], "days": 5, "workers": 3}
+        status, body = _request("POST", url + "/api/config", payload)
+        assert status == 200
+        assert json.loads(body) == payload
+
+        status, body = _request("GET", url + "/api/config")
+        assert json.loads(body) == payload
+        assert (tmp_path / "state" / "web_config.json").exists()

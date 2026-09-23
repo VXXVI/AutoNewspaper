@@ -140,6 +140,8 @@ main {
 
 input[type="search"],
 input[type="date"],
+input[type="text"],
+input[type="number"],
 select {
   font: inherit;
   font-size: 14px;
@@ -174,6 +176,24 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
   border-color: #bcd7fd;
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------- 扫描设置 */
+.scan-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.btn[disabled] { opacity: 0.6; cursor: default; }
+
+.scan-log {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 260px;
+  overflow: auto;
+  background: #0f1419;
+  color: #d7e0ea;
+  border-radius: 8px;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.scan-log:empty { display: none; }
 
 /* ---------------------------------------------------------------- 表格 */
 .table-wrap { overflow-x: auto; }

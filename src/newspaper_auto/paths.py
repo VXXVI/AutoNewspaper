@@ -46,6 +46,11 @@ def state_file(data_dir: Path) -> Path:
     return data_dir / config.STATE_DIRNAME / config.SEEN_FILENAME
 
 
+def web_config_file(data_dir: Path) -> Path:
+    """看板「扫描设置」的持久化文件：``state/web_config.json``。"""
+    return data_dir / config.STATE_DIRNAME / config.WEB_CONFIG_FILENAME
+
+
 def hits_dir(data_dir: Path) -> Path:
     return data_dir / config.HITS_DIRNAME
 

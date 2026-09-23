@@ -21,6 +21,32 @@
 <main>
   <section class="stats" id="stats" aria-label="概览"></section>
 
+  <section class="card" id="scan-card">
+    <div class="card-head">
+      <h2>扫描设置</h2>
+      <div class="hint" id="scan-status">—</div>
+    </div>
+    <div class="filters">
+      <label class="field">
+        <span>关键词（逗号 / 顿号 / 换行分隔）</span>
+        <input id="scan-kw" type="text" placeholder="如 广东海洋大学, 海大" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>天数（1 ~ 62）</span>
+        <input id="scan-days" type="number" min="1" max="62" step="1" value="2">
+      </label>
+      <label class="field">
+        <span>并发（1 ~ 16）</span>
+        <input id="scan-workers" type="number" min="1" max="16" step="1" value="8">
+      </label>
+    </div>
+    <div class="scan-actions">
+      <button id="scan-run" class="btn" type="button">立即扫描</button>
+      <span class="hint">扫描结果会写回当前数据目录，完成后自动刷新命中列表。</span>
+    </div>
+    <pre id="scan-log" class="scan-log"></pre>
+  </section>
+
   <section class="card">
     <div class="card-head">
       <h2>按日期分布</h2>

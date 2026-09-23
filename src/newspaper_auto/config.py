@@ -69,6 +69,8 @@ SITE_JUNK: tuple[str, ...] = (
 STATE_DIRNAME = "state"
 HITS_DIRNAME = "hits"
 SEEN_FILENAME = "seen.json"
+# 看板「扫描设置」的持久化文件名（与 seen.json 同目录）
+WEB_CONFIG_FILENAME = "web_config.json"
 ARCHIVE_FILENAME = "archive.json"
 INDEX_FILENAME = "index.html"
 # 增量记录保留天数，防止 seen.json 无限膨胀
