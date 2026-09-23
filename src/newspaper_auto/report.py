@@ -141,7 +141,7 @@ def render_md(
         for hit in total_hits:
             if hit["url"] in new_urls:
                 continue
-            lines.append(f"- [{hit['paper']}] {hit['title']} — {hit['url']}")
+            lines.append(f"- [{hit['paper']} · {hit.get('section') or '—'}] {hit['title']} — {hit['url']}")
         lines.append("")
     return "\n".join(lines)
 

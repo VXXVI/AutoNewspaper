@@ -78,6 +78,13 @@ def test_no_state_ignores_existing_seen(tmp_path, capsys, site_fetcher, today):
     assert "新增 3 篇" in out
 
 
+def test_console_hit_line_includes_section(tmp_path, capsys, site_fetcher, today):
+    """控制台命中行应带版面（报纸中的相对位置），便于人工快速定位。"""
+    cli.main([*ZJ_ARGS, "--no-state", "--data-dir", str(tmp_path)], fetcher=site_fetcher(today))
+    out, _ = capsys.readouterr()
+    assert "湛江日报 · 第02版：综合" in out
+
+
 def test_full_reports_all_hits_as_new(tmp_path, capsys, site_fetcher, today):
     fetch = site_fetcher(today)
     argv = [*ZJ_ARGS, "--data-dir", str(tmp_path)]

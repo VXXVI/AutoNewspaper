@@ -158,7 +158,8 @@ def main(
     if new_hits:
         log("\n  ★ 新增命中：")
         for hit in new_hits:
-            log(f"    · [{hit['paper']}] {hit['title']}")
+            section = hit.get("section") or "—"
+            log(f"    · [{hit['paper']} · {section}] {hit['title']}")
             log(f"      {hit['url']}")
     if md_path is not None:
         log(f"\n  报告：{md_path}")
