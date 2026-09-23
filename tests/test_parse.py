@@ -283,3 +283,86 @@ def test_area_rects_skips_malformed_or_unrelated():
 )
 def test_section_no(raw, expected):
     assert parse.section_no(raw) == expected
+
+
+# ---------------------------------------------------------------- layout_mapping
+def test_layout_mapping_from_real_qd01_fixture(read_fixture):
+    """南方日报真实版面页（QD01 版）：提取 4 条文章的多边形包围盒并归一化为百分比坐标。"""
+    html = read_fixture("nfnews_node_QD01_20260923.html")
+    base = "https://epaper.nfnews.com/nfdaily/html/202609/23/"
+    mapping = parse.layout_mapping(html, base, r"content_\w+\.html?$")
+
+    assert len(mapping) == 4
+    u77 = "https://epaper.nfnews.com/nfdaily/html/202609/23/content_10182077.html"
+    u78 = "https://epaper.nfnews.com/nfdaily/html/202609/23/content_10182078.html"
+    u79 = "https://epaper.nfnews.com/nfdaily/html/202609/23/content_10182079.html"
+    u80 = "https://epaper.nfnews.com/nfdaily/html/202609/23/content_10182080.html"
+
+    assert set(mapping.keys()) == {u77, u78, u79, u80}
+
+    # 10182078 的 x 范围是 29.148472% ~ 51.855895%，y 范围是 0% ~ 80.320604%
+    assert mapping[u78][0] == pytest.approx(0.2915, abs=1e-4)
+    assert mapping[u78][1] == pytest.approx(0.0, abs=1e-4)
+    assert mapping[u78][2] == pytest.approx(0.5186, abs=1e-4)
+    assert mapping[u78][3] == pytest.approx(0.8032, abs=1e-4)
+
+    # 10182077 的 y 范围是 8.143839% ~ 98.045429%
+    assert mapping[u77][1] == pytest.approx(0.0814, abs=1e-4)
+    assert mapping[u77][3] == pytest.approx(0.9805, abs=1e-4)
+
+    # 检验所有 entry 均满足 (left, top, right, bottom)
+    for left, top, right, bottom in mapping.values():
+        assert 0 <= top < bottom <= 1
+        assert 0 <= left < right <= 1
+
+
+def test_layout_mapping_empty_on_page_without_mapping(read_fixture):
+    """A01 版等未内嵌 mappingOriginal 的版面，返回空字典。"""
+    html = read_fixture("nfnews_node_A01_20260923.html")
+    base = "https://epaper.nfnews.com/nfdaily/html/202609/23/"
+    assert parse.layout_mapping(html, base, r"content_\w+\.html?$") == {}
+
+
+def test_layout_mapping_cross_validates_with_links():
+    """mapping 中的文章链接必须在 HTML 的 <a href> 链接池中存在，孤立项被静默过滤。"""
+    html = (
+        '<a href="content_1.html">文章1</a>'
+        "<script>\n"
+        "window.layoutData = {\n"
+        '  mappingOriginal: `[{"articleID":"1","mapping":["0%,0%","10%,0%","10%,20%","0%,20%"]},'
+        '{"articleID":"ghost","mapping":["20%,20%","30%,20%","30%,40%","20%,40%"]}]`\n'
+        "};\n"
+        "</script>"
+    )
+    mapping = parse.layout_mapping(html, "http://example.com/2026/", r"content_\w+\.html?$")
+    assert list(mapping.keys()) == ["http://example.com/2026/content_1.html"]
+    assert mapping["http://example.com/2026/content_1.html"] == pytest.approx((0.0, 0.0, 0.1, 0.2))
+
+
+def test_layout_mapping_rejects_malformed_and_out_of_bounds():
+    """顶点不足 3 个、坐标越界、无法转 float、颠倒等异常均整条静默丢弃。"""
+    html = (
+        '<a href="content_1.html">1</a><a href="content_2.html">2</a>'
+        '<a href="content_3.html">3</a><a href="content_4.html">4</a>'
+        '<a href="content_5.html">5</a>'
+        "<script>\n"
+        "window.layoutData = {\n"
+        "  mappingOriginal: `[\n"
+        '    {"articleID":"1","mapping":["0%,0%","10%,10%"]},\n'  # 仅 2 个点
+        '    {"articleID":"2","mapping":["-1%,0%","10%,0%","10%,10%","0%,10%"]},\n'  # 越界 < 0
+        '    {"articleID":"3","mapping":["0%,0%","110%,0%","110%,10%","0%,10%"]},\n'  # 越界 > 100
+        '    {"articleID":"4","mapping":["bad,0%","10%,0%","10%,10%","0%,10%"]},\n'  # 非数字
+        '    {"articleID":"5","mapping":["5%,5%","5%,5%","5%,5%"]}\n'  # left == right or top == bottom
+        "  ]`\n"
+        "};\n"
+        "</script>"
+    )
+    mapping = parse.layout_mapping(html, "http://example.com/", r"content_\w+\.html?$")
+    assert mapping == {}
+
+
+def test_layout_mapping_syntax_error_or_missing_returns_empty():
+    """JSON 解析失败或无 mappingOriginal 时平稳返回空字典。"""
+    assert parse.layout_mapping("<html></html>", "http://x/", r".*") == {}
+    bad_json = "<script>window.layoutData = { mappingOriginal: `{broken json` };</script>"
+    assert parse.layout_mapping(bad_json, "http://x/", r".*") == {}

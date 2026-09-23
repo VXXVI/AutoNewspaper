@@ -7,6 +7,13 @@
 
 ### 新增
 
+- **南方日报 layoutData.mappingOriginal 多边形坐标解析与三级几何兜底**：
+  新增 `parse.layout_mapping`，从版面页内嵌 `window.layoutData.mappingOriginal` 反引号模板提取多边形顶点，
+  计算包围盒并归一化为百分比坐标；升级 `scanner.merge_geometry` 为三级互斥逻辑：
+  1. `basis="area"`：来自 `<area>` 映射；
+  2. `basis="mapping"`：来自 `mappingOriginal`（按 `(top, left, 出现顺序)` 排序编号，写 `top` / `bottom` / `index` / `total`，绝不编造 `x1..y2` 像素坐标）；
+  3. `basis="order"`：前两者均无时的纯链接顺序兜底（写 `index` / `total`，不带 `top` / `bottom`）。
+  控制台和报告可为南方日报带坐标版面正常输出 `上版 xx%`。
 - **羊城晚报 per-paper 抓取参数覆盖**：`config.PAPERS` 支持可选的 `timeout` / `retries`
   键；羊城晚报设为 `timeout=60 / retries=4`，规避 GitHub runner（海外）上原始请求
   30s 才返回 `HTTP 000` 的临界失败（`config.py`；`scanner.py` 新增 `_paper_fetch`，

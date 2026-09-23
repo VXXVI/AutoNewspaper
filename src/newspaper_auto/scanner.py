@@ -45,6 +45,74 @@ def _paper_fetch(paper: dict[str, Any], base_fetcher: Fetcher) -> Fetcher:
     return wrapped
 
 
+def merge_geometry(
+    target: dict[str, dict[str, Any]],
+    rects: dict[str, tuple[int, int, int, int]],
+    mapping: dict[str, tuple[float, float, float, float]],
+    articles: list[str],
+) -> None:
+    """把本版文章位置并入 ``target``，分三条互斥的优先级路径。
+
+    1. **有 ``<area>`` 映射**（优先级 1）：用本版所有 area 的 ``max(y2)`` 当画布高度归一化，
+       ``index`` 按 ``y1`` 升序编号，写出 ``x1..y2`` / ``top`` / ``bottom``，``basis="area"``。
+       个别文章没被任何 area 覆盖时仍然不写该键——同一版不混用两套编号体系。
+    2. **内嵌百分比映射**（优先级 2，如南方日报 ``window.layoutData.mappingOriginal``）：
+       按 (top, left, 原始出现顺序) 升序编号，index 从 1 开始，只写
+       ``top`` / ``bottom`` / ``index`` / ``total`` / ``basis="mapping"``，
+       不写 ``x1..y2``。
+    3. **纯链接式兜底**（优先级 3）：两者都没有时，按 ``articles`` 的出现顺序编号，
+       只写 ``index`` / ``total`` / ``basis="order"``，绝不编造坐标。
+    """
+    if rects:
+        max_y2 = max(rect[3] for rect in rects.values())
+        if max_y2 <= 0:
+            return
+        article_set = set(articles)
+        ordered = sorted(rects.items(), key=lambda item: item[1][1])
+        total = len(ordered)
+        for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
+            if url not in article_set:
+                continue
+            target[url] = {
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "top": round(y1 / max_y2, 4),
+                "bottom": round(y2 / max_y2, 4),
+                "index": index,
+                "total": total,
+                "basis": "area",
+            }
+        return
+
+    if mapping:
+        raw_items = list(mapping.items())
+        ordered_mapping = sorted(
+            enumerate(raw_items),
+            key=lambda entry: (entry[1][1][1], entry[1][1][0], entry[0]),
+        )
+        total = len(ordered_mapping)
+        article_set = set(articles)
+        for index, (_orig_idx, (url, (_left, top, _right, bottom))) in enumerate(ordered_mapping, 1):
+            if url not in article_set:
+                continue
+            target[url] = {
+                "top": round(top, 4),
+                "bottom": round(bottom, 4),
+                "index": index,
+                "total": total,
+                "basis": "mapping",
+            }
+        return
+
+    total = len(articles)
+    if total == 0:
+        return
+    for index, url in enumerate(articles, 1):
+        target[url] = {"index": index, "total": total, "basis": "order"}
+
+
 def scan_paper(
     paper: dict[str, Any],
     day: datetime,
@@ -107,10 +175,17 @@ def scan_paper(
 
     def grab_section(
         node_url: str,
-    ) -> tuple[str, str, list[str], dict[str, tuple[int, int, int, int]], int]:
+    ) -> tuple[
+        str,
+        str,
+        list[str],
+        dict[str, tuple[int, int, int, int]],
+        dict[str, tuple[float, float, float, float]],
+        int,
+    ]:
         section_code, section_html = _fetch(node_url)
         if section_code != 200 or len(section_html) < config.MIN_HTML_BYTES:
-            return node_url, "", [], {}, section_code
+            return node_url, "", [], {}, {}, section_code
         section_base = node_url.rsplit("/", 1)[0] + "/"
         # 版面名优先走 page_section（pageLink / 版次版名注释，权威且干净），
         # 取不到再退回页面 title。反过来「title 先行」会让多家报社拿到错值：
@@ -120,52 +195,14 @@ def scan_paper(
         )
         articles = [a for a in parse.links(section_html, section_base, CONTENT_RE) if date_part in a]
         rects = parse.area_rects(section_html, section_base, CONTENT_RE)
-        return node_url, section_title, articles, rects, section_code
-
-    def merge_geometry(rects: dict[str, tuple[int, int, int, int]], articles: list[str]) -> None:
-        """把本版文章位置并入 ``article_geometry``，分两条互斥的路径。
-
-        1. **有 ``<area>`` 映射**（光明 / 羊城 / 中国教育报 / 湛江 / 人民日报）：用本版所有
-           area 的 ``max(y2)`` 当画布高度归一化（不下载版面图），``index`` 按 ``y1`` 升序编号，
-           写出 ``x1..y2`` / ``top`` / ``bottom``，``basis="area"``。个别文章没被任何 area
-           覆盖时仍然不写该键——同一版不混用两套编号体系。
-        2. **纯链接式版面**（如南方日报，页面 0 个 ``<area>``）：拿不到任何坐标，就按
-           ``articles`` 的**出现顺序**编号，只写 ``index`` / ``total`` / ``basis="order"``，
-           **绝不编造** ``top`` / ``bottom`` / ``x1..y2``。前端/报告据此只显示「版内 k/m」。
-        """
-        if rects:
-            max_y2 = max(rect[3] for rect in rects.values())
-            if max_y2 <= 0:
-                return
-            article_set = set(articles)
-            ordered = sorted(rects.items(), key=lambda item: item[1][1])
-            total = len(ordered)
-            for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
-                if url not in article_set:
-                    continue
-                article_geometry[url] = {
-                    "x1": x1,
-                    "y1": y1,
-                    "x2": x2,
-                    "y2": y2,
-                    "top": round(y1 / max_y2, 4),
-                    "bottom": round(y2 / max_y2, 4),
-                    "index": index,
-                    "total": total,
-                    "basis": "area",
-                }
-            return
-        total = len(articles)
-        if total == 0:
-            return
-        for index, url in enumerate(articles, 1):
-            article_geometry[url] = {"index": index, "total": total, "basis": "order"}
+        mapping = parse.layout_mapping(section_html, section_base, CONTENT_RE)
+        return node_url, section_title, articles, rects, mapping, section_code
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for _node, section_title, articles, rects, sec_code in pool.map(grab_section, nodes):
+        for _node, section_title, articles, rects, mapping, sec_code in pool.map(grab_section, nodes):
             if not articles and sec_code != 200:
                 section_failed_records.append((_node, sec_code))
-            merge_geometry(rects, articles)
+            merge_geometry(article_geometry, rects, mapping, articles)
             for article_url in articles:
                 article_section.setdefault(article_url, section_title)
 

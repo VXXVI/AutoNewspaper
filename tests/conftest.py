@@ -175,6 +175,12 @@ def nfnews_fetcher():
 
 
 @pytest.fixture
+def nfnews_qd01_fetcher():
+    """南方日报：真实含 mappingOriginal 的版面页片段（QD01 版）+ 通用文章页。"""
+    return make_area_fetcher("nfnews_node_QD01_20260923.html", "article_content_101.html")
+
+
+@pytest.fixture
 def jyb_fetcher():
     """返回工厂函数：``jyb_fetcher(day) -> fetcher``。"""
     return make_jyb_fetcher

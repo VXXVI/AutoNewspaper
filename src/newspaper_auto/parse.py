@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 import re
 from datetime import datetime
 from html import unescape
@@ -59,6 +61,7 @@ _SECTION_PLAIN_VERSION_RE = re.compile(r"^[（(]?\s*([A-Za-z]{1,3})\s*(\d{1,3})\
 _AREA_TAG_RE = re.compile(r"<area\b[^>]*>", re.I)
 _AREA_COORDS_RE = re.compile(r'\bcoords\s*=\s*"([^"]*)"', re.I)
 _AREA_HREF_RE = re.compile(r'\bhref\s*=\s*"([^"]*)"', re.I)
+_MAPPING_ORIGINAL_RE = re.compile(r"mappingOriginal\s*:\s*`([^`]*)`", re.S)
 
 
 def clean(html_fragment: str) -> str:
@@ -123,6 +126,87 @@ def area_rects(html: str, base: str, suffix_re: str) -> dict[str, tuple[int, int
         rect = (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
         out.setdefault(urljoin(base, href), rect)
     return out
+
+
+def layout_mapping(html: str, base: str, suffix_re: str) -> dict[str, tuple[float, float, float, float]]:
+    """返回 {文章绝对URL: (left, top, right, bottom)}，四个值均为 0–1 的版面占比。
+
+    与 area_rects 的区别：area_rects 是版面图像素坐标，本函数是百分比占比。
+    取不到时返回空 dict，绝不抛异常。
+    """
+    if not html:
+        return {}
+    match = _MAPPING_ORIGINAL_RE.search(html)
+    if not match:
+        return {}
+    raw_json = match.group(1).strip()
+    try:
+        data = json.loads(raw_json)
+    except Exception:
+        return {}
+    if not isinstance(data, list):
+        return {}
+
+    valid_urls = set(links(html, base, suffix_re))
+    if not valid_urls:
+        return {}
+
+    rects: dict[str, tuple[float, float, float, float]] = {}
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        aid = item.get("articleID")
+        if aid is None:
+            continue
+        url = urljoin(base, f"content_{aid}.html")
+        if url not in valid_urls:
+            continue
+
+        raw_mapping = item.get("mapping")
+        if not isinstance(raw_mapping, list) or len(raw_mapping) < 3:
+            continue
+
+        xs: list[float] = []
+        ys: list[float] = []
+        valid_points = True
+        for pt_str in raw_mapping:
+            if not isinstance(pt_str, str):
+                valid_points = False
+                break
+            parts = pt_str.split(",")
+            if len(parts) != 2:
+                valid_points = False
+                break
+            px_str, py_str = parts[0].strip(), parts[1].strip()
+            if not (px_str.endswith("%") and py_str.endswith("%")):
+                valid_points = False
+                break
+            try:
+                vx = float(px_str[:-1].strip())
+                vy = float(py_str[:-1].strip())
+            except ValueError:
+                valid_points = False
+                break
+            if math.isnan(vx) or math.isnan(vy) or not (0.0 <= vx <= 100.0 and 0.0 <= vy <= 100.0):
+                valid_points = False
+                break
+            xs.append(vx / 100.0)
+            ys.append(vy / 100.0)
+
+        if not valid_points or not xs or not ys:
+            continue
+
+        left = min(xs)
+        top = min(ys)
+        right = max(xs)
+        bottom = max(ys)
+
+        if left >= right or top >= bottom:
+            continue
+
+        rects[url] = (left, top, right, bottom)
+
+    return rects
 
 
 def extract_title(html: str) -> str:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from newspaper_auto import config, parse, scanner
@@ -279,3 +281,97 @@ def test_nfnews_real_link_only_page_uses_order_fallback(nfnews_paper, area_day, 
         assert 1 <= geom["index"] <= 9
         assert set(geom) == {"index", "total", "basis"}  # 无 top / 坐标
     assert all("geometry" in rec for rec in hits)
+
+
+def test_nfnews_real_qd01_page_uses_mapping_basis(nfnews_paper, area_day, nfnews_qd01_fetcher):
+    """南方日报真实版面页（QD01 版）：含 mappingOriginal，提取百分比坐标并按 top 排序，basis='mapping'。"""
+    _hits, articles, stats = scanner.scan_paper(
+        nfnews_paper, area_day, KW, workers=4, fetcher=nfnews_qd01_fetcher
+    )
+    assert stats["entry_code"] == 200
+    assert stats["articles"] == 4
+    assert len(articles) == 4
+
+    # 版面名
+    assert {rec["section_no"] for rec in articles} == {"QD01"}
+
+    # 4 篇文章的 top 坐标分别为：
+    # 10182078: top = 0.0
+    # 10182077: top = 0.0814
+    # 10182079: top = 0.0926
+    # 10182080: top = 0.8112
+    # 页面 HTML 中的 <a> 顺序为 77, 78, 79, 80
+    # top 排序后应为：1 -> 10182078, 2 -> 10182077, 3 -> 10182079, 4 -> 10182080
+    by_index = {rec["geometry"]["index"]: rec["url"].rsplit("/", 1)[-1] for rec in articles}
+    assert by_index[1] == "content_10182078.html"
+    assert by_index[2] == "content_10182077.html"
+    assert by_index[3] == "content_10182079.html"
+    assert by_index[4] == "content_10182080.html"
+
+    for rec in articles:
+        geom = rec["geometry"]
+        assert geom["basis"] == "mapping"
+        assert geom["total"] == 4
+        assert 1 <= geom["index"] <= 4
+        assert 0.0 <= geom["top"] < geom["bottom"] <= 1.0
+        # mapping 只写 top/bottom/index/total/basis，不写 x1..y2
+        assert set(geom) == {"top", "bottom", "index", "total", "basis"}
+
+
+def test_merge_geometry_three_tiers_priority():
+    """测试 merge_geometry 三级互斥优先级：
+    1. 有 area 且匹配成功 -> basis='area'
+    2. 无 area 但有 mapping -> basis='mapping'
+    3. 无 area 无 mapping -> basis='order'
+    """
+    # 场景 1: area 优先
+    t1: dict[str, Any] = {}
+    rects = {
+        "http://x/1.html": (0, 0, 10, 100),
+        "http://x/2.html": (0, 200, 10, 300),
+    }
+    mapping = {
+        "http://x/1.html": (0.0, 0.5, 0.5, 0.8),
+        "http://x/2.html": (0.0, 0.1, 0.5, 0.4),
+    }
+    articles = ["http://x/1.html", "http://x/2.html"]
+    scanner.merge_geometry(t1, rects=rects, mapping=mapping, articles=articles)
+    assert t1["http://x/1.html"]["basis"] == "area"
+    assert t1["http://x/1.html"]["index"] == 1
+    assert t1["http://x/2.html"]["basis"] == "area"
+    assert t1["http://x/2.html"]["index"] == 2
+
+    # 场景 2: area 为空，mapping 生效
+    t2: dict[str, Any] = {}
+    scanner.merge_geometry(t2, rects={}, mapping=mapping, articles=articles)
+    # mapping 中 2.html top=0.1 小于 1.html top=0.5 -> 2.html index 1, 1.html index 2
+    g1 = t2["http://x/1.html"]
+    g2 = t2["http://x/2.html"]
+    assert g1["basis"] == "mapping"
+    assert g1["index"] == 2
+    assert g1["top"] == 0.5
+    assert g2["basis"] == "mapping"
+    assert g2["index"] == 1
+    assert g2["top"] == 0.1
+    assert set(g1) == {"top", "bottom", "index", "total", "basis"}
+
+    # 场景 3: area 为空且 mapping 为空 -> order 兜底
+    t3: dict[str, Any] = {}
+    scanner.merge_geometry(t3, rects={}, mapping={}, articles=articles)
+    assert t3["http://x/1.html"] == {"index": 1, "total": 2, "basis": "order"}
+    assert t3["http://x/2.html"] == {"index": 2, "total": 2, "basis": "order"}
+
+
+def test_merge_geometry_mapping_sorts_by_top_then_left_then_order():
+    """mapping 排序规则：top 升序，top 相同时按 left 升序，仍相同则按原出现顺序。"""
+    target: dict[str, Any] = {}
+    mapping = {
+        "http://x/a.html": (0.5, 0.1, 0.9, 0.4),  # top=0.1, left=0.5
+        "http://x/b.html": (0.1, 0.1, 0.4, 0.4),  # top=0.1, left=0.1 (比 a 更靠左，排前面)
+        "http://x/c.html": (0.0, 0.0, 0.5, 0.2),  # top=0.0 (最顶，排第 1)
+    }
+    articles = ["http://x/a.html", "http://x/b.html", "http://x/c.html"]
+    scanner.merge_geometry(target, rects={}, mapping=mapping, articles=articles)
+    assert target["http://x/c.html"]["index"] == 1
+    assert target["http://x/b.html"]["index"] == 2
+    assert target["http://x/a.html"]["index"] == 3
