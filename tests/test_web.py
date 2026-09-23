@@ -109,6 +109,47 @@ def test_build_dashboard_geometry_absent_or_partial_is_none(tmp_path):
     assert all(rec["section_no"] == "" for rec in data["records"])
 
 
+def test_normalize_geometry_accepts_order_fallback():
+    """顺序兜底只有 index/total/basis（没有 top），也必须透出，不能再被整体丢弃。"""
+    out = web._normalize_geometry({"index": 3, "total": 9, "basis": "order"})
+    assert out == {"index": 3, "total": 9, "basis": "order"}
+
+
+def test_normalize_geometry_keeps_area_fields_and_basis():
+    raw = {
+        "x1": 2,
+        "y1": 100,
+        "x2": 336,
+        "y2": 300,
+        "top": 0.38,
+        "bottom": 0.9,
+        "index": 2,
+        "total": 7,
+        "basis": "area",
+    }
+    out = web._normalize_geometry(raw)
+    assert out["index"] == 2 and out["total"] == 7 and out["basis"] == "area"
+    assert out["top"] == 0.38 and out["x1"] == 2 and out["y2"] == 300
+
+
+def test_normalize_geometry_rejects_empty_and_partial():
+    """缺少 index/total 的无/残缺 geometry 仍返回 None（旧归档行为不变）。"""
+    assert web._normalize_geometry(None) is None
+    assert web._normalize_geometry({}) is None
+    assert web._normalize_geometry({"top": 0.5}) is None
+    assert web._normalize_geometry({"index": 1}) is None
+    assert web._normalize_geometry({"total": 3}) is None
+    assert web._normalize_geometry("nope") is None
+
+
+def test_build_dashboard_passes_order_fallback_geometry(tmp_path):
+    """含顺序兜底 geometry 的归档条目，经看板装配后仍保留 index/total/basis。"""
+    item = {**ARCHIVE[1], "section_no": "A01", "geometry": {"index": 1, "total": 9, "basis": "order"}}
+    _write_archive(tmp_path, [item])
+    rec = web.build_dashboard(tmp_path)["records"][0]
+    assert rec["geometry"] == {"index": 1, "total": 9, "basis": "order"}
+
+
 # ---------------------------------------------------------------- HTTP 集成
 @pytest.fixture
 def base_url(tmp_path):

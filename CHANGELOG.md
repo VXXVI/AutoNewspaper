@@ -43,9 +43,15 @@
 - **版本内位置（area coords）**：新增 `parse.area_rects`，从版面页 `<area>` 图像映射取文章的
   包围盒坐标（兼容 `coords="x1,y1,x2,y2"` 矩形与站点实际使用的 `shape="polygon"` 多边形，
   标签大小写/小数坐标均容错）；`scanner` 用该版所有 area 的 `max(y2)` 归一化，产出
-  `geometry = {x1,y1,x2,y2,top,bottom,index,total}`，不下载版面图。无 area 的版面不写该键，
+  `geometry = {x1,y1,x2,y2,top,bottom,index,total,basis:"area"}`，不下载版面图。
   旧 `hits/archive.json` 无该字段也能正常渲染。控制台命中行/ Markdown 报告 / HTML 汇总 /
   本地看板四处都展示 `版内 k/m · 上版 xx%`，缺字段静默降级。
+- **无 `<area>` 版面的顺序兜底**：南方日报等纯链接式版面（页面 0 个 `<area>`）此前拿不到
+  任何位置信息，现在按**版面页链接出现顺序**给出 `版内 k/m`（`scanner.merge_geometry` 产出
+  `geometry = {index,total,basis:"order"}`，**绝不编造** `top` / `bottom` / `x1..y2`）；有
+  `<area>` 的版面行为不变，仅额外标记 `basis:"area"`。看板 `web._normalize_geometry` 的必需
+  字段由 `{index,total,top}` 放宽为 `{index,total}` 并透出可选 `basis`，旧归档的无/残缺
+  geometry 仍返回 `None`；展示上有坐标才带 `上版 xx%`，顺序兜底只显示 `版内 k/m`。
 - **版面号归一化**：新增 `section_no` 字段（`第02版` / `VD02` / `A01` 等），原 `section`
   字符串保持不变（向后兼容），供排序/统计使用。
 

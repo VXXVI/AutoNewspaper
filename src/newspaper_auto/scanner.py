@@ -123,32 +123,43 @@ def scan_paper(
         return node_url, section_title, articles, rects, section_code
 
     def merge_geometry(rects: dict[str, tuple[int, int, int, int]], articles: list[str]) -> None:
-        """把本版 area 坐标归一化后并入 ``article_geometry``。
+        """把本版文章位置并入 ``article_geometry``，分两条互斥的路径。
 
-        画布高度直接用本版所有 area 的 ``max(y2)``（不下载版面图）；``index`` 按 ``y1``
-        升序编号。没有任何 area 的版面（其余四家）自然跳过，不影响其余流程。
+        1. **有 ``<area>`` 映射**（光明 / 羊城 / 中国教育报 / 湛江 / 人民日报）：用本版所有
+           area 的 ``max(y2)`` 当画布高度归一化（不下载版面图），``index`` 按 ``y1`` 升序编号，
+           写出 ``x1..y2`` / ``top`` / ``bottom``，``basis="area"``。个别文章没被任何 area
+           覆盖时仍然不写该键——同一版不混用两套编号体系。
+        2. **纯链接式版面**（如南方日报，页面 0 个 ``<area>``）：拿不到任何坐标，就按
+           ``articles`` 的**出现顺序**编号，只写 ``index`` / ``total`` / ``basis="order"``，
+           **绝不编造** ``top`` / ``bottom`` / ``x1..y2``。前端/报告据此只显示「版内 k/m」。
         """
-        if not rects:
+        if rects:
+            max_y2 = max(rect[3] for rect in rects.values())
+            if max_y2 <= 0:
+                return
+            article_set = set(articles)
+            ordered = sorted(rects.items(), key=lambda item: item[1][1])
+            total = len(ordered)
+            for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
+                if url not in article_set:
+                    continue
+                article_geometry[url] = {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "top": round(y1 / max_y2, 4),
+                    "bottom": round(y2 / max_y2, 4),
+                    "index": index,
+                    "total": total,
+                    "basis": "area",
+                }
             return
-        max_y2 = max(rect[3] for rect in rects.values())
-        if max_y2 <= 0:
+        total = len(articles)
+        if total == 0:
             return
-        article_set = set(articles)
-        ordered = sorted(rects.items(), key=lambda item: item[1][1])
-        total = len(ordered)
-        for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
-            if url not in article_set:
-                continue
-            article_geometry[url] = {
-                "x1": x1,
-                "y1": y1,
-                "x2": x2,
-                "y2": y2,
-                "top": round(y1 / max_y2, 4),
-                "bottom": round(y2 / max_y2, 4),
-                "index": index,
-                "total": total,
-            }
+        for index, url in enumerate(articles, 1):
+            article_geometry[url] = {"index": index, "total": total, "basis": "order"}
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for _node, section_title, articles, rects, sec_code in pool.map(grab_section, nodes):

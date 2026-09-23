@@ -46,6 +46,13 @@ RMRB_AREA_PAPER = {
     "tpl": "http://paper.people.com.cn/rmrb/pc/layout/{a}/node_01.html",
 }
 
+# 南方日报：纯链接式版面（页面 0 个 <area>），只能按链接出现顺序兜底「版内 k/m」
+NFNEWS_PAPER = {
+    "name": "南方日报",
+    "style": "ymd",
+    "tpl": "https://epaper.nfnews.com/nfdaily/html/{a}/node_A01.html",
+}
+
 
 def load_fixture(name: str) -> str:
     return (FIXTURE_DIR / name).read_text(encoding="utf-8")
@@ -154,6 +161,17 @@ def zj_area_fetcher():
 def rmrb_area_fetcher():
     """人民日报：真实含 <Area> 的版面页片段 + 真实文章页。"""
     return make_area_fetcher("rmrb_node_01_area.html", "rmrb_article_30182606.html")
+
+
+@pytest.fixture
+def nfnews_paper() -> dict:
+    return dict(NFNEWS_PAPER)
+
+
+@pytest.fixture
+def nfnews_fetcher():
+    """南方日报：真实纯链接式版面页片段（0 个 <area>）+ 通用文章页。"""
+    return make_area_fetcher("nfnews_node_A01_20260923.html", "article_content_101.html")
 
 
 @pytest.fixture

@@ -212,6 +212,8 @@ def test_area_geometry_from_real_zhanjiang_page(zj_area_paper, area_day, zj_area
     assert len({g["top"] for g in geoms.values()}) == 7
     assert all(0 <= g["top"] < g["bottom"] <= 1 for g in geoms.values())
     assert all(g["total"] == 7 and 1 <= g["index"] <= 7 for g in geoms.values())
+    # 有 area 的版面一律标记 basis="area"（回归：输出字段与旧逻辑一致，只多一个 basis）
+    assert all(g["basis"] == "area" for g in geoms.values())
     # index 按 y1 升序编号
     ordered = sorted(geoms.values(), key=lambda g: g["y1"])
     assert [g["index"] for g in ordered] == list(range(1, 8))
@@ -236,14 +238,44 @@ def test_area_geometry_from_real_rmrb_page(rmrb_area_paper, area_day, rmrb_area_
     assert len({(g["x1"], g["y1"], g["x2"], g["y2"]) for g in geoms}) == 10
     assert {g["index"] for g in geoms} == set(range(1, 11))
     assert all(0 <= g["top"] < g["bottom"] <= 1 for g in geoms)
+    assert all(g["basis"] == "area" for g in geoms)
 
 
-def test_paper_without_area_omits_geometry_key(zhanjiang_paper, fixed_day, site_fetcher):
-    """纯链接式版面（无 area）：不写 geometry 键，其余流程不受影响。"""
+def test_paper_without_area_uses_order_fallback(zhanjiang_paper, fixed_day, site_fetcher):
+    """纯链接式版面（无 area）：按本版链接出现顺序写「版内 k/m」，且绝不编造坐标。"""
     hits, articles, stats = scanner.scan_paper(
         zhanjiang_paper, fixed_day, KW, workers=4, fetcher=site_fetcher(fixed_day)
     )
     assert stats["entry_code"] == 200
     assert articles and hits
-    assert all("geometry" not in rec for rec in articles)
+    geoms = {rec["url"].rsplit("/", 1)[-1]: rec["geometry"] for rec in articles}
+    # 每版独立编号：node_2 → 101/102，node_3 → 103/104（101/102 与 103/104 各占一版）
+    assert geoms["content_101.html"] == {"index": 1, "total": 2, "basis": "order"}
+    assert geoms["content_102.html"] == {"index": 2, "total": 2, "basis": "order"}
+    assert geoms["content_103.html"] == {"index": 1, "total": 2, "basis": "order"}
+    assert geoms["content_104.html"] == {"index": 2, "total": 2, "basis": "order"}
+    # 顺序兜底只写 index/total/basis，绝不出现 top/bottom/x1..y2
+    assert all(set(g) == {"index", "total", "basis"} for g in geoms.values())
     assert {rec["section_no"] for rec in hits} == {"第02版", "第03版"}
+
+
+def test_nfnews_real_link_only_page_uses_order_fallback(nfnews_paper, area_day, nfnews_fetcher):
+    """南方日报真实版面页（2026-09-23 A01 版）：0 个 <area>，按 9 条链接顺序兜底。"""
+    hits, articles, stats = scanner.scan_paper(nfnews_paper, area_day, KW, workers=4, fetcher=nfnews_fetcher)
+    assert stats["entry_code"] == 200
+    assert stats["articles"] == 9
+    assert len(articles) == 9
+    # 版面名走真实 page_section（href == node_A01.html 的锚点）
+    assert {rec["section"] for rec in articles} == {"A01版：要闻"}
+    assert {rec["section_no"] for rec in articles} == {"A01"}
+    # 顺序与页面出现顺序一致：10182150 → 1，10182158 → 9
+    by_index = {rec["geometry"]["index"]: rec["url"].rsplit("/", 1)[-1] for rec in articles}
+    assert by_index[1] == "content_10182150.html"
+    assert by_index[9] == "content_10182158.html"
+    for rec in articles:
+        geom = rec["geometry"]
+        assert geom["basis"] == "order"
+        assert geom["total"] == 9
+        assert 1 <= geom["index"] <= 9
+        assert set(geom) == {"index", "total", "basis"}  # 无 top / 坐标
+    assert all("geometry" in rec for rec in hits)

@@ -51,17 +51,26 @@ def _read_archive(path: Path) -> list[Any]:
 _GEOMETRY_NUMERIC_KEYS = ("x1", "y1", "x2", "y2", "top", "bottom", "index", "total")
 
 
-def _normalize_geometry(raw: Any) -> dict[str, int | float] | None:
-    """收敛 ``geometry``；旧归档没有该字段（或残缺）时返回 None，前端据此不显示位置。"""
+def _normalize_geometry(raw: Any) -> dict[str, int | float | str] | None:
+    """收敛 ``geometry``；旧归档没有该字段（或残缺）时返回 None，前端据此不显示位置。
+
+    必需字段只要 ``index`` / ``total``：纯链接式版面（如南方日报）按链接顺序兜底时根本
+    没有 ``top`` 等纵向坐标，只靠 ``top`` 判空会把整块位置信息丢掉。``x1..y2`` / ``top``
+    / ``bottom`` 有就带上、没有就不带；``basis``（``area`` / ``order``）作为可选项一并透出。
+    旧归档的无 geometry 或残缺 geometry（缺 ``index``/``total``）仍返回 None。
+    """
     if not isinstance(raw, dict):
         return None
-    geometry = {
+    geometry: dict[str, int | float | str] = {
         key: raw[key]
         for key in _GEOMETRY_NUMERIC_KEYS
         if isinstance(raw.get(key), (int, float)) and not isinstance(raw.get(key), bool)
     }
-    if not {"index", "total", "top"} <= geometry.keys():
+    if not {"index", "total"} <= geometry.keys():
         return None
+    basis = raw.get("basis")
+    if isinstance(basis, str) and basis:
+        geometry["basis"] = basis
     return geometry
 
 

@@ -116,6 +116,16 @@ def test_geometry_label_formats_and_degrades():
     assert report.geometry_label("nope") == ""
 
 
+def test_geometry_label_order_fallback_omits_top():
+    """顺序兜底只有 index/total → 只渲染「版内 k/m」，绝不带「上版」后缀。"""
+    assert report.geometry_label({"index": 3, "total": 9, "basis": "order"}) == "版内 3/9"
+    assert report.geometry_label({"index": 1, "total": 1, "basis": "order"}) == "版内 1/1"
+    # 含 top 的 area 形态仍带「上版 xx%」
+    assert (
+        report.geometry_label({"index": 3, "total": 9, "top": 0.25, "basis": "area"}) == "版内 3/9 · 上版 25%"
+    )
+
+
 def test_render_md_includes_area_position_for_new_hits():
     md = report.render_md("kw", [DATE], STATS, [GEOM_HIT], [GEOM_HIT], "增量")
     assert "版内位置：版内 2/7 · 上版 38%" in md
