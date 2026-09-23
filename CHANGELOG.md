@@ -74,6 +74,15 @@
   因此与 Actions 互不覆盖、**可以并存**（本机管「即时可见」，Actions 管「归档 + 增量」）。
   同步修正 `README.md` 与 `.github/workflows/scan.yml` 注释中的旧说法。
 - `http.py` 的 curl 缺失提示改为跨平台表述（Windows 10 1803+ 自带 `curl.exe`）。
+- **⚠️ 修复测试夹具里硬编码的机器相关临时路径（Linux CI 因此连红三次）**：
+  `tests/conftest.py` 的 `tmp_path` 覆盖夹具曾把根目录写死成 macOS 本机的
+  `/private/var/folders/<...>/T/pytest-np`，Linux runner 上 `/private` 无法创建，
+  导致 `PermissionError: [Errno 13] Permission denied: '/private'`，
+  `test_web.py` 的 41 个用例全部 error（Windows 侧因 runner 以管理员运行、
+  能创建 `C:\private\...` 而侥幸通过）。现改为
+  `Path(os.environ.get("NEWSPAPER_PYTEST_TMP") or tempfile.gettempdir()) / "pytest-np"`：
+  默认走**各平台的系统临时目录**，受限环境（如 Sandbox）可用 `NEWSPAPER_PYTEST_TMP`
+  显式指定可写目录，**不再出现任何机器相关绝对路径**。
 
 ### 变更
 

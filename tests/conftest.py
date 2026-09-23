@@ -6,7 +6,9 @@ fixture 文件位于 ``tests/fixtures/``。
 
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -209,16 +211,22 @@ def today() -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# tmp_path 覆盖：WorkBuddy 沙盒下 pytest 默认的 /tmp/pytest-of-root 目录
-# 会因 EEXIST 权限冲突报错，改用已知可写路径。
+# tmp_path 覆盖：受限环境（如 WorkBuddy 沙盒）下 pytest 默认的
+# ``/tmp/pytest-of-<user>`` 会因 EEXIST 权限冲突报错，故把根目录改到「系统临时目录」。
+# 需要时可设环境变量 ``NEWSPAPER_PYTEST_TMP`` 指向一个已知可写的目录。
+#
+# ⚠️ 绝不硬编码机器相关的绝对路径 —— 那会让别的平台直接挂掉：
+#    曾写死 macOS 的 ``/private/var/folders/.../T/pytest-np``，Linux runner 上
+#    ``/private`` 不可创建 → ``PermissionError: [Errno 13] Permission denied: '/private'``，
+#    test_web.py 的 41 个用例全部 error（CI 连红三次）。
 # ---------------------------------------------------------------------------
-_SAFE_TMP = Path("/private/var/folders/8s/qd14vxd90v7c5xfjl6ls1nxw0000gp/T/pytest-np")
+_TMP_ROOT = Path(os.environ.get("NEWSPAPER_PYTEST_TMP") or tempfile.gettempdir()) / "pytest-np"
 
 
 @pytest.fixture
 def tmp_path(request: pytest.FixtureRequest) -> Path:  # type: ignore[override]
     node_id = re.sub(r"[^\w]", "_", request.node.nodeid)
-    p = _SAFE_TMP / node_id
+    p = _TMP_ROOT / node_id
     p.mkdir(parents=True, exist_ok=True)
     yield p
     import shutil
