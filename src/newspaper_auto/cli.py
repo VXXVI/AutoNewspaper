@@ -9,9 +9,10 @@ import sys
 import time
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Callable
 
-from . import __version__, config, papers, parse, paths, report, scanner, state
+from . import __version__, config, exporter, papers, parse, paths, report, scanner, state
 
 
 def _parse_date(text: str) -> datetime:
@@ -93,6 +94,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--data-dir", default=None, help="数据目录（存放 state/ 与 hits/），默认自动探测项目根"
+    )
+    parser.add_argument(
+        "--export-dir",
+        default=None,
+        metavar="DIR",
+        help="把本次命中另存到指定文件夹（自动创建；文件名由程序安全生成）",
+    )
+    parser.add_argument(
+        "--export-format",
+        choices=exporter.EXPORT_FORMATS,
+        default=None,
+        help="--export-dir 的文件格式（提供导出目录时默认 csv，可选 json）",
     )
     fmt_group = parser.add_mutually_exclusive_group()
     fmt_group.add_argument(
@@ -273,7 +286,24 @@ def main(
             parser.error(f"--only 未匹配到任何报社：{'、'.join(unmatched)}（可选：{available}）")
     data_dir = paths.resolve_data_dir(args.data_dir, default_data_dir)
 
+    export_dir: Path | None = None
+    if args.export_dir is None and args.export_format is not None:
+        parser.error("--export-format 必须与 --export-dir 一起使用")
+    if args.export_dir is not None:
+        if args.dry:
+            parser.error("--dry 只探测站点结构，不能与 --export-dir 同时使用")
+        try:
+            # 先做无副作用的路径校验；其他参数全部合法后再创建目录。
+            export_dir = exporter.resolve_directory(args.export_dir, create=False)
+        except (exporter.ExportValidationError, OSError) as exc:
+            parser.error(str(exc))
+
     dates = resolve_dates(args, parser)
+    if export_dir is not None:
+        try:
+            export_dir = exporter.resolve_directory(export_dir, create=True)
+        except (exporter.ExportValidationError, OSError) as exc:
+            parser.error(str(exc))
 
     log(f"关键词：{kw_label}")
     log(f"日期范围：{dates[-1]:%Y-%m-%d} ~ {dates[0]:%Y-%m-%d}（{len(dates)} 天）")
@@ -306,6 +336,8 @@ def main(
 
     md_path: Any = None
     persistence_error: str | None = None
+    export_path: Path | None = None
+    export_error: str | None = None
     if args.no_state:
         new_hits = state.compute_new_hits(all_hits, {}, full=args.full, no_state=True)
     else:
@@ -342,6 +374,12 @@ def main(
 
     _emit_structured(args, all_hits)
 
+    if export_dir is not None:
+        try:
+            export_path = exporter.export_hits(export_dir, args.export_format or "csv", all_hits)
+        except (OSError, TypeError, ValueError) as exc:
+            export_error = str(exc) or exc.__class__.__name__
+
     log("-" * 72)
     log(
         f"  扫描文章 {len(all_articles)} 篇 | 命中 {len(all_hits)} 篇 | "
@@ -360,9 +398,14 @@ def main(
     if md_path is not None:
         log(f"\n  报告：{md_path}")
         log(f"  汇总：{paths.index_file(data_dir)}")
+    if export_path is not None:
+        log(f"  导出：{export_path}")
 
     if persistence_error:
         log(f"\n  ⚠️  结果写入失败：{persistence_error}")
+    if export_error:
+        log(f"\n  ⚠️  结果导出失败：{export_error}")
+    if persistence_error or export_error:
         return 1
 
     # 入口失败 → 非零退出，让 Actions 步骤变红；但增量状态/报告已在上面写完，

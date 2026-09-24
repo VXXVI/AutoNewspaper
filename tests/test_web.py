@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -607,6 +608,148 @@ def test_scan_body_too_large_returns_413(tmp_path):
         status, body = _request("POST", url + "/api/scan", {"keywords": ["x"], "pad": "y" * 20000})
         assert status == 413
         assert json.loads(body)["error"]
+
+
+# ---------------------------------------------------------------- 导出：POST /api/export
+def test_export_api_writes_filtered_json_to_requested_directory(tmp_path):
+    export_dir = tmp_path / "chosen" / "nested"
+    payload = {
+        "directory": str(export_dir),
+        "format": "json",
+        "filters": {
+            "papers": ["湛江日报"],
+            "keywords": ["广东海洋大学"],
+            "from": "2026-09-22",
+            "to": "2026-09-22",
+            "query": "广东海洋大学",
+            "sort": "title",
+        },
+    }
+
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/export", payload)
+
+    response = json.loads(body)
+    target = Path(response["path"])
+    assert status == 201
+    assert response["count"] == 1
+    assert response["format"] == "json"
+    assert response["path"] == str(target.resolve())
+    records = json.loads(target.read_text(encoding="utf-8"))
+    assert [record["title"] for record in records] == ["标题B"]
+
+
+def test_export_api_empty_selection_still_writes_valid_csv(tmp_path):
+    export_dir = tmp_path / "exports"
+
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/export",
+            {
+                "directory": str(export_dir),
+                "format": "csv",
+                "filters": {"papers": [], "sort": "date-desc"},
+            },
+        )
+
+    response = json.loads(body)
+    target = next(export_dir.glob("newspaper-hits-*.csv"))
+    assert status == 201
+    assert response["count"] == 0
+    assert response["format"] == "csv"
+    assert target.read_text(encoding="utf-8").lstrip("\ufeff").startswith("paper,date,section")
+
+
+def test_export_api_resolves_relative_directory_from_data_dir(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/export",
+            {"directory": "chosen", "format": "json"},
+        )
+
+    response = json.loads(body)
+    target = Path(response["path"])
+    assert status == 201
+    assert target.parent == (tmp_path / "chosen").resolve()
+    assert target.is_file()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"directory": "", "format": "csv"},
+        {"directory": "/tmp", "format": "xml"},
+        {"directory": "/tmp", "format": "csv", "records": []},
+        {"directory": "/tmp", "format": "csv", "filters": []},
+        {"directory": "/tmp", "format": "csv", "filters": {"from": "2026-99-99"}},
+        {
+            "directory": "/tmp",
+            "format": "csv",
+            "filters": {"from": "2026-09-23", "to": "2026-09-22"},
+        },
+        {"directory": "/tmp", "format": "csv", "filters": {"sort": "unknown"}},
+        {"directory": "/tmp", "format": "csv", "filters": {"papers": ["不存在报"]}},
+    ],
+)
+def test_export_api_rejects_invalid_request_without_writing(tmp_path, payload):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/export", payload)
+
+    assert status == 400
+    assert json.loads(body)["error"]
+
+
+def test_export_api_write_failure_returns_500(tmp_path, monkeypatch):
+    def fail_export(*_args, **_kwargs):
+        raise OSError("磁盘只读")
+
+    monkeypatch.setattr(web.exporter, "export_hits", fail_export)
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/export",
+            {"directory": str(tmp_path / "exports"), "format": "csv"},
+        )
+
+    assert status == 500
+    assert "导出失败" in json.loads(body)["error"]
+
+
+def test_filter_export_records_matches_query_and_requested_sort():
+    records = [
+        {
+            "paper": "乙报",
+            "date": "2026-09-22",
+            "title": "Beta",
+            "section": "综合",
+            "snippets": ["needle"],
+            "matched": ["k"],
+            "url": "http://x/b",
+        },
+        {
+            "paper": "甲报",
+            "date": "2026-09-21",
+            "title": "Alpha needle",
+            "section": "要闻",
+            "snippets": [],
+            "matched": ["k"],
+            "url": "http://x/a",
+        },
+    ]
+    filters = {
+        "papers": None,
+        "keywords": ["k"],
+        "from": "2026-09-01",
+        "to": "2026-09-30",
+        "query": "NEEDLE",
+        "sort": "title",
+    }
+
+    result = web.filter_export_records(records, filters)
+
+    assert [record["title"] for record in result] == ["Alpha needle", "Beta"]
 
 
 # ---------------------------------------------------------------- 配置：POST/GET /api/config

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from newspaper_auto import cli, config, report
+from newspaper_auto import cli, config, exporter, report
 
 ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "广东海洋大学"]
 ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "广东海洋大学"]
@@ -37,6 +37,93 @@ def test_csv_stdout(tmp_path, capsys, site_fetcher, today):
     assert code == 0
     assert lines[0] == "paper,date,section,title,url,text_len,matched"
     assert len(lines) == 4
+
+
+def test_export_dir_writes_all_hits_as_csv_without_enabling_state(tmp_path, capsys, site_fetcher, today):
+    export_dir = tmp_path / "chosen" / "nested"
+    data_dir = tmp_path / "data"
+
+    code = cli.main(
+        [
+            *ZJ_ARGS,
+            "--no-state",
+            "--data-dir",
+            str(data_dir),
+            "--export-dir",
+            str(export_dir),
+        ],
+        fetcher=site_fetcher(today),
+    )
+
+    out, _err = capsys.readouterr()
+    files = list(export_dir.glob("newspaper-hits-*.csv"))
+    assert code == 0
+    assert len(files) == 1
+    assert files[0].read_text(encoding="utf-8").startswith("\ufeff")
+    assert "导出：" in out
+    assert not data_dir.exists()
+
+
+def test_export_dir_supports_json(tmp_path, site_fetcher, today):
+    export_dir = tmp_path / "exports"
+
+    code = cli.main(
+        [
+            *ZJ_ARGS,
+            "--no-state",
+            "--export-dir",
+            str(export_dir),
+            "--export-format",
+            "json",
+        ],
+        fetcher=site_fetcher(today),
+    )
+
+    files = list(export_dir.glob("newspaper-hits-*.json"))
+    assert code == 0
+    assert len(files) == 1
+    assert _hit_files(json.loads(files[0].read_text(encoding="utf-8"))) == HIT_FILES
+
+
+def test_export_format_without_directory_exits_2_before_network():
+    calls: list[str] = []
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            ["--export-format", "json"],
+            fetcher=lambda url: calls.append(url) or (200, "x" * 400),
+        )
+
+    assert exc.value.code == 2
+    assert calls == []
+
+
+def test_dry_cannot_export_before_network(tmp_path):
+    calls: list[str] = []
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            ["--dry", "--export-dir", str(tmp_path / "exports")],
+            fetcher=lambda url: calls.append(url) or (200, "x" * 400),
+        )
+
+    assert exc.value.code == 2
+    assert calls == []
+
+
+def test_export_failure_returns_nonzero(tmp_path, capsys, monkeypatch, site_fetcher, today):
+    def fail_export(*_args, **_kwargs):
+        raise OSError("模拟导出失败")
+
+    monkeypatch.setattr(exporter, "export_hits", fail_export)
+    code = cli.main(
+        [*ZJ_ARGS, "--no-state", "--export-dir", str(tmp_path / "exports")],
+        fetcher=site_fetcher(today),
+    )
+
+    out, _err = capsys.readouterr()
+    assert code == 1
+    assert "结果导出失败：模拟导出失败" in out
 
 
 def test_json_and_csv_are_mutually_exclusive(capsys, site_fetcher, today):

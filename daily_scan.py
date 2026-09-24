@@ -35,12 +35,15 @@
     python3 daily_scan.py --no-state         # 无状态运行，不读写状态与报告文件
     python3 daily_scan.py --json             # 命中结果以 JSON 数组输出到 stdout
     python3 daily_scan.py --csv              # 命中结果以 CSV 格式输出到 stdout
+    python3 daily_scan.py --export-dir ./exports              # 本次命中另存 CSV
+    python3 daily_scan.py --export-dir ./exports --export-format json
 
 输出
 ----
     state/seen.json        增量状态（记录已判定过的文章 URL）
     hits/<日期>.md         每次运行的报告
     hits/index.html        历史命中汇总（可浏览）
+    <导出目录>/newspaper-hits-*.csv|json  可选的本次命中导出
 """
 
 from __future__ import annotations

@@ -7,6 +7,9 @@
 
 ### 新增
 
+- **指定目录导出**：CLI 新增 `--export-dir` / `--export-format csv|json`，看板新增
+  「导出结果」对话框与 `POST /api/export`。服务端从归档重新应用受控筛选，以原子写入、
+  安全唯一文件名和 CSV 公式注入防护保存 CSV / JSON；浏览器 CSV 下载作为兼容兜底。
 - **看板工作台与结果阅读二次重构**：首屏改为「扫描配置 + 实时任务状态」，
   结果区改为独立筛选侧栏和渐进加载列表，版面图/趋势收敛到分析区；新增粘性导航、
   手机结果卡、扫描表单语义、更完整的键盘/读屏支持与网络错误提示（`static/*`）。
@@ -162,11 +165,9 @@
   同步修正 `README.md` 与 `.github/workflows/scan.yml` 注释中的旧说法。
 - `http.py` 的 curl 缺失提示改为跨平台表述（Windows 10 1803+ 自带 `curl.exe`）。
 - **⚠️ 修复测试夹具里硬编码的机器相关临时路径（Linux CI 因此连红三次）**：
-  `tests/conftest.py` 的 `tmp_path` 覆盖夹具曾把根目录写死成 macOS 本机的
-  `/private/var/folders/<...>/T/pytest-np`，Linux runner 上 `/private` 无法创建，
-  导致 `PermissionError: [Errno 13] Permission denied: '/private'`，
-  `test_web.py` 的 41 个用例全部 error（Windows 侧因 runner 以管理员运行、
-  能创建 `C:\private\...` 而侥幸通过）。现改为
+  `tests/conftest.py` 的 `tmp_path` 覆盖夹具曾把根目录写死成某台 macOS 开发机的
+  临时目录，Linux runner 无法创建，导致 41 个 `test_web.py` 用例全部 error
+  （Windows runner 以管理员运行时曾侥幸通过）。现改为
   `Path(os.environ.get("NEWSPAPER_PYTEST_TMP") or tempfile.gettempdir()) / "pytest-np"`：
   默认走**各平台的系统临时目录**，受限环境（如 Sandbox）可用 `NEWSPAPER_PYTEST_TMP`
   显式指定可写目录，**不再出现任何机器相关绝对路径**。
@@ -205,6 +206,10 @@
 
 ### 文档
 
+- `README.md` 补齐全新 clone 后 macOS / Linux / Windows 的零安装启动步骤、运行前检查与
+  标准 `venv + pip` 开发环境命令；CI 在 Linux / Windows 安装依赖前先验证两个
+  零安装入口。VPS 示例改用通用 SSH 占位主机。历史交付文档移除开发机用户名、
+  绝对路径与私有运行时痕迹，并新增公开文档机器路径回归测试。
 - `README.md` 新增「自定义报社」章节（文件位置、字段表、同名覆盖语义、**必须提交推送才进
   CI**、解析兜底对换站点的诚实提醒、SSRF 能力边界），并更新看板「扫描设置」（日期范围模式、
   筛选日期框只筛列表）与路由表（+4 条 papers 路由）。

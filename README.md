@@ -70,6 +70,7 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   ├── scanner.py                #   扫描编排（入口→版面→文章）
 │   ├── state.py                  #   增量状态读写与「新增」判定
 │   ├── report.py                 #   Markdown / HTML / JSON / CSV 渲染
+│   ├── exporter.py               #   指定目录导出（CSV / JSON）
 │   ├── web.py                    #   本地看板 + 一键触发扫描（stdlib http.server）
 │   ├── static/                   #   看板前端（原生 HTML/CSS/JS，无构建）
 │   └── cli.py                    #   参数解析与主流程
@@ -92,13 +93,40 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 
 ## 三、安装
 
-项目支持 **macOS / Linux / Windows 10 1803+**。运行时只需要
-**Python 3.9+** 和 **curl**（macOS 与新版 Windows 自带），不装任何第三方包也能跑：
+项目支持 **macOS / Linux / Windows 10 1803+**。从 GitHub 获取项目需要 **Git**；
+程序运行时只需要 **Python 3.9+** 和 **curl**，不需要 `pip install`，也不需要先创建
+虚拟环境。macOS 与 Windows 10 1803+
+通常已带 curl；Linux 若 `curl --version` 失败，请先用系统包管理器安装 curl。
+
+### 全新克隆后直接运行
+
+macOS / Linux：
 
 ```bash
-cd /path/to/AutoNewspaper
-python3 daily_scan.py --dry        # 直接可用
+git clone https://github.com/VXXVI/AutoNewspaper.git
+cd AutoNewspaper
+python3 --version
+curl --version
+python3 daily_scan.py --version
+python3 dashboard.py --open --scan
 ```
+
+Windows（命令提示符或 PowerShell）：
+
+```bat
+git clone https://github.com/VXXVI/AutoNewspaper.git
+cd AutoNewspaper
+python --version
+curl --version
+python daily_scan.py --version
+python dashboard.py --open --scan
+```
+
+当前 GitHub 仓库是私有库：**有访问权限且已完成 GitHub 认证的账号可以正常 clone**；
+未登录或没有权限时 GitHub 会拒绝。可使用 GitHub Credential Manager、`gh auth login`
+或已配置的 SSH 密钥完成认证。最后一条命令会打开本地看板并按默认
+配置开始抓取；如果只想确认程序可启动，把它换成 `python3 daily_scan.py --dry`
+（Windows 用 `python daily_scan.py --dry`）。
 
 ### 跨平台快速入口
 
@@ -116,15 +144,26 @@ python3 dashboard.py --open --scan          # 不使用 make 时
 python dashboard.py --open --scan           # Windows
 ```
 
-Windows 上把文档示例中的 `python3` 换成 `python`即可。启动脚本会按
+Windows 上把文档示例中的 `python3` 换成 `python` 即可。启动脚本会按
 `NEWSPAPER_PYTHON` → `.venv` → PATH 中的 Python 顺序自动选择解释器。
 
-如需开发（跑测试 / lint）：
+如需开发（跑测试 / lint），先安装开发依赖。macOS / Linux：
 
 ```bash
-make install        # 等价于 uv venv && uv pip install -e ".[dev]"
-make check          # ruff + pytest
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pytest
 ```
+
+Windows：
+
+```bat
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.venv\Scripts\python.exe -m pytest
+```
+
+装有 `uv` 与 `make` 的 macOS / Linux 开发机也可用 `make install && make check`。
 
 ---
 
@@ -140,6 +179,8 @@ python3 daily_scan.py --kw 广东海洋大学 --kw 海大   # 多个关键词
 python3 daily_scan.py --only 湛江日报,南方日报       # 只扫指定报社
 python3 daily_scan.py --full           # 忽略增量记录，全量重报
 python3 daily_scan.py --workers 8      # 并发数（默认 8）
+python3 daily_scan.py --export-dir ./exports                 # 本次命中另存为 CSV
+python3 daily_scan.py --export-dir ./exports --export-format json  # 改存 JSON
 python3 daily_scan.py --dry            # 只探测入口和版面，不抓文章
 python3 daily_scan.py --version        # 版本号
 ```
@@ -182,6 +223,29 @@ python3 daily_scan.py --days 1 --no-state --csv > today_hits.csv
 python3 daily_scan.py --data-dir /tmp/scan-out --days 1 --no-state
 NEWSPAPER_DATA_DIR=/tmp/scan-out python3 daily_scan.py --days 1
 ```
+
+### 导出到指定文件夹
+
+CLI 使用 `--export-dir <文件夹>` 把**本次扫描的全部命中**另存为新文件；
+目录不存在时会自动创建，且不会改变 `--data-dir` 的状态/归档语义。默认格式是
+CSV，可用 `--export-format json` 改为 JSON。文件名由程序生成，同秒多次导出也不会覆盖。
+
+```bash
+# macOS / Linux；相对路径以当前工作目录为基准
+python3 daily_scan.py --days 1 --no-state --export-dir ./exports
+
+# Windows
+python daily_scan.py --days 1 --no-state --export-dir .\exports --export-format json
+```
+
+看板中点击「导出结果」，可选 CSV / JSON 并填写保存文件夹。看板会在服务端
+重新应用当前的报社、关键词、日期、搜索和排序条件，再原子写入文件。默认目录是
+`<数据目录>/exports`（仓库内默认目录已被 `.gitignore` 忽略）。这里的目录属于**运行看板的设备**：
+
+- 本机启动看板：写入本机文件夹；
+- VPS 上启动并通过 SSH 隧道访问：写入 VPS 文件夹。
+
+「改为浏览器下载 CSV」仍可作为兼容兜底，其保存位置由浏览器下载设置决定。
 
 ### 定时任务（macOS launchd）
 
@@ -324,16 +388,18 @@ GitHub → Settings → Developer settings → **Fine-grained tokens** → 新�
 
 **2. 装脚本与 crontab**
 
+以下示例用 `user@your-vps` 表示你的 VPS SSH 地址，请替换为真实用户名和主机名：
+
 ```bash
 # 建目录（700：同机其他用户读不到）
-ssh vps-ts 'mkdir -p ~/.newspaperauto && chmod 700 ~/.newspaperauto'
+ssh user@your-vps 'mkdir -p ~/.newspaperauto && chmod 700 ~/.newspaperauto'
 
 # 部署脚本（仓库里的就是部署版本，天然保持一致）
-scp scripts/vps_dispatch.sh vps-ts:.newspaperauto/dispatch.sh
-ssh vps-ts 'chmod 700 ~/.newspaperauto/dispatch.sh'
+scp scripts/vps_dispatch.sh user@your-vps:.newspaperauto/dispatch.sh
+ssh user@your-vps 'chmod 700 ~/.newspaperauto/dispatch.sh'
 
 # 追加 crontab（先备份；已存在则跳过，避免重复堆积）
-ssh vps-ts 'TMP=$(mktemp); crontab -l > "$TMP" 2>/dev/null || true; \
+ssh user@your-vps 'TMP=$(mktemp); crontab -l > "$TMP" 2>/dev/null || true; \
   cp "$TMP" ~/crontab.bak-$(date +%F); \
   grep -q "newspaperauto/dispatch.sh" "$TMP" || \
   printf "# AutoNewspaper 每日扫描触发\n0 2 * * * %s/.newspaperauto/dispatch.sh\n" "$HOME" >> "$TMP"; \
@@ -347,14 +413,14 @@ ssh vps-ts 'TMP=$(mktemp); crontab -l > "$TMP" 2>/dev/null || true; \
 
 ```bash
 # 在你自己机器上执行。PAT 从键盘读入：不回显、不进 shell 历史、不落命令行参数
-ssh -t vps-ts 'umask 077; read -rsp "粘贴 PAT 后回车: " P; echo; \
+ssh -t user@your-vps 'umask 077; read -rsp "粘贴 PAT 后回车: " P; echo; \
   printf "%s" "$P" > ~/.newspaperauto/pat; unset P; ls -l ~/.newspaperauto/pat'
 ```
 
 **4. 立即验证一次**（不必等到明天早上）
 
 ```bash
-ssh vps-ts '~/.newspaperauto/dispatch.sh; echo "exit=$?"; tail -n 2 ~/.newspaperauto/dispatch.log'
+ssh user@your-vps '~/.newspaperauto/dispatch.sh; echo "exit=$?"; tail -n 2 ~/.newspaperauto/dispatch.log'
 ```
 
 日志里出现 `OK http=204 已受理` 即成功。再确认 Actions 冒出新运行：
@@ -403,6 +469,7 @@ rm -rf ~/.newspaperauto
 | `hits/archive.json` | 命中归档（结构化，便于二次加工） |
 | `state/seen.json` | 增量状态（已判定过的文章 URL），保证只报新增 |
 | `logs/scan-YYYY-MM-DD.log` | 定时任务运行日志 |
+| `exports/newspaper-hits-<时间戳>-<随机标识>.<格式>` | 可选 CSV / JSON 导出文件（目录可自定义） |
 
 ### 本地看板（可配置 + 可触发扫描的 Web 界面）
 
@@ -431,7 +498,7 @@ make start                         # 打开看板 + 按上次页面设置自动�
   （含「全部 / 今天 / 近 7 天 / 近 30 天」**快捷区间**）筛选；标题与上下文搜索、排序；
   命中列表展示**版面**（报纸中的相对位置）与**版内位置**（`版内 k/m`，无 `<area>` 的报社
   按版面页链接顺序给出；`上版 xx%` 仅在网站提供 `<area>` / mapping 坐标时出现）并可点击标题跳原文；
-  支持**按当前筛选导出 CSV**。
+  支持**把当前筛选结果导出为 CSV / JSON 到指定文件夹**，并保留浏览器 CSV 下载兜底。
 - **开始一次监测（会写数据）**：页面顶部保留最常用的**关键词 / 扫描范围 / 开始扫描**；
   并发数与报社选择收进「高级扫描设置」，日常使用不再被技术字段干扰。扫描由看板进程
   **直接触发**，页面显示真实的「报社 × 日期」总体进度，日志按游标增量加载，完成后自动刷新命中列表。
@@ -467,6 +534,9 @@ make start                         # 打开看板 + 按上次页面设置自动�
     `config.DEFAULT_KEYWORDS` / `DEFAULT_DAYS` / `DEFAULT_WORKERS`，并补 `mode="days"` /
     `since=null` / `until=null` / `only=""`。`only` 为可选字段（逗号分隔字符串，也接受字符串
     数组），缺省 / 空串 = 全选。
+  - `POST /api/export`：接收指定目录、`csv|json` 格式和受控筛选条件；服务端只从
+    `hits/archive.json` 重新筛选，不接收前端上传的任意记录。`201` 返回实际文件路径、条数和格式；
+    参数非法返回 `400`，写入失败返回 `500`。相对目录以数据目录为基准。
   - `GET /api/papers`：返回 `{"builtin":[名称…], "custom":[完整对象…], "effective":[名称…]}`。
   - `POST /api/papers`：新增或**同名覆盖**一条自定义报社，返回新的列表；非法 → `400`。
   - `POST /api/papers/delete`：body `{"name":"…"}`；自定义/覆盖可删，**内置且未被覆盖 → `400`**，

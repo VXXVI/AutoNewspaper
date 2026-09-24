@@ -24,6 +24,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: 全新 clone 零安装入口检查
+        run: |
+          python daily_scan.py --version
+          python dashboard.py --version
+
       - name: 安装（含开发依赖）
         run: |
           python -m pip install --upgrade pip
@@ -64,6 +69,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: 全新 clone 零安装入口检查
+        run: |
+          python daily_scan.py --version
+          python dashboard.py --version
 
       - name: 安装（含开发依赖）
         run: |

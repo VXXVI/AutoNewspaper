@@ -14,7 +14,8 @@
 - **读取 + 写入**：读取 ``hits/archive.json`` 与 ``state/seen.json`` 展示看板；
   页面顶部可通过 ``POST /api/scan`` 在看板进程内**直接触发一次真实抓取**，
   抓取结果（``hits/``、``state/``）会写回看板正在读的那个数据目录；
-  ``POST /api/config`` 把关键词/天数或日期范围/并发持久化到 ``state/web_config.json``。
+  ``POST /api/config`` 把关键词/天数或日期范围/并发持久化到 ``state/web_config.json``；
+  ``POST /api/export`` 把当前受控筛选结果原子写入指定目录。
 - **自定义报社**：``GET /api/papers`` 列出「内置 / 自定义 / 覆盖」；``POST /api/papers``
   新增或同名覆盖；``POST /api/papers/delete`` 删除自定义条目；``POST /api/papers/test``
   试抓探测。写回的是**项目根**的 ``papers.custom.json``（配置层，与 ``--data-dir`` 无关）。
@@ -40,7 +41,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from . import __version__, cli, config, papers, paths, report, scanner, state
+from . import __version__, cli, config, exporter, papers, paths, report, scanner, state
 from .web_tasks import ScanTask
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -64,6 +65,9 @@ MAX_LOG_LINES = 300
 MAX_KEYWORDS = config.MAX_KEYWORDS
 MAX_KEYWORD_LEN = config.MAX_KEYWORD_LEN
 MAX_WORKERS = config.MAX_WORKERS
+MAX_EXPORT_QUERY_LEN = 200
+MAX_EXPORT_FILTER_ITEMS = 100
+EXPORT_SORTS = ("date-desc", "date-asc", "paper", "title")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # 扫描范围模式：按天数 / 按日期范围（互斥，缺省按天数以兼容旧配置）
 SCAN_MODES = ("days", "range")
@@ -496,6 +500,134 @@ def save_web_config(data_dir: Path | str, cfg: dict[str, Any]) -> None:
     )
 
 
+# ---------------------------------------------------------------- 结果导出
+def _clean_export_filter_list(raw: Any, field: str) -> tuple[list[str] | None, str | None]:
+    """校验导出筛选数组；None 表示未限定，空数组明确表示不匹配任何记录。"""
+    if raw is None:
+        return None, None
+    if not isinstance(raw, list):
+        return None, f"filters.{field} 必须是字符串数组"
+    if len(raw) > MAX_EXPORT_FILTER_ITEMS:
+        return None, f"filters.{field} 最多 {MAX_EXPORT_FILTER_ITEMS} 项"
+    cleaned: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            return None, f"filters.{field} 不能包含空值或非字符串"
+        value = item.strip()
+        if value not in cleaned:
+            cleaned.append(value)
+    return cleaned, None
+
+
+def validate_export_request(
+    payload: Any, *, base_dir: str | Path | None = None
+) -> tuple[dict[str, Any] | None, str | None]:
+    """校验 ``POST /api/export``；不创建目录，也不接受客户端上传记录。"""
+    if not isinstance(payload, dict):
+        return None, "请求体必须是 JSON 对象"
+    unknown = set(payload) - {"directory", "format", "filters"}
+    if unknown:
+        return None, f"不支持的字段：{'、'.join(sorted(unknown))}"
+
+    try:
+        directory = exporter.resolve_directory(payload.get("directory"), base_dir=base_dir, create=False)
+        format_name = exporter.normalize_format(payload.get("format"))
+    except exporter.ExportValidationError as exc:
+        return None, str(exc)
+
+    raw_filters = payload.get("filters", {})
+    if raw_filters is None:
+        raw_filters = {}
+    if not isinstance(raw_filters, dict):
+        return None, "filters 必须是 JSON 对象"
+    unknown_filters = set(raw_filters) - {"papers", "keywords", "from", "to", "query", "sort"}
+    if unknown_filters:
+        return None, f"不支持的 filters 字段：{'、'.join(sorted(unknown_filters))}"
+
+    paper_names, error = _clean_export_filter_list(raw_filters.get("papers"), "papers")
+    if error:
+        return None, error
+    keywords, error = _clean_export_filter_list(raw_filters.get("keywords"), "keywords")
+    if error:
+        return None, error
+
+    query = raw_filters.get("query", "")
+    if not isinstance(query, str):
+        return None, "filters.query 必须是字符串"
+    query = query.strip()
+    if len(query) > MAX_EXPORT_QUERY_LEN:
+        return None, f"filters.query 不能超过 {MAX_EXPORT_QUERY_LEN} 个字符"
+
+    normalized_dates: dict[str, str | None] = {"from": None, "to": None}
+    for field in ("from", "to"):
+        value = raw_filters.get(field)
+        if value in (None, ""):
+            continue
+        parsed = _parse_iso_date(value)
+        if parsed is None:
+            return None, f"filters.{field} 必须是合法的 YYYY-MM-DD 日期"
+        normalized_dates[field] = parsed.strftime("%Y-%m-%d")
+    if (
+        normalized_dates["from"] is not None
+        and normalized_dates["to"] is not None
+        and normalized_dates["from"] > normalized_dates["to"]
+    ):
+        return None, "filters.from 不能晚于 filters.to"
+
+    sort = raw_filters.get("sort", "date-desc")
+    if sort not in EXPORT_SORTS:
+        return None, f"filters.sort 必须是 {'、'.join(EXPORT_SORTS)} 之一"
+
+    return {
+        "directory": str(directory),
+        "format": format_name,
+        "filters": {
+            "papers": paper_names,
+            "keywords": keywords,
+            "from": normalized_dates["from"],
+            "to": normalized_dates["to"],
+            "query": query,
+            "sort": sort,
+        },
+    }, None
+
+
+def filter_export_records(records: list[dict[str, Any]], filters: dict[str, Any]) -> list[dict[str, Any]]:
+    """在服务端对归档记录应用看板同语义筛选，避免信任前端上传的记录。"""
+    paper_names = filters.get("papers")
+    keywords = filters.get("keywords")
+    from_date = filters.get("from")
+    to_date = filters.get("to")
+    query = str(filters.get("query") or "").casefold()
+
+    selected: list[dict[str, Any]] = []
+    for record in records:
+        if paper_names is not None and record["paper"] not in paper_names:
+            continue
+        if keywords is not None and not any(keyword in keywords for keyword in record["matched"]):
+            continue
+        if from_date and record["date"] and record["date"] < from_date:
+            continue
+        if to_date and record["date"] and record["date"] > to_date:
+            continue
+        if query:
+            haystack = " ".join((record["title"], record["section"], *record["snippets"])).casefold()
+            if query not in haystack:
+                continue
+        selected.append(record)
+
+    # 先建立统一的日期倒序基线；paper/title 排序利用 Python 稳定排序保留同组日期顺序。
+    selected.sort(key=lambda item: (item["date"], item["url"]), reverse=True)
+    sort = filters.get("sort")
+    if sort == "date-asc":
+        selected.reverse()
+    elif sort == "paper":
+        selected.sort(key=lambda item: item["paper"])
+    elif sort == "title":
+        selected.sort(key=lambda item: item["title"])
+    return selected
+
+
 # ---------------------------------------------------------------- 自定义报社
 def build_papers_view(root: Path | str) -> dict[str, Any]:
     """组装 ``GET /api/papers`` 的返回：内置名单 + 自定义对象 + 合并后的生效名单。"""
@@ -775,6 +907,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "/api/papers",
             "/api/papers/delete",
             "/api/papers/test",
+            "/api/export",
         ):
             # 请求体尚未读取，HTTP/1.1 keep-alive 下必须关闭连接，避免残留字节
             # 被服务器误当成下一条请求。
@@ -798,8 +931,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_paper_add(payload)
         elif route == "/api/papers/delete":
             self._handle_paper_delete(payload)
-        else:
+        elif route == "/api/papers/test":
             self._handle_paper_test(payload)
+        else:
+            self._handle_export(payload)
 
     # -- 安全校验 ----------------------------------------------------
     def _check_host(self) -> bool:
@@ -893,6 +1028,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._error_json(500, f"配置保存失败：{exc}")
             return
         self._send_json(200, cfg)
+
+    def _handle_export(self, payload: Any) -> None:
+        """把服务端归档的受控筛选结果原子写入用户指定文件夹。"""
+        request, error = validate_export_request(payload, base_dir=self.server.data_dir)
+        if error:
+            self._error_json(400, error)
+            return
+        assert request is not None
+
+        dashboard = build_dashboard(self.server.data_dir)
+        filters = request["filters"]
+        for field, available_field in (("papers", "papers"), ("keywords", "keywords")):
+            requested = filters[field]
+            if requested is None:
+                continue
+            available = set(dashboard[available_field])
+            unknown = [value for value in requested if value not in available]
+            if unknown:
+                self._error_json(400, f"filters.{field} 包含未知值：{'、'.join(unknown)}")
+                return
+
+        records = filter_export_records(dashboard["records"], filters)
+        try:
+            output_path = exporter.export_hits(request["directory"], request["format"], records)
+        except exporter.ExportValidationError as exc:
+            self._error_json(400, str(exc))
+            return
+        except OSError as exc:
+            self._error_json(500, f"导出失败：{exc}")
+            return
+        self._send_json(
+            201,
+            {"path": str(output_path), "count": len(records), "format": request["format"]},
+        )
 
     def _handle_paper_add(self, payload: Any) -> None:
         """新增或**同名覆盖**一条自定义报社，写回后返回最新列表。"""

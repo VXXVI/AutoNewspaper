@@ -144,7 +144,7 @@
         <p id="shown" aria-live="polite">正在加载…</p>
       </div>
       <div class="button-group">
-        <button id="export" class="btn ghost" type="button">导出 CSV</button>
+        <button id="export" class="btn ghost" type="button">导出结果</button>
         <button id="reset" class="btn subtle" type="button">清除筛选</button>
       </div>
     </div>
@@ -303,6 +303,51 @@
     </div>
   </details>
 </main>
+
+<dialog class="export-dialog" id="export-dialog" aria-labelledby="export-title">
+  <form class="export-form" id="export-form">
+    <div class="dialog-heading">
+      <div>
+        <span class="eyebrow">保存到看板所在设备</span>
+        <h2 id="export-title">导出监测结果</h2>
+      </div>
+      <button class="dialog-close" id="export-close" type="button" aria-label="关闭导出窗口">×</button>
+    </div>
+
+    <div class="export-scope" id="export-scope">
+      <i aria-hidden="true">✓</i>
+      <div><b>正在计算导出范围…</b><span>导出的内容与当前筛选保持一致。</span></div>
+    </div>
+
+    <label class="field">
+      <span>文件格式</span>
+      <select id="export-format">
+        <option value="csv">CSV 表格（推荐，可用 Excel 打开）</option>
+        <option value="json">JSON 数据（适合程序处理）</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>看板所在设备的保存文件夹</span>
+      <input id="export-directory" type="text" spellcheck="false" autocomplete="off" aria-describedby="export-directory-hint">
+      <small id="export-directory-hint">本机启动看板时是本机目录；VPS 启动时是 VPS 目录。请填写该设备上的完整路径。</small>
+    </label>
+
+    <div class="path-preview" aria-live="polite">
+      <span id="export-path-label">目标文件夹</span>
+      <code id="export-path-preview">—</code>
+    </div>
+
+    <div class="export-status" id="export-status" role="status" aria-live="polite"></div>
+
+    <div class="dialog-actions">
+      <button class="btn text" id="export-browser" type="button">改为浏览器下载 CSV</button>
+      <span class="dialog-action-spacer"></span>
+      <button class="btn ghost" id="export-cancel" type="button">取消</button>
+      <button class="btn primary" id="export-save" type="submit">保存到文件夹</button>
+    </div>
+  </form>
+</dialog>
 
 <footer class="foot" id="foot"></footer>
 <script src="/static/api.js" defer></script>

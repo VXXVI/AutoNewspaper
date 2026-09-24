@@ -19,6 +19,7 @@
   var scanLogLines = [];
   var currentScanTaskId = null;
   var renderTimer = null;
+  var exportBusy = false;
 
   // 「只扫选中报社」：scanPaperNames = 可选报社（GET /api/papers 的 effective）；
   // scanPaperSelected = null 表示尚未筛选（全选），否则为选中名字集合。
@@ -247,7 +248,7 @@
     render();
   }
 
-  /* -------------------------------------------------------------- 导出 CSV */
+  /* -------------------------------------------------------------- 导出结果 */
   function csvCell(value) {
     var s = (value === undefined || value === null) ? "" : String(value);
     if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;              // 防 CSV 公式注入
@@ -255,7 +256,8 @@
     return s;
   }
 
-  function exportCsv() {
+  // 浏览器下载兜底：不依赖后端写文件能力，始终导出当前筛选的 CSV。
+  function downloadCsv() {
     if (!state.data) return;
     var rows = sortRecords(filtered());
     var head = ["报社", "日期", "版面", "标题", "链接", "命中关键词", "上下文"];
@@ -274,6 +276,117 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
+  }
+
+  function defaultExportDirectory() {
+    var base = state.data && typeof state.data.data_dir === "string" ? state.data.data_dir.trim() : "";
+    if (!base) return "exports";
+    var separator = base.indexOf("\\") !== -1 && base.indexOf("/") === -1 ? "\\" : "/";
+    return base.replace(/[\\/]+$/, "") + separator + "exports";
+  }
+
+  function exportFilters() {
+    return {
+      papers: Array.from(state.papers),
+      keywords: Array.from(state.keywords),
+      from: state.from,
+      to: state.to,
+      query: state.q.trim(),
+      sort: state.sort
+    };
+  }
+
+  function setExportStatus(text, tone) {
+    var status = $("export-status");
+    status.textContent = text || "";
+    if (tone) status.setAttribute("data-state", tone);
+    else status.removeAttribute("data-state");
+  }
+
+  function updateExportPathPreview(path, isFile) {
+    $("export-path-label").textContent = isFile ? "已保存文件" : "目标文件夹";
+    $("export-path-preview").textContent = path || "请填写保存文件夹";
+  }
+
+  function updateExportScope() {
+    var rows = state.data ? filtered() : [];
+    var scope = $("export-scope");
+    var title = scope.querySelector("b");
+    var detail = scope.querySelector("span");
+    title.textContent = rows.length ? "将导出当前筛选的 " + rows.length + " 条报道" : "当前筛选没有可导出的报道";
+    detail.textContent = rows.length
+      ? "服务端会重新应用相同筛选，并返回实际保存路径与条数。"
+      : "请关闭窗口并调整筛选条件后再试。";
+    $("export-save").disabled = exportBusy || rows.length === 0;
+    $("export-browser").disabled = exportBusy || rows.length === 0;
+  }
+
+  function setExportBusy(busy) {
+    exportBusy = busy;
+    var save = $("export-save");
+    save.textContent = busy ? "正在保存…" : "保存到文件夹";
+    $("export-format").disabled = busy;
+    $("export-directory").disabled = busy;
+    updateExportScope();
+  }
+
+  function openExportDialog() {
+    if (!state.data) return;
+    var directory = $("export-directory");
+    if (!directory.value.trim()) directory.value = defaultExportDirectory();
+    updateExportPathPreview(directory.value.trim());
+    setExportStatus("");
+    updateExportScope();
+    var dialog = $("export-dialog");
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    window.setTimeout(function () { directory.focus(); directory.select(); }, 0);
+  }
+
+  function closeExportDialog() {
+    if (exportBusy) return;
+    var dialog = $("export-dialog");
+    if (typeof dialog.close === "function") dialog.close();
+    else dialog.removeAttribute("open");
+  }
+
+  function saveExport(event) {
+    event.preventDefault();
+    if (exportBusy || !state.data) return;
+    var directory = $("export-directory").value.trim();
+    if (!directory) {
+      setExportStatus("请填写保存文件夹的完整路径。", "error");
+      $("export-directory").focus();
+      return;
+    }
+
+    setExportBusy(true);
+    setExportStatus("正在整理当前筛选结果并写入文件…", "busy");
+    api.post("/api/export", {
+      directory: directory,
+      format: $("export-format").value,
+      filters: exportFilters()
+    }, { timeout: 60000 })
+      .then(function (result) {
+        var count = typeof result.count === "number" ? result.count : 0;
+        var format = typeof result.format === "string" ? result.format.toUpperCase() : "文件";
+        var path = typeof result.path === "string" ? result.path : directory;
+        updateExportPathPreview(path, true);
+        setExportStatus("导出成功：已保存 " + count + " 条 " + format + " 记录。", "success");
+      })
+      .catch(function (err) {
+        var unavailable = err.status === 0 || err.status === 404 || err.status === 405 || err.status === 501;
+        setExportStatus(unavailable
+          ? "当前服务暂不支持写入指定文件夹。可使用“浏览器下载 CSV”保存当前筛选结果。"
+          : "导出失败：" + err.message, "error");
+      })
+      .finally(function () { setExportBusy(false); });
+  }
+
+  function downloadExportFallback() {
+    if (!state.data || !filtered().length) return;
+    downloadCsv();
+    setExportStatus("已交给浏览器下载当前筛选的 CSV；保存位置由浏览器的下载设置决定。", "success");
   }
 
   /* -------------------------------------------------------------- 扫描设置 */
@@ -1167,7 +1280,21 @@
     $("sort").addEventListener("change", function (e) {
       state.sort = e.target.value; state.visibleRows = INITIAL_ROWS; render();
     });
-    $("export").addEventListener("click", exportCsv);
+    $("export").addEventListener("click", openExportDialog);
+    $("export-form").addEventListener("submit", saveExport);
+    $("export-close").addEventListener("click", closeExportDialog);
+    $("export-cancel").addEventListener("click", closeExportDialog);
+    $("export-browser").addEventListener("click", downloadExportFallback);
+    $("export-directory").addEventListener("input", function (event) {
+      updateExportPathPreview(event.target.value.trim());
+      if ($("export-status").getAttribute("data-state") === "error") setExportStatus("");
+    });
+    $("export-dialog").addEventListener("cancel", function (event) {
+      if (exportBusy) event.preventDefault();
+    });
+    $("export-dialog").addEventListener("click", function (event) {
+      if (event.target === $("export-dialog")) closeExportDialog();
+    });
     $("results-more").addEventListener("click", function () {
       state.visibleRows += ROW_STEP;
       render();
