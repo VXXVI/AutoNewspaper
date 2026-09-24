@@ -82,6 +82,20 @@ def test_build_dashboard_reads_seen_counts(tmp_path):
     assert web.build_dashboard(tmp_path)["seen_counts"] == {"广东海洋大学": 2}
 
 
+def test_build_dashboard_exposes_empty_state_hints(tmp_path):
+    """空状态引导所需字段：has_web_config（是否全新环境）与 default_keywords。"""
+    _write_archive(tmp_path, [])
+    data = web.build_dashboard(tmp_path)
+    assert data["count"] == 0
+    assert data["has_web_config"] is False
+    assert data["default_keywords"] == list(config.DEFAULT_KEYWORDS)
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "web_config.json").write_text("{}", encoding="utf-8")
+    assert web.build_dashboard(tmp_path)["has_web_config"] is True
+
+
 # ---------------------------------------------------------------- 任务 B/C：geometry / section_no
 def test_build_dashboard_passes_geometry_and_section_no(tmp_path):
     geometry = {
@@ -297,10 +311,13 @@ def _wait_done(url, attempts=100, interval=0.05):
 
 
 def test_scan_post_runs_to_done_and_logs(tmp_path):
+    release = threading.Event()
+
     def runner(data_dir, params, log):
         assert str(data_dir) == str(tmp_path)
         log("假装扫描开始")
         log(f"关键词：{params['keywords'][0]}")
+        release.wait(timeout=5)  # 阻塞到响应读回后，避免 runner 先于 202 响应跑完
         return {"exit_code": 0, "summary": {"hits": 1}}
 
     with _serve(tmp_path, runner) as url:
@@ -309,6 +326,7 @@ def test_scan_post_runs_to_done_and_logs(tmp_path):
         )
         assert status == 202
         assert json.loads(body)["status"] == "running"
+        release.set()
 
         task = _wait_done(url)
         assert task["status"] == "done"
@@ -389,6 +407,27 @@ def test_scan_status_idle_initially(tmp_path):
         assert data["error"] is None
 
 
+def test_scan_accepts_only_param(tmp_path):
+    seen = {}
+
+    def runner(data_dir, params, log):
+        seen.update(params)
+        return {"exit_code": 0, "summary": None}
+
+    with _serve(tmp_path, runner) as url:
+        status, _body = _request("POST", url + "/api/scan", {"keywords": ["x"], "only": "湛江日报,南方日报"})
+        assert status == 202
+        assert _wait_done(url)["status"] == "done"
+    assert seen["only"] == "湛江日报,南方日报"
+
+
+def test_scan_only_invalid_element_returns_400(tmp_path):
+    with _serve(tmp_path, _noop_runner) as url:
+        status, body = _request("POST", url + "/api/scan", {"keywords": ["x"], "only": ["湛江日报", 5]})
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
 def test_scan_body_too_large_returns_413(tmp_path):
     with _serve(tmp_path, _noop_runner) as url:
         status, body = _request("POST", url + "/api/scan", {"keywords": ["x"], "pad": "y" * 20000})
@@ -408,9 +447,10 @@ def test_config_defaults_then_roundtrip(tmp_path):
         # 新增字段：旧配置缺省时回落「按天数」，保证向后兼容
         assert cfg["mode"] == "days"
         assert cfg["since"] is None and cfg["until"] is None
+        assert cfg["only"] == ""  # 旧配置缺省 = 全选
 
         payload = {"keywords": ["甲", "乙"], "days": 5, "workers": 3}
-        expected = {**payload, "mode": "days", "since": None, "until": None}
+        expected = {**payload, "mode": "days", "since": None, "until": None, "only": ""}
         status, body = _request("POST", url + "/api/config", payload)
         assert status == 200
         assert json.loads(body) == expected
@@ -435,7 +475,53 @@ def test_load_web_config_legacy_file_defaults_to_days(tmp_path):
         "mode": "days",
         "since": None,
         "until": None,
+        "only": "",
     }
+
+
+def test_config_only_roundtrip(tmp_path):
+    """only 字段往返：字符串按原样保存，GET 读回一致。"""
+    with _serve(tmp_path) as url:
+        payload = {"keywords": ["广东海洋大学"], "days": 2, "workers": 8, "only": "湛江日报,南方日报"}
+        status, body = _request("POST", url + "/api/config", payload)
+        assert status == 200
+        saved = json.loads(body)
+        assert saved["only"] == "湛江日报,南方日报"
+
+        status, body = _request("GET", url + "/api/config")
+        assert json.loads(body)["only"] == "湛江日报,南方日报"
+
+
+def test_config_only_accepts_list_and_normalizes(tmp_path):
+    """only 也接受字符串数组（去空去重后以逗号连接）。"""
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/config",
+            {"keywords": ["x"], "days": 2, "workers": 8, "only": ["湛江日报", " 湛江日报 ", "南方日报"]},
+        )
+        assert status == 200
+        assert json.loads(body)["only"] == "湛江日报,南方日报"
+
+
+def test_config_only_invalid_type_returns_400(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST", url + "/api/config", {"keywords": ["x"], "days": 2, "workers": 8, "only": 123}
+        )
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
+def test_load_web_config_legacy_without_only_falls_back_to_empty(tmp_path):
+    """旧 web_config.json（无 only）读回时 only 为空串 = 全选。"""
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "web_config.json").write_text(
+        json.dumps({"keywords": ["海大"], "days": 4, "workers": 2}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    assert web.load_web_config(tmp_path)["only"] == ""
 
 
 def test_config_range_mode_roundtrip(tmp_path):

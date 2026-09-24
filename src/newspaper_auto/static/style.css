@@ -221,6 +221,12 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .paper-src.src-custom { color: var(--accent); background: var(--accent-soft); border-color: #bcd7fd; }
 .paper-actions { margin-left: auto; display: flex; gap: 6px; }
+.commit-cmd {
+  flex: 1 1 320px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted);
+  background: #fbfcfd;
+}
 
 /* ---------------------------------------------------------------- 表格 */
 .table-wrap { overflow-x: auto; }
@@ -255,6 +261,10 @@ td.title a:hover { text-decoration: underline; }
 }
 
 .empty { color: var(--muted); text-align: center; padding: 28px 0 10px; font-size: 14px; }
+.empty .empty-title { color: var(--fg); font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.empty p { margin: 6px 0; }
+.empty .empty-hint { color: var(--muted); font-size: 12.5px; }
+.empty code { font-size: 12px; }
 
 .foot {
   max-width: 1120px;

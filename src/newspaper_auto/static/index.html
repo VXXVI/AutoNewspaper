@@ -55,9 +55,14 @@
         <input id="scan-workers" type="number" min="1" max="16" step="1" value="8">
       </label>
     </div>
+    <div class="chips-wrap">
+      <div class="chips-label">只扫这些报社</div>
+      <div class="chips" id="scan-papers"></div>
+      <span class="hint" id="scan-papers-hint"></span>
+    </div>
     <div class="scan-actions">
       <button id="scan-run" class="btn" type="button">立即扫描</button>
-      <span class="hint">扫描结果会写回当前数据目录，完成后自动刷新命中列表。</span>
+      <span class="hint">扫描结果会写回当前数据目录，完成后自动刷新命中列表。本次扫描不可中断；如需强制停止，请关闭看板进程（Ctrl+C / 关窗口）。</span>
     </div>
     <pre id="scan-log" class="scan-log"></pre>
   </section>
@@ -68,6 +73,11 @@
       <div class="hint" id="papers-status">—</div>
     </div>
     <div class="papers-list" id="papers-list"></div>
+    <div class="scan-actions" id="papers-commit-row" hidden>
+      <button id="papers-commit" class="btn ghost" type="button">复制提交命令</button>
+      <input id="papers-commit-cmd" class="commit-cmd" type="text" readonly
+             aria-label="提交自定义报社的命令">
+    </div>
     <div class="filters">
       <label class="field">
         <span>名称（≤ 30 字符）</span>

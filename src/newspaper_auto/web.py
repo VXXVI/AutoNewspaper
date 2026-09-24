@@ -2,9 +2,12 @@
 
 用法::
 
-    python3 -m newspaper_auto.web                    # http://127.0.0.1:8787
+    python3 -m newspaper_auto.web                    # http://127.0.0.1:8788
     python3 -m newspaper_auto.web --port 9000 --open
     python3 -m newspaper_auto.web --data-dir /path/to/data
+
+端口优先取 ``--port``（默认 8788）；8788 被占用时命令行会给出提示，可用 ``--port 0``
+让系统自动分配空闲端口。看板也可在页面「扫描设置」里只扫选中的报社（``only``）。
 
 特点：
 - **读取 + 写入**：读取 ``hits/archive.json`` 与 ``state/seen.json`` 展示看板；
@@ -47,7 +50,8 @@ STATIC_TYPES = {
 }
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8787
+# 默认 8788（8787 常被本机其他开发服务占用；8788~8791 已确认空闲）。
+DEFAULT_PORT = 8788
 
 # 允许的 Host / Origin 主机名（环回）。看板只在本机使用，绝不接受外部来源。
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -151,6 +155,10 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
         "seen_counts": seen_counts,
         "date_counts": date_counts,
         "records": records,
+        # 空状态引导用：该数据目录是否已生成 web_config.json（判断是否全新环境），
+        # 以及默认关键词（全新环境时提示用户「默认扫什么」）。
+        "has_web_config": paths.web_config_file(data_dir).exists(),
+        "default_keywords": list(config.DEFAULT_KEYWORDS),
     }
 
 
@@ -188,6 +196,28 @@ def _clean_keywords(raw: Any) -> tuple[list[str] | None, str | None]:
     if len(cleaned) > MAX_KEYWORDS:
         return None, f"keywords 最多 {MAX_KEYWORDS} 个"
     return cleaned, None
+
+
+def _clean_only(raw: Any) -> tuple[str | None, str | None]:
+    """收敛「只扫选中报社」字段为逗号分隔字符串（空串 = 全部）。
+
+    接受字符串，或字符串数组（逐项去空、去重后以逗号连接）。``None`` / 缺省视作
+    空串（全选）。返回 ``(归一化字符串, 错误说明)``；类型非法时字符串为 None。
+    """
+    if raw is None:
+        return "", None
+    if isinstance(raw, str):
+        return raw.strip(), None
+    if isinstance(raw, list):
+        names: list[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                return None, "only 的每个元素都必须是字符串"
+            value = item.strip()
+            if value and value not in names:
+                names.append(value)
+        return ",".join(names), None
+    return None, "only 必须是字符串或字符串数组"
 
 
 def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
@@ -240,9 +270,9 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
     if not use_range and days is None:
         days = config.DEFAULT_DAYS
 
-    only = payload.get("only") or ""
-    if not isinstance(only, str):
-        return None, "only 必须是字符串"
+    only, only_error = _clean_only(payload.get("only"))
+    if only_error:
+        return None, only_error
 
     full = payload.get("full", False)
     if not isinstance(full, bool):
@@ -254,7 +284,7 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
         "since": since_text,
         "until": until_text,
         "workers": workers,
-        "only": only.strip(),
+        "only": only,
         "full": full,
     }, None
 
@@ -279,6 +309,10 @@ def validate_web_config(payload: Any) -> tuple[dict[str, Any] | None, str | None
     if mode not in SCAN_MODES:
         return None, "mode 必须是 days 或 range"
 
+    only, only_error = _clean_only(payload.get("only"))
+    if only_error:
+        return None, only_error
+
     days = payload.get("days", config.DEFAULT_DAYS)
     since = payload.get("since")
     until = payload.get("until")
@@ -295,6 +329,7 @@ def validate_web_config(payload: Any) -> tuple[dict[str, Any] | None, str | None
             "mode": "days",
             "since": None,
             "until": None,
+            "only": only,
         }, None
 
     # mode == "range"
@@ -317,6 +352,7 @@ def validate_web_config(payload: Any) -> tuple[dict[str, Any] | None, str | None
         "mode": "range",
         "since": since_dt.strftime("%Y-%m-%d"),
         "until": until_dt.strftime("%Y-%m-%d"),
+        "only": only,
     }, None
 
 
@@ -324,7 +360,7 @@ def load_web_config(data_dir: Path | str) -> dict[str, Any]:
     """读取看板配置；文件缺失或内容非法时回落到默认值。
 
     ``mode`` / ``since`` / ``until`` 缺省填 ``"days"`` / ``None`` / ``None``，
-    因此**旧版本写出的只有 keywords/days/workers 的配置文件仍可读**。
+    ``only`` 缺省填 ``""``（= 全选），因此**旧版本写出的没有这些字段的配置文件仍可读**。
     """
     defaults = {
         "keywords": list(config.DEFAULT_KEYWORDS),
@@ -333,6 +369,7 @@ def load_web_config(data_dir: Path | str) -> dict[str, Any]:
         "mode": "days",
         "since": None,
         "until": None,
+        "only": "",
     }
     try:
         with open(paths.web_config_file(Path(data_dir)), encoding="utf-8") as handle:
@@ -376,6 +413,13 @@ def load_web_config(data_dir: Path | str) -> dict[str, Any]:
     else:
         mode = "days"
 
+    only = ""
+    raw_only = data.get("only")
+    if isinstance(raw_only, str):
+        only = raw_only.strip()
+    elif isinstance(raw_only, list) and all(isinstance(item, str) for item in raw_only):
+        only = ",".join(item.strip() for item in raw_only if item.strip())
+
     return {
         "keywords": keywords,
         "days": days,
@@ -383,6 +427,7 @@ def load_web_config(data_dir: Path | str) -> dict[str, Any]:
         "mode": mode,
         "since": since_text,
         "until": until_text,
+        "only": only,
     }
 
 
@@ -903,7 +948,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         server = create_server(data_dir, args.host, args.port)
     except OSError as exc:
         print(f"启动失败：{args.host}:{args.port} 不可用（{exc}）。", file=sys.stderr)
-        print("可换端口重试，例如 --port 8788，或用 --port 0 让系统自动分配。", file=sys.stderr)
+        print("可换端口重试，例如 --port 8789，或用 --port 0 让系统自动分配。", file=sys.stderr)
         return 1
 
     host, port = server.server_address[0], server.server_address[1]

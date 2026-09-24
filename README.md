@@ -386,10 +386,14 @@ rm -rf ~/.newspaperauto
 用标准库起一个看板，零第三方依赖、无构建、无 CDN：
 
 ```bash
-python3 -m newspaper_auto.web               # http://127.0.0.1:8787
+python3 -m newspaper_auto.web               # http://127.0.0.1:8788（默认端口）
 python3 -m newspaper_auto.web --port 8799 --open
-make web                                    # 等价（自动打开浏览器）
+make web                                    # 等价（默认 8788，被占用时自动改用空闲端口）
 ```
+
+> 端口可用 `--port` 或环境变量 `NEWSPAPER_PORT` 覆盖（`scripts/dashboard.command` /
+> `scripts/dashboard.cmd` 会读取后者）；默认端口被占用时自动回退到系统分配的空闲端口
+> （等价 `--port 0`），无需手动改端口。
 
 - **数据来源**：`hits/archive.json`（历史命中）与 `state/seen.json`（已判定文章数）。
 - **功能**：概览统计卡片、按日期分布柱状图；按报社 / 命中关键词 / **日期区间**
@@ -397,26 +401,38 @@ make web                                    # 等价（自动打开浏览器）
   命中列表展示**版面**（报纸中的相对位置）与**版内位置**（`版内 k/m`，无 `<area>` 的报社
   按版面页链接顺序给出；`上版 xx%` 仅有 `<area>` 映射时提供）并可点击标题跳原文；
   支持**按当前筛选导出 CSV**。
-- **扫描设置（会写数据）**：页面新增「扫描设置」卡片，可填**关键词 / 扫描范围 / 并发**并点
+- **扫描设置（会写数据）**：页面新增「扫描设置」卡片，可填**关键词 / 扫描范围 / 并发 / 只扫选中报社**并点
   「立即扫描」，由看板进程**直接触发一次真实抓取**，日志实时回显，完成后自动刷新命中列表。
   **扫描范围**为二选一：
   - `按天数`：1 ~ 62 天（默认 2 = 今天 + 昨天）；
   - `按日期范围`：两个 `<input type="date">`（默认 `until` = 今天、`since` = 今天减 1 天），
     两端都含、跨度 ≤ 62 天，与后端 `--since/--until` 完全一致。
+  **只扫选中报社**：`GET /api/papers` 的 `effective` 列表渲染为多选 chips，**默认全选**；
+  取消勾选即只扫其中几家（全选时也显式发送 `only`，不依赖「空 = 全部」的隐含语义）。
+  选中数为 0 时「立即扫描」被禁用。该选择持久化在 `state/web_config.json` 的 `only`
+  字段（**逗号分隔字符串**；空串 = 全选）。
   抓取结果（`hits/`、`state/`）写回**看板正在读取的那个数据目录**；上次用的配置
-  （含 `mode` / `since` / `until`）持久化在 `state/web_config.json`。
-  ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`。
+  （含 `mode` / `since` / `until` / `only`）持久化在 `state/web_config.json`。
+  ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`；**扫描进行中不可中断**，
+  如需强制停止请关闭看板进程（Ctrl+C / 关窗口）。
+  当命中为 0（空归档）时，命中列表区会给出**空状态引导**：显示当前数据目录并提示点
+  「立即扫描」；若是**全新环境**（该目录下还没有 `state/web_config.json`），还会提示
+  默认关键词与默认扫「今天 + 昨天」。
 - **筛选卡片里的两个日期框**（`#from` / `#to`）**只筛选已抓到的命中列表，不影响扫描范围**，
   这一点最容易误解，故界面上已标注「仅筛选已抓到列表」。
 - **报社管理**：「报社」卡片列出内置 / 自定义 / 覆盖三类来源，可新增、试抓、删除，
-  详见下方「自定义报社」。
+  详见下方「自定义报社」。存在自定义 / 覆盖报社时，卡片会显示「复制提交命令」按钮，
+  一键复制 `git add papers.custom.json && git commit -m "chore(papers): 更新自定义报社" && git push`
+  （剪贴板不可用时回退为选中命令文本、提示手动复制）。
 - **新增路由**（`src/newspaper_auto/web.py`）：
   - `POST /api/scan`：启动扫描。`202` 已启动 / `409` 已有任务在跑 / `400` 参数非法 /
-    `403` 来源校验失败 / `413` body 过大；同一时刻最多一个任务。
+    `403` 来源校验失败 / `413` body 过大；同一时刻最多一个任务。可选 `only` 字段
+    （逗号分隔字符串或字符串数组）只扫指定报社。
   - `GET /api/scan`：读当前/最近一次任务状态，无任务时返回 `{"status":"idle"}`。
   - `POST /api/config` / `GET /api/config`：保存 / 读取配置；文件不存在时回落到
     `config.DEFAULT_KEYWORDS` / `DEFAULT_DAYS` / `DEFAULT_WORKERS`，并补 `mode="days"` /
-    `since=null` / `until=null`。
+    `since=null` / `until=null` / `only=""`。`only` 为可选字段（逗号分隔字符串，也接受字符串
+    数组），缺省 / 空串 = 全选。
   - `GET /api/papers`：返回 `{"builtin":[名称…], "custom":[完整对象…], "effective":[名称…]}`。
   - `POST /api/papers`：新增或**同名覆盖**一条自定义报社，返回新的列表；非法 → `400`。
   - `POST /api/papers/delete`：body `{"name":"…"}`；自定义/覆盖可删，**内置且未被覆盖 → `400`**，
@@ -428,7 +444,8 @@ make web                                    # 等价（自动打开浏览器）
   `application/json` 且 body ≤ 16 KiB。关键词只作为 argv 元素传给 `cli.main`，
   **绝不拼 shell 字符串**；不返回任何 CORS 头。页面上的数据与扫描日志全部用
   `textContent` 渲染，不会执行内容里的 HTML/脚本。
-- 端口被占用时会给出提示（可用 `--port 0` 让系统自动分配）。
+- **端口**：默认 `8788`；被占用时自动回退到系统分配的空闲端口（等价 `--port 0`），
+  也可用 `--port` / `NEWSPAPER_PORT` 指定。
 
 ### 自定义报社
 
@@ -549,15 +566,32 @@ Google News 是**标题级检索**，正文提及全漏。2026-09-22 实测的 4
 ## 六、开发
 
 ```bash
-make help      # 查看所有任务
-make test      # pytest
-make lint      # ruff check
-make fmt       # ruff 自动格式化 + 修复
-make check     # lint + test（提交前自检）
+make help          # 查看所有任务
+make test          # pytest
+make lint          # ruff check（缓存写入临时目录，不在仓库落 .ruff_cache）
+make fmt           # ruff 自动格式化 + 修复
+make check         # lint + test（提交前自检）
+make papers-check  # 校验 papers.custom.json 并打印合并后的生效报社清单
+make unlock        # 删除沙箱/异常中断可能残留的 .git/index.lock
 ```
 
 测试全部**离线**：通过注入 fake fetcher 驱动扫描，HTML 样例在 `tests/fixtures/`。
 CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查、测试与 shell 语法检查。
+
+### 故障排查
+
+1. **`fatal: Unable to create '.../.git/index.lock': File exists.`**
+   - 成因：agent 沙箱（对 `git` 程序的 `unlink` 被拒绝）或异常中断留下的 stale lock。
+   - 处理：确认没有 `git` 进程在跑后，`rm -f .git/index.lock`，或直接 `make unlock`。
+   - 预防：`make check` 之后若发现锁，清掉再提交。
+2. **端口被占用**：看板默认 `8788`；被占用时启动器与 `make web` 会自动回退到系统分配的
+   空闲端口并打印实际地址。也可用 `--port` / `NEWSPAPER_PORT` 显式指定。
+3. **看板不是只读的**：看板会写 `state/`（含 `web_config.json`、`seen.json`）与 `hits/`；
+   「报社」卡片里的「试抓」会真实联网。
+4. **`--only` 的语义**：部分匹配（如 `--only 湛江日报,打错的报`）→ 警告后只扫命中的报社；
+   零匹配（全部名字都打错）→ **报错退出码 2**，不会静默开扫。
+5. **扫描进行中无法停止**：看板是在自身进程的线程里跑扫描，无法中途强杀；如需强制停止请
+   关闭看板进程（Ctrl+C / 关窗口）。
 
 ---
 
@@ -578,6 +612,9 @@ CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查、测试与 shell 语
     若它成功而 curl 默认失败，即可锁定是 h2 问题。
 - **对报社站点是轻量访问**：每天每站约 100~200 个请求、并发 8，属正常阅读量级。
   默认并发 8；若某家不稳可降到 4~5（`--workers 5`）。
+- **看板暂无「停止扫描」按钮**：扫描在看板进程内的线程里直接调用 `cli.main`，Python 线程
+  无法安全强杀（改成子进程属设计变更，收益不抵风险）。需要强制停止时，关闭看板进程
+  （Ctrl+C / 关窗口）即可；界面上已标注「本次扫描不可中断」。
 
 ---
 

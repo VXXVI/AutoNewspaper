@@ -7,6 +7,18 @@
 
 ### 新增
 
+- **看板「只扫选中报社」**：`/api/scan` 与 `/api/config` 新增可选字段 `only`（逗号分隔
+  字符串，也接受字符串数组）；`validate_web_config` / `load_web_config` 缺省回落空串
+  （= 全选），**旧配置文件仍可读**。看板「扫描设置」按 `GET /api/papers` 的 `effective`
+  渲染多选 chips（默认全选、全选时也显式发送 `only`、0 家时禁用「立即扫描」），选择持久化进
+  `state/web_config.json`（`web.py`、`static/*`、`tests/test_web.py`）。
+- **看板空状态引导与「复制提交命令」**：`GET /api/hits` 新增 `has_web_config` /
+  `default_keywords`；命中为 0 时命中列表显示引导（当前数据目录 + 一键扫描入口），
+  全新环境额外提示默认关键词与默认扫「今天 + 昨天」。存在自定义 / 覆盖报社时「报社」卡片
+  显示「复制提交命令」按钮（`navigator.clipboard` 不可用时回退为选中文本 + 手动复制提示）。
+- **Makefile 新增 `unlock` / `papers-check`**：`unlock` 清理沙箱残留的 `.git/index.lock`；
+  `papers-check` 校验 `papers.custom.json` 并打印合并后生效报社清单（标注 内置/覆盖/自定义）。
+
 - **看板扫描支持「按日期范围」**：`/api/config` 新增可选字段 `mode`（`days` | `range`，缺省
   `days`）、`since` / `until`（`YYYY-MM-DD` 或 `null`）；`mode=days` 时给 `since/until`
   直接 400，`mode=range` 时校验两端合法、`since <= until`、跨度 ≤ `MAX_RANGE_DAYS`。
@@ -119,6 +131,11 @@
     `legacy/result.csv` 存的是真实站点的原始 CRLF 快照，全局规则会把它们改写掉。
   验证：`git ls-files --eol scripts/` 应显示 4 个 Windows 脚本为 `i/lf w/crlf attr/text eol=crlf`，
   两个 Unix 脚本为 `w/lf`。
+- **`--only` 未匹配不再静默回退全部**：`cli.select_papers` 改为返回 `(选中, 未识别)`；
+  部分匹配时打印 `⚠️ --only 未识别：…（可选：…）` 后继续，**零匹配时以退出码 2 报错退出**、
+  绝不开扫（此前 `--only 光明日` 这类打错会静默扫全部六家，白等且无任何提示）。
+- **测试稳定性**：`test_scan_post_runs_to_done_and_logs` 用 `threading.Event` 阻塞 runner，
+  消除「runner 先于 202 响应跑完」的竞态（`tests/test_web.py`）。
 
 ### 变更
 
@@ -128,6 +145,14 @@
   `install_task_scheduler.ps1`）、`scan.yml` 的 `schedule`（`0 2 * * *` UTC = 北京 10:00）
   与 README 的 VPS crontab 示例（UTC `0 2 * * *` / 北京 `0 10 * * *`）全部对齐；
   `docs/交付说明-*.md` 同步。
+- **看板默认端口 8787 → 8788**：8787 常被本机其他开发服务占用；`make web`、
+  `scripts/dashboard.command` / `.cmd` 在默认端口被占时自动回退到系统分配的空闲端口并打印
+  实际地址。端口可用 `--port` / `NEWSPAPER_PORT` 覆盖。
+- **`make lint` / `fmt` / `check` 不再往仓库写 `.ruff_cache`**：`RUFF_CACHE_DIR` 默认指向
+  临时目录（可外部覆盖），`pytest` 加 `PYTHONDONTWRITEBYTECODE=1`（`Makefile`）。
+- **Windows 启动器对齐 macOS**：`scripts/scan.cmd` / `dashboard.cmd` 优先
+  `.venv\Scripts\python.exe`（可 `NEWSPAPER_PYTHON` 覆盖），看板端口占用时回退 `--port 0`，
+  删除空转的 `set NEWSPAPER_PYTHON=…`，失败时 `pause` 留痕（保持 CRLF 行尾）。
 
 ### 文档
 
@@ -146,6 +171,8 @@
 - 「五家」表述更新为「六家」（`README.md`、`daily_scan.py`、`cli.py`、`__init__.py`、
   `web.py`、`report.py`、`pyproject.toml`、`Makefile`、`scripts/run_scan.*`、看板前端静态页），
   README 入口表补入人民日报。
+- `README.md` 新增「故障排查」（`index.lock` / 端口占用 / 看板可写 / `--only` 三态 /
+  扫描不可中断），更新默认端口与覆盖方式、看板 `only` 配置说明与「停止扫描暂不支持」的边界说明。
 
 ## [0.2.0] - 2026-09-22
 

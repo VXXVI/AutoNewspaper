@@ -13,6 +13,16 @@
   var scanTimer = null;
   var papersView = null;
 
+  // 「只扫选中报社」：scanPaperNames = 可选报社（GET /api/papers 的 effective）；
+  // scanPaperSelected = null 表示尚未筛选（全选），否则为选中名字集合。
+  var scanPaperNames = [];
+  var scanPaperSelected = null;
+  var pendingOnly = null;      // 从 /api/config 读到的 only，等报社列表到位后再应用
+  var scanRunning = false;
+
+  var PAPERS_COMMIT_CMD =
+    'git add papers.custom.json && git commit -m "chore(papers): 更新自定义报社" && git push';
+
   var state = {
     data: null,
     q: "",
@@ -259,9 +269,69 @@
   function setScanStatus(text) { $("scan-status").textContent = text; }
 
   function setScanRunning(running) {
+    scanRunning = running;
+    updateScanButton();
+  }
+
+  // 当前选中的扫描报社（scanPaperSelected 为 null 时视为全选）
+  function scanSelectedNames() {
+    if (!scanPaperSelected) return scanPaperNames.slice();
+    return scanPaperNames.filter(function (name) { return scanPaperSelected.has(name); });
+  }
+
+  function updateScanPapersHint() {
+    var hint = $("scan-papers-hint");
+    if (!hint) return;
+    if (!scanPaperNames.length) { hint.textContent = ""; return; }
+    var n = scanSelectedNames().length;
+    hint.textContent = n === 0
+      ? "⚠ 至少选择一家报社才能扫描"
+      : "已选 " + n + " / " + scanPaperNames.length + " 家";
+  }
+
+  function updateScanButton() {
     var btn = $("scan-run");
-    btn.disabled = running;
-    btn.textContent = running ? "扫描中…" : "立即扫描";
+    if (!btn) return;
+    var zero = scanPaperNames.length > 0 && scanSelectedNames().length === 0;
+    btn.disabled = scanRunning || zero;
+    btn.textContent = scanRunning ? "扫描中…" : "立即扫描";
+  }
+
+  // 渲染扫描用的报社多选 chips（默认全选；全部用 createElement/textContent）
+  function renderScanPapers() {
+    var box = $("scan-papers");
+    if (!box) return;
+    box.textContent = "";
+    scanPaperNames.forEach(function (name) {
+      var on = !scanPaperSelected || scanPaperSelected.has(name);
+      var chip = el("button", on ? "chip on" : "chip", name);
+      chip.type = "button";
+      chip.setAttribute("aria-pressed", on ? "true" : "false");
+      chip.addEventListener("click", function () {
+        if (!scanPaperSelected) scanPaperSelected = new Set(scanPaperNames);
+        if (scanPaperSelected.has(name)) scanPaperSelected.delete(name);
+        else scanPaperSelected.add(name);
+        var nowOn = scanPaperSelected.has(name);
+        chip.classList.toggle("on", nowOn);
+        chip.setAttribute("aria-pressed", nowOn ? "true" : "false");
+        updateScanPapersHint();
+        updateScanButton();
+      });
+      box.appendChild(chip);
+    });
+    updateScanPapersHint();
+    updateScanButton();
+  }
+
+  // 把配置里的 only（逗号分隔字符串）应用到 chip 选择；交集为空则回落到全选
+  function applyConfigOnly(onlyText) {
+    var wanted = splitKeywords(onlyText || "");
+    if (!wanted.length) { scanPaperSelected = null; return; }
+    var selected = new Set();
+    wanted.forEach(function (name) {
+      if (scanPaperNames.indexOf(name) !== -1) selected.add(name);
+    });
+    scanPaperSelected = selected.size ? selected : null;
   }
 
   // 切换「按天数 / 按日期范围」时显示/隐藏对应输入
@@ -303,10 +373,17 @@
         if (typeof cfg.until === "string" && ISO_DATE_RE.test(cfg.until)) {
           $("scan-until").value = cfg.until;
         }
+        pendingOnly = typeof cfg.only === "string" ? cfg.only : "";
+        if (scanPaperNames.length) {
+          applyConfigOnly(pendingOnly);
+          pendingOnly = null;
+          renderScanPapers();
+        }
         ensureRangeDefaults();
         updateScanModeUI();
       })
       .catch(function () {
+        pendingOnly = "";
         ensureRangeDefaults();
         updateScanModeUI();
       });
@@ -326,6 +403,14 @@
       return { error: "并发需为 1 ~ 16 之间的整数" };
     }
 
+    // 「只扫选中报社」：全选时也显式发送 only，不靠「空 = 全部」的隐含语义；
+    // 前端不允许提交 0 家（后端对零匹配会以退出码 2 拒绝）。
+    var selectedPapers = scanSelectedNames();
+    if (scanPaperNames.length && selectedPapers.length === 0) {
+      return { error: "请至少选择一家报社" };
+    }
+    var only = selectedPapers.join(",");
+
     if ($("scan-mode").value === "range") {
       var since = $("scan-since").value;
       var until = $("scan-until").value;
@@ -334,14 +419,16 @@
       }
       if (since > until) return { error: "起始日期不能晚于结束日期" };
       if (spanDays(since, until) > 62) return { error: "日期跨度不能超过 62 天" };
-      return { body: { keywords: keywords, workers: workers, mode: "range", since: since, until: until } };
+      return {
+        body: { keywords: keywords, workers: workers, mode: "range", since: since, until: until, only: only }
+      };
     }
 
     var days = parseInt10($("scan-days").value);
     if (isNaN(days) || days < 1 || days > 62) {
       return { error: "天数需为 1 ~ 62 之间的整数" };
     }
-    return { body: { keywords: keywords, workers: workers, mode: "days", days: days } };
+    return { body: { keywords: keywords, workers: workers, mode: "days", days: days, only: only } };
   }
 
   function startScan() {
@@ -367,7 +454,7 @@
     })
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (data) {
-          if (res.status === 202) { setScanStatus("扫描已启动…"); beginPolling(); return; }
+          if (res.status === 202) { setScanStatus("扫描已启动（不可中断，强制停止请关闭看板进程）…"); beginPolling(); return; }
           if (res.status === 409) { setScanStatus("已有扫描在运行，继续查看进度…"); beginPolling(); return; }
           setScanRunning(false);
           setScanStatus("启动失败：" + ((data && data.error) || ("HTTP " + res.status)));
@@ -419,7 +506,7 @@
           setScanStatus("扫描失败：" + (task.error || "未知错误"));
           load();
         } else {
-          setScanStatus("扫描中…");
+          setScanStatus("扫描中…（不可中断，强制停止请关闭看板进程）");
         }
       })
       .catch(function (err) {
@@ -476,6 +563,10 @@
       row.appendChild(actions);
       box.appendChild(row);
     });
+
+    // 存在自定义 / 覆盖报社时，显示「复制提交命令」（写进 papers.custom.json 后需 commit+push 才进 CI）
+    var commitRow = $("papers-commit-row");
+    if (commitRow) commitRow.hidden = !(view.custom && view.custom.length);
   }
 
   function loadPapers() {
@@ -484,7 +575,16 @@
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       })
-      .then(function (view) { papersView = view; renderPapers(view); })
+      .then(function (view) {
+        papersView = view;
+        renderPapers(view);
+        scanPaperNames = (view.effective || []).slice();
+        if (pendingOnly !== null) {
+          applyConfigOnly(pendingOnly);
+          pendingOnly = null;
+        }
+        renderScanPapers();
+      })
       .catch(function () { setPapersStatus("报社列表加载失败"); });
   }
 
@@ -595,6 +695,25 @@
     runPaperTest(got.paper);
   }
 
+  // 复制「提交并推送 papers.custom.json」命令；clipboard 不可用时回退到选中输入框
+  function copyCommitCommand() {
+    var input = $("papers-commit-cmd");
+    if (input) input.value = PAPERS_COMMIT_CMD;
+
+    function fallback() {
+      try { input.focus(); input.select(); } catch (err) { /* 忽略 */ }
+      setPapersStatus("无法自动复制，已选中命令，请按 Cmd/Ctrl+C 手动复制。");
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(PAPERS_COMMIT_CMD).then(function () {
+        setPapersStatus("已复制提交命令，粘贴到终端执行即可推送给每日 CI。");
+      }, fallback);
+    } else {
+      fallback();
+    }
+  }
+
   /* -------------------------------------------------------------- 渲染 */
   function render() {
     if (!state.data) return;
@@ -612,7 +731,12 @@
     $("shown").textContent = list.length === all.length
       ? "共 " + all.length + " 条"
       : "显示 " + Math.min(list.length, MAX_ROWS) + " / " + list.length + " 条（已筛选）";
-    $("empty").hidden = list.length > 0;
+    if (all.length === 0) {
+      renderEmptyState(data);
+    } else {
+      $("empty").hidden = list.length > 0;
+      $("empty").textContent = "没有符合条件的命中。";
+    }
 
     var hint = $("range-hint");
     if (hint) {
@@ -634,8 +758,28 @@
     foot.appendChild(document.createTextNode(" · 可在上方「扫描设置」中一键触发抓取（结果写入该数据目录）。"));
   }
 
-  function renderStats(all, list) {
-    var data = state.data;
+  // 命中列表空状态：说明当前数据目录，并引导一键扫描；全新环境额外提示默认关键词
+  function renderEmptyState(data) {
+    var box = $("empty");
+    box.textContent = "";
+    box.hidden = false;
+    box.appendChild(el("div", "empty-title", "还没有命中记录"));
+
+    var where = el("p", null, "看板读取的数据目录：");
+    where.appendChild(el("code", null, data.data_dir));
+    box.appendChild(where);
+
+    box.appendChild(el("p", null,
+      "点上方「扫描设置」里的「立即扫描」，即可触发一次真实抓取；完成后本列表会自动刷新。"));
+
+    if (!data.has_web_config) {
+      var kws = (data.default_keywords || []).join("、") || "（默认关键词）";
+      box.appendChild(el("p", "empty-hint",
+        "这是全新环境（尚未生成 state/web_config.json）：默认关键词为「" + kws + "」，默认扫描「今天 + 昨天」。"));
+    }
+  }
+
+  function renderStats(all, list) {    var data = state.data;
     var seenTotal = Object.keys(data.seen_counts).reduce(function (n, k) {
       return n + data.seen_counts[k];
     }, 0);
@@ -737,6 +881,8 @@
     });
     $("paper-add").addEventListener("click", addPaper);
     $("paper-test").addEventListener("click", testPaperForm);
+    $("papers-commit-cmd").value = PAPERS_COMMIT_CMD;
+    $("papers-commit").addEventListener("click", copyCommitCommand);
     loadScanConfig();
     loadPapers();
     $("q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
