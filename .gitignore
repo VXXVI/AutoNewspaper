@@ -26,5 +26,10 @@ dist/
 # hits/
 # state/seen.json
 
+# 看板「扫描设置」的本机持久化（关键词 / 天数 / 并发 / 模式 / only）。
+# 属本机状态而非共享配置，不入库；否则 scan.yml 里的 `git add -A state hits`
+# 会在每天的自动扫描提交里把它一并扫进 main。
+state/web_config.json
+
 # 运行日志
 logs/
