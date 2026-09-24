@@ -16,7 +16,7 @@ WEB_PORT ?= $(if $(NEWSPAPER_PORT),$(NEWSPAPER_PORT),8788)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install test lint fmt check dry scan json csv web run-now plist papers-check unlock clean
+.PHONY: help install test lint fmt check dry scan json csv web start run-now plist papers-check unlock clean
 
 help:  ## 显示本帮助
 	@grep -E '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) \
@@ -55,6 +55,13 @@ web:  ## 启动本地看板（可在页面一键触发扫描；默认 http://127
 		echo; \
 		echo "端口 $(WEB_PORT) 不可用，改用系统自动分配的空闲端口重试…"; \
 		$(PY) dashboard.py --port 0 --open; \
+	}
+
+start:  ## 打开看板，并按上次保存的页面设置自动扫描
+	@$(PY) dashboard.py --port $(WEB_PORT) --open --scan || { \
+		echo; \
+		echo "端口 $(WEB_PORT) 不可用，改用系统自动分配的空闲端口重试…"; \
+		$(PY) dashboard.py --port 0 --open --scan; \
 	}
 
 plist:  ## 打印将要安装的 launchd plist

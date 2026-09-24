@@ -69,7 +69,10 @@
 
   <section class="card" id="papers-card">
     <div class="card-head">
-      <h2>报社</h2>
+      <div>
+        <h2>报社适配</h2>
+        <div class="hint">新增报社后先“试抓”，确认入口、版面和文章规则都能识别，再保存。</div>
+      </div>
       <div class="hint" id="papers-status">—</div>
     </div>
     <div class="papers-list" id="papers-list"></div>
@@ -88,11 +91,24 @@
         <select id="paper-style">
           <option value="ymd">ymd（202609/22）</option>
           <option value="dash">dash（2026-09/22）</option>
+          <option value="custom">自定义 strftime 格式</option>
         </select>
+      </label>
+      <label class="field" id="paper-date-format-field" hidden>
+        <span>自定义日期格式</span>
+        <input id="paper-date-format" type="text" maxlength="40" placeholder="如 %Y/%m/%d" autocomplete="off">
       </label>
       <label class="field">
         <span>版面页链接模板（须含 {a} 占位符）</span>
         <input id="paper-tpl" type="text" placeholder="https://example.com/html/layout/{a}/node_01.html" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>版面链接正则（可选）</span>
+        <input id="paper-node-pattern" type="text" maxlength="300" placeholder="默认 node_\w+\.html?$" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>文章链接正则（可选）</span>
+        <input id="paper-article-pattern" type="text" maxlength="300" placeholder="默认 content_\w+\.html?$" autocomplete="off">
       </label>
       <label class="field">
         <span>超时（可选，5 ~ 120 秒）</span>
@@ -108,9 +124,10 @@
       </label>
     </div>
     <div class="scan-actions">
-      <button id="paper-add" class="btn" type="button">添加</button>
+      <button id="paper-add" class="btn" type="button">保存报社</button>
       <button id="paper-test" class="btn ghost" type="button">试抓当前表单</button>
-      <span class="hint" id="papers-hint">「试抓」会真实联网抓取入口页，仅探测、不写任何文件。</span>
+      <button id="paper-clear" class="btn ghost" type="button">清空表单</button>
+      <span class="hint" id="papers-hint">“试抓”最多读取入口和一个版面，不抓正文、不写文件。</span>
     </div>
   </section>
 
@@ -174,6 +191,18 @@
       <div class="chips-label">命中关键词</div>
       <div class="chips" id="keyword-chips"></div>
     </div>
+  </section>
+
+  <section class="card" id="layouts-card">
+    <div class="card-head">
+      <div>
+        <h2>命中在报纸中的位置</h2>
+        <div class="hint">按报纸网站提供的坐标等比绘制；红色为当前筛选中的命中报道。</div>
+      </div>
+      <div class="hint" id="layouts-summary">—</div>
+    </div>
+    <div class="layout-grid" id="layouts"></div>
+    <div class="empty" id="layouts-empty" hidden></div>
   </section>
 
   <section class="card">

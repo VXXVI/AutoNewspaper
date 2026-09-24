@@ -11,6 +11,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -221,12 +222,66 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color:
 }
 .paper-src.src-custom { color: var(--accent); background: var(--accent-soft); border-color: #bcd7fd; }
 .paper-actions { margin-left: auto; display: flex; gap: 6px; }
+.paper-actions .danger { color: #b42318; }
 .commit-cmd {
   flex: 1 1 320px;
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: var(--muted);
   background: #fbfcfd;
 }
+
+/* ---------------------------------------------------------------- 版面位置 */
+.layout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+.layout-item {
+  display: grid;
+  grid-template-columns: minmax(112px, 150px) 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+.layout-page {
+  position: relative;
+  width: 100%;
+  min-height: 168px;
+  overflow: hidden;
+  border: 1px solid #c8ced7;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(27, 31, 36, 0.06);
+}
+.layout-block {
+  position: absolute;
+  min-width: 2px;
+  min-height: 2px;
+  border: 1px solid #d0cec7;
+  background: #efeee9;
+}
+.layout-block.hit {
+  z-index: 2;
+  border: 2px solid #c53b32;
+  background: rgba(235, 87, 87, 0.42);
+}
+.layout-info h3 { margin: 0 0 4px; font-size: 14px; line-height: 1.45; }
+.layout-info p { margin: 3px 0; color: var(--muted); font-size: 12px; }
+.layout-info .layout-hit { color: #9f251e; font-weight: 600; }
+.layout-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.layout-legend span { color: var(--muted); font-size: 11.5px; }
+.layout-legend i {
+  display: inline-block;
+  width: 13px;
+  height: 9px;
+  margin-right: 5px;
+  border: 1px solid #d0cec7;
+  background: #efeee9;
+  vertical-align: middle;
+}
+.layout-legend .hit-key i { border-color: #c53b32; background: rgba(235, 87, 87, 0.42); }
 
 /* ---------------------------------------------------------------- 表格 */
 .table-wrap { overflow-x: auto; }
@@ -275,3 +330,9 @@ td.title a:hover { text-decoration: underline; }
   word-break: break-all;
 }
 .foot code { font-size: 11.5px; }
+
+@media (max-width: 620px) {
+  .layout-item { grid-template-columns: 110px 1fr; padding: 10px; gap: 10px; }
+  .papers-row { align-items: flex-start; flex-wrap: wrap; }
+  .paper-actions { width: 100%; margin-left: 0; }
+}

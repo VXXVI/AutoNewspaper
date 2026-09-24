@@ -166,6 +166,27 @@ def test_build_dashboard_passes_order_fallback_geometry(tmp_path):
     assert rec["geometry"] == {"index": 1, "total": 9, "basis": "order"}
 
 
+def test_build_dashboard_normalizes_layout(tmp_path):
+    layout = {
+        "basis": "area",
+        "aspect_ratio": 0.7,
+        "items": [
+            {"url": "http://x/a", "left": 0.1, "top": 0.2, "right": 0.8, "bottom": 0.5},
+            {"url": "http://x/b", "left": -1, "top": 0, "right": 2, "bottom": 1},
+        ],
+    }
+    _write_archive(tmp_path, [{**ARCHIVE[0], "layout": layout}])
+    normalized = web.build_dashboard(tmp_path)["records"][0]["layout"]
+    assert normalized["basis"] == "area"
+    assert normalized["aspect_ratio"] == 0.7
+    assert normalized["items"] == [layout["items"][0]]
+
+
+def test_web_parser_accepts_scan_on_start():
+    args = web.build_parser().parse_args(["--scan"])
+    assert args.scan is True
+
+
 # ---------------------------------------------------------------- HTTP 集成
 @pytest.fixture
 def base_url(tmp_path):
@@ -308,6 +329,24 @@ def _wait_done(url, attempts=100, interval=0.05):
             return last
         time.sleep(interval)
     return last
+
+
+def test_default_scan_runner_streams_via_explicit_logger(tmp_path, monkeypatch):
+    received = []
+
+    def fake_main(argv, default_data_dir=None, fetcher=None, logger=None):
+        assert logger is not None
+        logger("扫描进行中")
+        logger("扫描文章 12 篇 | 命中 2 篇 | 新增 1 篇 | 耗时 0.5s")
+        return 0
+
+    monkeypatch.setattr(web.cli, "main", fake_main)
+    result = web.default_scan_runner(tmp_path, {"keywords": ["x"], "days": 1}, received.append)
+    assert received == ["扫描进行中", "扫描文章 12 篇 | 命中 2 篇 | 新增 1 篇 | 耗时 0.5s"]
+    assert result == {
+        "exit_code": 0,
+        "summary": {"articles": 12, "hits": 2, "new_hits": 1, "elapsed": 0.5},
+    }
 
 
 def test_scan_post_runs_to_done_and_logs(tmp_path):
@@ -682,7 +721,14 @@ def test_papers_test_uses_injected_probe(tmp_path):
     with _serve(tmp_path, paper_probe=probe) as url:
         status, body = _request("POST", url + "/api/papers/test", _paper_entry())
         assert status == 200
-        assert json.loads(body) == {"entry_code": 200, "sections": 12, "ok": True, "note": "dry-run"}
+        assert json.loads(body) == {
+            "entry": "",
+            "entry_code": 200,
+            "sections": 12,
+            "sample_articles": None,
+            "ok": True,
+            "note": "dry-run",
+        }
         assert seen["paper"]["name"] == "测试报"
 
 

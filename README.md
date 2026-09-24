@@ -107,6 +107,14 @@ python3 daily_scan.py --dry        # 直接可用
 | Linux | `python3 daily_scan.py` | `python3 dashboard.py --open` | cron / GitHub Actions |
 | Windows | `python daily_scan.py` 或双击 `scripts\scan.cmd` | 双击 `scripts\dashboard.cmd` | `scripts\install_task_scheduler.ps1` |
 
+希望“打开页面并立即抓取”时使用一条命令（读取页面上次保存的关键词、范围和报社选择）：
+
+```bash
+make start                                  # macOS / Linux
+python3 dashboard.py --open --scan          # 不使用 make 时
+python dashboard.py --open --scan           # Windows
+```
+
 Windows 上把文档示例中的 `python3` 换成 `python`即可。启动脚本会按
 `NEWSPAPER_PYTHON` → `.venv` → PATH 中的 Python 顺序自动选择解释器。
 
@@ -402,7 +410,8 @@ rm -rf ~/.newspaperauto
 ```bash
 python3 dashboard.py               # http://127.0.0.1:8788（默认端口）
 python3 dashboard.py --port 8799 --open
-make web                                    # 等价（默认 8788，被占用时自动改用空闲端口）
+make web                           # 只打开看板
+make start                         # 打开看板 + 按上次页面设置自动抓取
 ```
 
 > 端口可用 `--port` 或环境变量 `NEWSPAPER_PORT` 覆盖（`scripts/dashboard.command` /
@@ -410,10 +419,14 @@ make web                                    # 等价（默认 8788，被占用�
 > （等价 `--port 0`），无需手动改端口。
 
 - **数据来源**：`hits/archive.json`（历史命中）与 `state/seen.json`（已判定文章数）。
+- **版面位置图**：扫描器会把网站提供的 `<area>` 或 `mappingOriginal` 坐标统一为 0~1
+  的二维布局；看板按报社 / 日期 / 版面分组绘制，红色标出当前筛选命中。网站只给文章
+  顺序、不提供二维坐标时，只显示 `版内 k/m`，不会伪造版面图。旧归档会在下一次扫描
+  同一文章时自动补齐布局元数据。
 - **功能**：概览统计卡片、按日期分布柱状图；按报社 / 命中关键词 / **日期区间**
   （含「全部 / 今天 / 近 7 天 / 近 30 天」**快捷区间**）筛选；标题与上下文搜索、排序；
   命中列表展示**版面**（报纸中的相对位置）与**版内位置**（`版内 k/m`，无 `<area>` 的报社
-  按版面页链接顺序给出；`上版 xx%` 仅有 `<area>` 映射时提供）并可点击标题跳原文；
+  按版面页链接顺序给出；`上版 xx%` 仅在网站提供 `<area>` / mapping 坐标时出现）并可点击标题跳原文；
   支持**按当前筛选导出 CSV**。
 - **扫描设置（会写数据）**：页面新增「扫描设置」卡片，可填**关键词 / 扫描范围 / 并发 / 只扫选中报社**并点
   「立即扫描」，由看板进程**直接触发一次真实抓取**，日志实时回显，完成后自动刷新命中列表。
@@ -434,7 +447,7 @@ make web                                    # 等价（默认 8788，被占用�
   默认关键词与默认扫「今天 + 昨天」。
 - **筛选卡片里的两个日期框**（`#from` / `#to`）**只筛选已抓到的命中列表，不影响扫描范围**，
   这一点最容易误解，故界面上已标注「仅筛选已抓到列表」。
-- **报社管理**：「报社」卡片列出内置 / 自定义 / 覆盖三类来源，可新增、试抓、删除，
+- **报社管理**：「报社适配」卡片列出内置 / 自定义 / 覆盖三类来源，可新增、编辑、试抓、删除，
   详见下方「自定义报社」。存在自定义 / 覆盖报社时，卡片会显示「复制提交命令」按钮，
   一键复制 `git add papers.custom.json && git commit -m "chore(papers): 更新自定义报社" && git push`
   （剪贴板不可用时回退为选中命令文本、提示手动复制）。
@@ -452,7 +465,8 @@ make web                                    # 等价（默认 8788，被占用�
   - `POST /api/papers/delete`：body `{"name":"…"}`；自定义/覆盖可删，**内置且未被覆盖 → `400`**，
     不存在 → `404`，成功 → `200` + 新列表。
   - `POST /api/papers/test`：body 为一条 paper（或只给内置/已有报社的 `{"name":"…"}`）→
-    试抓探测，返回 `{"entry_code":int,"sections":int,"ok":bool,"note":str}`。
+    最多读取入口与一个样例版面，返回入口 URL、HTTP 状态、版面数、样例文章数和说明；
+    不抓正文、不写文件。
 - **安全**：默认只监听 `127.0.0.1`；所有请求校验 `Host` 必须是环回主机（防 DNS
   rebinding），带 `Origin` 时必须为环回 origin（防跨站触发抓取），`POST` 必须声明
   `application/json` 且 body ≤ 16 KiB。关键词只作为 argv 元素传给 `cli.main`，
@@ -478,6 +492,8 @@ make web                                    # 等价（默认 8788，被占用�
       "name": "某某日报",
       "style": "ymd",
       "tpl": "https://example.com/epaper/html/layout/{a}/node_01.html",
+      "node_pattern": "node_\\w+\\.html?$",
+      "article_pattern": "content_\\w+\\.html?$",
       "timeout": 30,
       "retries": 2,
       "node_exclude": "/pad/"
@@ -489,8 +505,11 @@ make web                                    # 等价（默认 8788，被占用�
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `name` | ✅ | 报社名，非空、≤ 30 字符，中文即可 |
-| `style` | ✅ | `ymd` → 日期目录形如 `202609/22`；`dash` → `2026-09/22` |
+| `style` | ✅ | `ymd` → `202609/22`；`dash` → `2026-09/22`；`custom` → 使用 `date_format` |
+| `date_format` | custom 时必填 | 例如 `%Y/%m/%d`、`%Y%m%d`；只允许年月日指令与路径分隔符 |
 | `tpl` | ✅ | 第 1 版链接模板，**必须含 `{a}`**，且以 `http://` / `https://` 开头 |
+| `node_pattern` | ❌ | 版面链接正则；默认 `node_\w+\.html?$` |
+| `article_pattern` | ❌ | 文章链接正则；默认 `content_\w+\.html?$` |
 | `timeout` | ❌ | 单次抓取超时秒数，5 ~ 120（缺省用全局默认） |
 | `retries` | ❌ | 重试次数，0 ~ 6 |
 | `node_exclude` | ❌ | 正则，用于排除手机版镜像等重复版面链接（须能编译通过） |
@@ -506,10 +525,10 @@ make web                                    # 等价（默认 8788，被占用�
 **容错**：文件缺失 / JSON 非法 / 单条非法 → **忽略该条并向 stderr 打一行警告**，
 绝不让整个扫描崩掉。
 
-**解析兜底是按现有六家站点结构写的**（方正系 / 人民网系的三段式 `node_* → content_*`，
-正文取 `<founder-content>` 或 `<!--enpcontent-->`）。换到结构不同的站点，
-可能抓不到版面名 / 标题；如果 HTTP 200 但解析不到版面或文章，扫描会明确报
-「结构异常」并以非零退出，不会静默当成无命中。**新增后先用「试抓」探测**。
+默认解析按方正系 / 人民网系的三段式 `node_* → content_*` 工作；路径命名不同的站点可用
+`node_pattern` / `article_pattern` 覆盖链接规则，日期目录不同可用 `style=custom` +
+`date_format`。正文仍需能被通用标题/正文提取器识别；如果 HTTP 200 但解析不到版面或文章，
+扫描会明确报「结构异常」并以非零退出，不会静默当成无命中。**新增后先用“试抓”探测**。
 
 **SSRF 能力边界（如实说明，不封）**：`tpl` 是用户自己填的 URL，扫描器会用系统 `curl`
 去抓。这里**只允许 `http` / `https` 前缀**，**不封私网 IP 段**——因为用户很可能就是想扫

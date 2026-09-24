@@ -7,6 +7,14 @@
 
 ### 新增
 
+- **可复用报社适配 + 可视化版面图 + 一键启动抓取**：自定义报社配置新增 `custom`
+  日期格式以及 `node_pattern` / `article_pattern` 链接规则；“试抓”同时验证入口、版面和
+  样例文章。扫描器将 `<area>` / `mappingOriginal` 归一化为二维 `layout`，看板按版面
+  绘制并高亮命中，缺坐标时明确降级而不伪造。新增 `dashboard.py --open --scan` 与
+  `make start`，按 `state/web_config.json` 的上次设置打开页面并自动扫描；前端会恢复并
+  跟踪启动时任务进度（`papers.py`、`scanner.py`、`web.py`、`static/*`、`scripts/*`、
+  `tests/*`）。
+
 - **看板「只扫选中报社」**：`/api/scan` 与 `/api/config` 新增可选字段 `only`（逗号分隔
   字符串，也接受字符串数组）；`validate_web_config` / `load_web_config` 缺省回落空串
   （= 全选），**旧配置文件仍可读**。看板「扫描设置」按 `GET /api/papers` 的 `effective`

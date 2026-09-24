@@ -516,6 +516,27 @@
       });
   }
 
+  function resumeScan() {
+    fetch("/api/scan", { cache: "no-store" })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (task) {
+        if (!task) return;
+        if (Array.isArray(task.log) && task.log.length) renderScanLog(task.log);
+        if (task.status === "running") {
+          setScanRunning(true);
+          setScanStatus("自动扫描进行中…");
+          beginPolling();
+        } else if (task.status === "done") {
+          var code = task.exit_code === null || task.exit_code === undefined ? 0 : task.exit_code;
+          setScanStatus("自动扫描已完成（退出码 " + code + "）");
+          load();
+        } else if (task.status === "error") {
+          setScanStatus("自动扫描失败：" + (task.error || "未知错误"));
+        }
+      })
+      .catch(function () { /* 首屏恢复失败不阻塞其他功能 */ });
+  }
+
   /* -------------------------------------------------------------- 报社管理 */
   function setPapersStatus(text) { $("papers-status").textContent = text; }
 
@@ -554,7 +575,12 @@
       actions.appendChild(testBtn);
 
       if (customMap[name]) {
-        var delBtn = el("button", "chip", "删除");
+        var editBtn = el("button", "chip", "编辑");
+        editBtn.type = "button";
+        editBtn.addEventListener("click", function () { fillPaperForm(customMap[name]); });
+        actions.appendChild(editBtn);
+
+        var delBtn = el("button", "chip danger", "删除");
         delBtn.type = "button";
         delBtn.addEventListener("click", function () { deletePaper(name); });
         actions.appendChild(delBtn);
@@ -569,6 +595,22 @@
     if (commitRow) commitRow.hidden = !(view.custom && view.custom.length);
   }
 
+  function applyPapersView(view) {
+    papersView = view;
+    renderPapers(view);
+    scanPaperNames = (view.effective || []).slice();
+    if (pendingOnly !== null) {
+      applyConfigOnly(pendingOnly);
+      pendingOnly = null;
+    } else if (scanPaperSelected) {
+      scanPaperSelected = new Set(scanPaperNames.filter(function (name) {
+        return scanPaperSelected.has(name);
+      }));
+      if (!scanPaperSelected.size) scanPaperSelected = null;
+    }
+    renderScanPapers();
+  }
+
   function loadPapers() {
     fetch("/api/papers", { cache: "no-store" })
       .then(function (res) {
@@ -576,14 +618,7 @@
         return res.json();
       })
       .then(function (view) {
-        papersView = view;
-        renderPapers(view);
-        scanPaperNames = (view.effective || []).slice();
-        if (pendingOnly !== null) {
-          applyConfigOnly(pendingOnly);
-          pendingOnly = null;
-        }
-        renderScanPapers();
+        applyPapersView(view);
       })
       .catch(function () { setPapersStatus("报社列表加载失败"); });
   }
@@ -598,6 +633,18 @@
     if (tpl.indexOf("{a}") === -1) return { error: "版面页链接必须包含 {a} 占位符" };
 
     var paper = { name: name, style: style, tpl: tpl };
+    if (style === "custom") {
+      var dateFormat = $("paper-date-format").value.trim();
+      if (!dateFormat) return { error: "自定义日期格式不能为空" };
+      if (!/^(?:%[Yymd]|[-_./])+$/.test(dateFormat) || dateFormat.indexOf("%d") === -1) {
+        return { error: "日期格式只允许 %Y/%y/%m/%d 与 -_./，并且必须包含 %d" };
+      }
+      paper.date_format = dateFormat;
+    }
+    var nodePattern = $("paper-node-pattern").value.trim();
+    var articlePattern = $("paper-article-pattern").value.trim();
+    if (nodePattern !== "") paper.node_pattern = nodePattern;
+    if (articlePattern !== "") paper.article_pattern = articlePattern;
     var timeout = $("paper-timeout").value.trim();
     if (timeout !== "") {
       var t = parseInt10(timeout);
@@ -616,10 +663,34 @@
   }
 
   function clearPaperForm() {
-    ["paper-name", "paper-tpl", "paper-timeout", "paper-retries", "paper-exclude"].forEach(function (id) {
+    [
+      "paper-name", "paper-tpl", "paper-date-format", "paper-node-pattern",
+      "paper-article-pattern", "paper-timeout", "paper-retries", "paper-exclude"
+    ].forEach(function (id) {
       $(id).value = "";
     });
     $("paper-style").value = "ymd";
+    updatePaperStyleUI();
+    setPapersStatus("—");
+  }
+
+  function updatePaperStyleUI() {
+    $("paper-date-format-field").hidden = $("paper-style").value !== "custom";
+  }
+
+  function fillPaperForm(paper) {
+    $("paper-name").value = paper.name || "";
+    $("paper-style").value = paper.style || "ymd";
+    $("paper-date-format").value = paper.date_format || "";
+    $("paper-tpl").value = paper.tpl || "";
+    $("paper-node-pattern").value = paper.node_pattern || "";
+    $("paper-article-pattern").value = paper.article_pattern || "";
+    $("paper-timeout").value = paper.timeout === undefined ? "" : paper.timeout;
+    $("paper-retries").value = paper.retries === undefined ? "" : paper.retries;
+    $("paper-exclude").value = paper.node_exclude || "";
+    updatePaperStyleUI();
+    setPapersStatus("正在编辑「" + paper.name + "」，保存后会同名覆盖。");
+    $("paper-name").focus();
   }
 
   function addPaper() {
@@ -637,8 +708,7 @@
             setPapersStatus("添加失败：" + ((data && data.error) || ("HTTP " + res.status)));
             return;
           }
-          papersView = data;
-          renderPapers(data);
+          applyPapersView(data);
           clearPaperForm();
           setPapersStatus("已添加「" + got.paper.name + "」。已写入 papers.custom.json。" +
             "要让每日 CI 扫描也包含这家，需要把它提交并推送。");
@@ -648,6 +718,7 @@
   }
 
   function deletePaper(name) {
+    if (!window.confirm("删除自定义报社「" + name + "」？内置报社的同名覆盖会恢复为默认配置。")) return;
     setPapersStatus("正在删除…");
     fetch("/api/papers/delete", {
       method: "POST",
@@ -660,8 +731,7 @@
             setPapersStatus("删除失败：" + ((data && data.error) || ("HTTP " + res.status)));
             return;
           }
-          papersView = data;
-          renderPapers(data);
+          applyPapersView(data);
           setPapersStatus("已删除「" + name + "」。");
         });
       })
@@ -682,7 +752,9 @@
             return;
           }
           var text = (data.ok ? "✓" : "✗") + " 入口 " + data.entry_code + " · 版面 " + data.sections;
+          if (typeof data.sample_articles === "number") text += " · 样例文章 " + data.sample_articles;
           if (data.note) text += " · " + data.note;
+          if (data.entry) text += " · " + data.entry;
           setPapersHint(text);
         });
       })
@@ -726,6 +798,7 @@
 
     renderStats(all, list);
     renderChart(list);
+    renderLayouts(list);
     renderRows(list);
 
     $("shown").textContent = list.length === all.length
@@ -831,6 +904,102 @@
     });
   }
 
+  function fallbackLayout(record) {
+    var g = record.geometry;
+    if (!g || typeof g.top !== "number" || typeof g.bottom !== "number" || g.top >= g.bottom) return null;
+    var left = typeof g.left === "number" ? g.left : 0.08;
+    var right = typeof g.right === "number" ? g.right : 0.92;
+    return {
+      basis: g.basis === "area" ? "area" : "mapping",
+      aspect_ratio: 0.72,
+      items: [{ url: record.url, left: left, top: g.top, right: right, bottom: g.bottom }],
+      partial: true
+    };
+  }
+
+  function pct(value) {
+    return Math.max(0, Math.min(100, value * 100)).toFixed(2) + "%";
+  }
+
+  function renderLayouts(records) {
+    var box = $("layouts");
+    var empty = $("layouts-empty");
+    var groups = {};
+    records.forEach(function (record) {
+      var layout = record.layout || fallbackLayout(record);
+      if (!layout || !Array.isArray(layout.items) || !layout.items.length) return;
+      var key = [record.paper, record.date, record.section || "—"].join("\u0001");
+      if (!groups[key]) {
+        groups[key] = {
+          paper: record.paper,
+          date: record.date,
+          section: record.section || "—",
+          layout: layout,
+          hitUrls: new Set(),
+          titles: []
+        };
+      }
+      if (layout.items.length > groups[key].layout.items.length) groups[key].layout = layout;
+      groups[key].hitUrls.add(record.url);
+      if (record.title && groups[key].titles.indexOf(record.title) === -1) groups[key].titles.push(record.title);
+    });
+
+    box.textContent = "";
+    var list = Object.keys(groups).map(function (key) { return groups[key]; });
+    list.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return a.paper.localeCompare(b.paper, "zh") || a.section.localeCompare(b.section, "zh");
+    });
+    $("layouts-summary").textContent = list.length ? list.length + " 个可绘制版面" : "暂无坐标";
+    empty.hidden = list.length > 0;
+    if (!list.length) {
+      empty.textContent = records.length
+        ? "这些记录的网站没有提供二维版面坐标；仍会显示“版内第几条”，但不会伪造位置图。重新扫描后，支持坐标的报社会自动出现。"
+        : "当前筛选没有命中记录。";
+      return;
+    }
+
+    list.forEach(function (group) {
+      var card = el("article", "layout-item");
+      var page = el("div", "layout-page");
+      var ratio = Number(group.layout.aspect_ratio) || 0.72;
+      page.style.aspectRatio = String(Math.max(0.35, Math.min(1.5, ratio)));
+      page.setAttribute("aria-label", group.paper + " " + group.date + " " + group.section + "版面位置图");
+
+      group.layout.items.forEach(function (item) {
+        var block = el("span", group.hitUrls.has(item.url) ? "layout-block hit" : "layout-block");
+        block.style.left = pct(item.left);
+        block.style.top = pct(item.top);
+        block.style.width = pct(Math.max(0.004, item.right - item.left));
+        block.style.height = pct(Math.max(0.004, item.bottom - item.top));
+        block.title = group.hitUrls.has(item.url) ? "命中报道" : "本版其他报道";
+        page.appendChild(block);
+      });
+      card.appendChild(page);
+
+      var info = el("div", "layout-info");
+      info.appendChild(el("h3", null, group.paper + " · " + group.date));
+      info.appendChild(el("p", null, group.section));
+      info.appendChild(el("p", "layout-hit", "命中 " + group.hitUrls.size + " 条 / 本版 " + group.layout.items.length + " 个位置"));
+      group.titles.slice(0, 3).forEach(function (title) {
+        info.appendChild(el("p", null, "· " + title));
+      });
+      if (group.layout.partial) info.appendChild(el("p", null, "历史记录仅保留命中块，背景文章将在下次扫描后补全。"));
+      var legend = el("div", "layout-legend");
+      var hitKey = el("span", "hit-key");
+      hitKey.appendChild(el("i"));
+      hitKey.appendChild(document.createTextNode("命中"));
+      var normalKey = el("span");
+      normalKey.appendChild(el("i"));
+      normalKey.appendChild(document.createTextNode("本版其他报道"));
+      legend.appendChild(hitKey);
+      legend.appendChild(normalKey);
+      info.appendChild(legend);
+      card.appendChild(info);
+      box.appendChild(card);
+    });
+  }
+
   function renderRows(records) {
     var body = $("rows");
     body.textContent = "";
@@ -881,10 +1050,13 @@
     });
     $("paper-add").addEventListener("click", addPaper);
     $("paper-test").addEventListener("click", testPaperForm);
+    $("paper-clear").addEventListener("click", clearPaperForm);
+    $("paper-style").addEventListener("change", updatePaperStyleUI);
     $("papers-commit-cmd").value = PAPERS_COMMIT_CMD;
     $("papers-commit").addEventListener("click", copyCommitCommand);
     loadScanConfig();
     loadPapers();
+    resumeScan();
     $("q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
     $("from").addEventListener("change", function (e) {
       state.from = e.target.value; state.preset = "custom"; updatePresetUI(); render();

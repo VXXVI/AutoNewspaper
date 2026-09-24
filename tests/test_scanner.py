@@ -352,8 +352,11 @@ def test_nfnews_real_qd01_page_uses_mapping_basis(nfnews_paper, area_day, nfnews
         assert geom["total"] == 4
         assert 1 <= geom["index"] <= 4
         assert 0.0 <= geom["top"] < geom["bottom"] <= 1.0
-        # mapping 只写 top/bottom/index/total/basis，不写 x1..y2
-        assert set(geom) == {"top", "bottom", "index", "total", "basis"}
+        # mapping 写归一化二维坐标，不写原始 x1..y2
+        assert set(geom) == {"left", "top", "right", "bottom", "index", "total", "basis"}
+        assert 0.0 <= geom["left"] < geom["right"] <= 1.0
+        assert rec["layout"]["basis"] == "mapping"
+        assert len(rec["layout"]["items"]) == 4
 
 
 def test_merge_geometry_three_tiers_priority():
@@ -391,7 +394,7 @@ def test_merge_geometry_three_tiers_priority():
     assert g2["basis"] == "mapping"
     assert g2["index"] == 1
     assert g2["top"] == 0.1
-    assert set(g1) == {"top", "bottom", "index", "total", "basis"}
+    assert set(g1) == {"left", "top", "right", "bottom", "index", "total", "basis"}
 
     # 场景 3: area 为空且 mapping 为空 -> order 兜底
     t3: dict[str, Any] = {}
@@ -413,3 +416,30 @@ def test_merge_geometry_mapping_sorts_by_top_then_left_then_order():
     assert target["http://x/c.html"]["index"] == 1
     assert target["http://x/b.html"]["index"] == 2
     assert target["http://x/a.html"]["index"] == 3
+
+
+def test_custom_date_and_link_patterns_drive_scan(fixed_day):
+    paper = {
+        "name": "可配置日报",
+        "style": "custom",
+        "date_format": "%Y/%m/%d",
+        "tpl": "https://example.com/{a}/index.html",
+        "node_pattern": r"page-\d+\.html$",
+        "article_pattern": r"story-\d+\.html$",
+    }
+    base = "https://example.com/2026/09/22/"
+    requested = []
+
+    def fetch(url):
+        requested.append(url)
+        if url.endswith("index.html"):
+            return 200, '<a href="page-1.html">第一版</a>' + "x" * 400
+        if url.endswith("page-1.html"):
+            return 200, '<a href="story-7.html">文章</a>' + "x" * 400
+        return 200, "<html><h1>广东海洋大学发布消息</h1><body>正文内容</body></html>" + "x" * 400
+
+    hits, articles, stats = scanner.scan_paper(paper, fixed_day, KW, workers=2, fetcher=fetch)
+    assert requested[0] == base + "index.html"
+    assert stats["sections"] == 2  # 入口页 + page-1 去重后的扫描集合
+    assert len(articles) == 1 and len(hits) == 1
+    assert articles[0]["url"] == base + "story-7.html"

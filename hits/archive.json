@@ -11,7 +11,8 @@
   ],
   "matched": [
    "广东海洋大学"
-  ]
+  ],
+  "section_no": ""
  },
  {
   "paper": "湛江日报",
@@ -25,7 +26,8 @@
   ],
   "matched": [
    "广东海洋大学"
-  ]
+  ],
+  "section_no": ""
  },
  {
   "paper": "湛江日报",
@@ -39,7 +41,8 @@
   ],
   "matched": [
    "广东海洋大学"
-  ]
+  ],
+  "section_no": ""
  },
  {
   "paper": "湛江日报",
@@ -53,12 +56,13 @@
   ],
   "matched": [
    "广东海洋大学"
-  ]
+  ],
+  "section_no": ""
  },
  {
   "paper": "南方日报",
   "date": "2026-09-23",
-  "section": "第VD02版: 遂溪视窗·关注-2026年09月23日",
+  "section": "VD02版：遂溪视窗·关注",
   "title": "云端建智库 田间传科创-遂溪视窗·关注-2026年09月23日",
   "url": "https://epaper.nfnews.com/nfdaily/html/202609/23/content_10182086.html",
   "text_len": 2645,
@@ -67,12 +71,42 @@
   ],
   "matched": [
    "广东海洋大学"
-  ]
+  ],
+  "section_no": "VD02",
+  "geometry": {
+   "left": 0.0083,
+   "top": 0.0496,
+   "right": 0.4841,
+   "bottom": 0.9942,
+   "index": 1,
+   "total": 2,
+   "basis": "mapping"
+  },
+  "layout": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202609/23/content_10182086.html",
+     "left": 0.0083,
+     "top": 0.0496,
+     "right": 0.4841,
+     "bottom": 0.9942
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202609/23/content_10182087.html",
+     "left": 0.5371,
+     "top": 0.0496,
+     "right": 0.9731,
+     "bottom": 0.9758
+    }
+   ]
+  }
  },
  {
   "paper": "湛江日报",
   "date": "2026-09-23",
-  "section": "新闻+ 本地",
+  "section": "第2版：新闻+ 本地",
   "title": "中秋非遗活动进校园",
   "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868229.htm",
   "text_len": 299,
@@ -81,7 +115,104 @@
   ],
   "matched": [
    "广东海洋大学"
-  ]
+  ],
+  "section_no": "第02版",
+  "geometry": {
+   "x1": 73,
+   "y1": 377,
+   "x2": 265,
+   "y2": 464,
+   "left": 0.2173,
+   "top": 0.6969,
+   "right": 0.7887,
+   "bottom": 0.8577,
+   "index": 8,
+   "total": 11,
+   "basis": "area"
+  },
+  "layout": {
+   "basis": "area",
+   "aspect_ratio": 0.6211,
+   "items": [
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868222.htm",
+     "left": 0.8244,
+     "top": 0.0536,
+     "right": 1.0,
+     "bottom": 0.6248
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868223.htm",
+     "left": 0.0089,
+     "top": 0.0573,
+     "right": 0.7887,
+     "bottom": 0.1793
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868224.htm",
+     "left": 0.006,
+     "top": 0.2033,
+     "right": 0.7887,
+     "bottom": 0.3068
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868225.htm",
+     "left": 0.003,
+     "top": 0.3309,
+     "right": 0.7887,
+     "bottom": 0.4085
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868226.htm",
+     "left": 0.006,
+     "top": 0.427,
+     "right": 0.7887,
+     "bottom": 0.6747
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868227.htm",
+     "left": 0.8244,
+     "top": 0.647,
+     "right": 1.0,
+     "bottom": 0.7948
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868228.htm",
+     "left": 0.006,
+     "top": 0.695,
+     "right": 0.1935,
+     "bottom": 0.8373
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868229.htm",
+     "left": 0.2173,
+     "top": 0.6969,
+     "right": 0.7887,
+     "bottom": 0.8577
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868230.htm",
+     "left": 0.8244,
+     "top": 0.817,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868231.htm",
+     "left": 0.006,
+     "top": 0.8558,
+     "right": 0.1935,
+     "bottom": 0.9963
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-09/23/content_146378_3868232.htm",
+     "left": 0.2173,
+     "top": 0.8799,
+     "right": 0.7887,
+     "bottom": 1.0
+    }
+   ]
+  }
  },
  {
   "paper": "南方日报",
@@ -92,7 +223,9 @@
   "url": "https://epaper.nfnews.com/nfdaily/html/202609/24/content_10182208.html",
   "text_len": 4525,
   "geometry": {
+   "left": 0.005,
    "top": 0.0023,
+   "right": 0.9958,
    "bottom": 0.985,
    "index": 1,
    "total": 1,
@@ -103,6 +236,19 @@
   ],
   "matched": [
    "广东海洋大学"
-  ]
+  ],
+  "layout": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202609/24/content_10182208.html",
+     "left": 0.005,
+     "top": 0.0023,
+     "right": 0.9958,
+     "bottom": 0.985
+    }
+   ]
+  }
  }
 ]

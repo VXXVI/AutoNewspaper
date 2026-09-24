@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 
@@ -23,12 +24,29 @@ def test_validate_paper_minimal_ok():
 
 
 def test_validate_paper_accepts_optional_fields():
-    paper, error = papers.validate_paper(_valid(style="dash", timeout=30, retries=2, node_exclude="/pad/"))
+    paper, error = papers.validate_paper(
+        _valid(
+            style="dash",
+            timeout=30,
+            retries=2,
+            node_exclude="/pad/",
+            node_pattern=r"page-\d+\.html$",
+            article_pattern=r"story-\d+\.html$",
+        )
+    )
     assert error is None
     assert paper["style"] == "dash"
     assert paper["timeout"] == 30
     assert paper["retries"] == 2
     assert paper["node_exclude"] == "/pad/"
+    assert paper["node_pattern"] == r"page-\d+\.html$"
+    assert paper["article_pattern"] == r"story-\d+\.html$"
+
+
+def test_validate_custom_date_format_and_format_path():
+    paper, error = papers.validate_paper(_valid(style="custom", date_format="%Y/%m/%d"))
+    assert error is None
+    assert papers.format_date_path(paper, datetime(2026, 9, 24)) == "2026/09/24"
 
 
 def test_validate_paper_strips_whitespace():
@@ -59,6 +77,12 @@ def test_validate_paper_strips_whitespace():
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "retries": 7},
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "node_exclude": "("},
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "node_exclude": 3},
+        {"name": "x", "style": "custom", "tpl": "https://x/{a}"},
+        {"name": "x", "style": "custom", "tpl": "https://x/{a}", "date_format": "%Y/%m"},
+        {"name": "x", "style": "custom", "tpl": "https://x/{a}", "date_format": "%Y/%m/%d/%H"},
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "date_format": "%Y/%m/%d"},
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "node_pattern": "("},
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "article_pattern": "("},
     ],
 )
 def test_validate_paper_rejects_invalid(obj):

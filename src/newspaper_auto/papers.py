@@ -29,10 +29,19 @@ from typing import Any
 from . import config, report
 
 MAX_NAME_LEN = 30
-STYLES = ("ymd", "dash")
+STYLES = ("ymd", "dash", "custom")
 URL_PREFIXES = ("http://", "https://")
 MIN_TIMEOUT, MAX_TIMEOUT = 5, 120
 MIN_RETRIES, MAX_RETRIES = 0, 6
+MAX_PATTERN_LEN = 300
+MAX_DATE_FORMAT_LEN = 40
+DATE_FORMATS = {
+    "ymd": "%Y%m/%d",
+    "dash": "%Y-%m/%d",
+}
+# 自定义日期路径只允许年月日指令与常见路径分隔符，避免平台相关的 strftime
+# 指令产生不可预测结果。例：%Y/%m/%d、%Y%m%d、%y-%m/%d。
+_DATE_FORMAT_RE = re.compile(r"^(?:%[Yymd]|[-_./])+$")
 
 
 def _custom_path(root: Path) -> Path:
@@ -66,7 +75,7 @@ def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
 
     style = obj.get("style")
     if style not in STYLES:
-        return None, "style 必须是 ymd 或 dash"
+        return None, "style 必须是 ymd、dash 或 custom"
 
     tpl = obj.get("tpl")
     if not isinstance(tpl, str) or not tpl.strip():
@@ -93,6 +102,19 @@ def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
 
     paper: dict[str, Any] = {"name": name, "style": style, "tpl": tpl}
 
+    date_format = obj.get("date_format")
+    if style == "custom":
+        if not isinstance(date_format, str) or not date_format.strip():
+            return None, "style 为 custom 时必须填写 date_format"
+        date_format = date_format.strip()
+        if len(date_format) > MAX_DATE_FORMAT_LEN:
+            return None, f"date_format 不能超过 {MAX_DATE_FORMAT_LEN} 个字符"
+        if not _DATE_FORMAT_RE.fullmatch(date_format) or "%d" not in date_format:
+            return None, "date_format 只允许 %Y/%y/%m/%d 与 -_./，并且必须包含 %d"
+        paper["date_format"] = date_format
+    elif date_format not in (None, ""):
+        return None, "只有 custom 日期格式可以填写 date_format"
+
     timeout = obj.get("timeout")
     if timeout is not None:
         if not _is_int(timeout) or not MIN_TIMEOUT <= timeout <= MAX_TIMEOUT:
@@ -115,7 +137,34 @@ def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
             return None, f"node_exclude 不是合法正则：{exc}"
         paper["node_exclude"] = node_exclude
 
+    for field, label in (
+        ("node_pattern", "版面链接正则"),
+        ("article_pattern", "文章链接正则"),
+    ):
+        value = obj.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value.strip():
+            return None, f"{field} 必须是非空字符串"
+        value = value.strip()
+        if len(value) > MAX_PATTERN_LEN:
+            return None, f"{field} 不能超过 {MAX_PATTERN_LEN} 个字符"
+        try:
+            re.compile(value)
+        except re.error as exc:
+            return None, f"{label}不是合法正则：{exc}"
+        paper[field] = value
+
     return paper, None
+
+
+def format_date_path(paper: dict[str, Any], day: Any) -> str:
+    """根据报社配置生成日期路径；旧的 ymd/dash 配置保持完全兼容。"""
+    style = paper.get("style")
+    date_format = paper.get("date_format") if style == "custom" else DATE_FORMATS.get(style)
+    if not isinstance(date_format, str):
+        raise ValueError(f"未知日期路径格式：{style}")
+    return day.strftime(date_format)
 
 
 def load_custom(root: Path) -> list[dict[str, Any]]:

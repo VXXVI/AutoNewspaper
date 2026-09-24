@@ -13,11 +13,11 @@ set "PORT=%NEWSPAPER_PORT%"
 if not defined PORT set "PORT=8788"
 
 echo 正在启动本地看板（默认 http://127.0.0.1:%PORT%；可在页面一键触发真实扫描，会写 state/ 与 hits/）...
-"%PY%" dashboard.py --port %PORT% --open
+"%PY%" dashboard.py --port %PORT% --open %*
 if errorlevel 1 (
   echo.
   echo 端口 %PORT% 不可用，改用系统自动分配的空闲端口重试...
-  "%PY%" dashboard.py --port 0 --open
+  "%PY%" dashboard.py --port 0 --open %*
 )
 echo.
 echo 看板已退出，按任意键关闭本窗口...

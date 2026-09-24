@@ -243,13 +243,18 @@ def main(
     argv: Sequence[str] | None = None,
     default_data_dir: str | os.PathLike[str] | None = None,
     fetcher: Callable[[str], tuple[int, str]] | None = None,
+    logger: Callable[[str], None] | None = None,
 ) -> int:
-    """程序入口。``default_data_dir`` 供兼容入口传入仓库根目录，``fetcher`` 供测试注入。"""
+    """程序入口。
+
+    ``default_data_dir`` 供兼容入口传入仓库根目录，``fetcher`` 供测试注入；``logger``
+    供看板线程接收逐行进度，避免在多线程服务里全局替换 ``sys.stdout`` / ``sys.stderr``。
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
 
     # 结构化输出模式下，人类可读日志重定向至 stderr，保证 stdout 纯净
-    log: Callable[..., None] = _make_logger(sys.stderr if (args.json or args.csv) else sys.stdout)
+    log: Callable[..., None] = logger or _make_logger(sys.stderr if (args.json or args.csv) else sys.stdout)
 
     keywords = list(dict.fromkeys(args.kw or config.DEFAULT_KEYWORDS))
     if len(keywords) > config.MAX_KEYWORDS:

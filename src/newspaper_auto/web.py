@@ -4,6 +4,7 @@
 
     python3 -m newspaper_auto.web                    # http://127.0.0.1:8788
     python3 -m newspaper_auto.web --port 9000 --open
+    python3 -m newspaper_auto.web --open --scan       # 打开并按上次配置立即扫描
     python3 -m newspaper_auto.web --data-dir /path/to/data
 
 端口优先取 ``--port``（默认 8788）；8788 被占用时命令行会给出提示，可用 ``--port 0``
@@ -26,8 +27,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 import json
 import re
 import sys
@@ -40,7 +39,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import __version__, cli, config, papers, parse, paths, report, scanner, state
+from . import __version__, cli, config, papers, paths, report, scanner, state
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
@@ -77,7 +76,18 @@ def _read_archive(path: Path) -> list[Any]:
     return data if isinstance(data, list) else []
 
 
-_GEOMETRY_NUMERIC_KEYS = ("x1", "y1", "x2", "y2", "top", "bottom", "index", "total")
+_GEOMETRY_NUMERIC_KEYS = (
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "left",
+    "top",
+    "right",
+    "bottom",
+    "index",
+    "total",
+)
 
 
 def _normalize_geometry(raw: Any) -> dict[str, int | float | str] | None:
@@ -103,6 +113,44 @@ def _normalize_geometry(raw: Any) -> dict[str, int | float | str] | None:
     return geometry
 
 
+def _normalize_layout(raw: Any) -> dict[str, Any] | None:
+    """收敛版面布局为安全的 0~1 坐标，避免脏归档撑破或逃逸前端画布。"""
+    if not isinstance(raw, dict) or raw.get("basis") not in ("area", "mapping"):
+        return None
+    raw_items = raw.get("items")
+    if not isinstance(raw_items, list):
+        return None
+    items: list[dict[str, Any]] = []
+    for item in raw_items[:500]:
+        if not isinstance(item, dict) or not isinstance(item.get("url"), str):
+            continue
+        coords = [item.get(key) for key in ("left", "top", "right", "bottom")]
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in coords):
+            continue
+        left, top, right, bottom = (float(value) for value in coords)
+        if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
+            continue
+        items.append(
+            {
+                "url": item["url"],
+                "left": round(left, 4),
+                "top": round(top, 4),
+                "right": round(right, 4),
+                "bottom": round(bottom, 4),
+            }
+        )
+    if not items:
+        return None
+    aspect_ratio = raw.get("aspect_ratio", 0.72)
+    if not isinstance(aspect_ratio, (int, float)) or isinstance(aspect_ratio, bool):
+        aspect_ratio = 0.72
+    return {
+        "basis": raw["basis"],
+        "aspect_ratio": round(max(0.35, min(float(aspect_ratio), 1.5)), 4),
+        "items": items,
+    }
+
+
 def _normalize(item: Any) -> dict[str, Any] | None:
     """把归档条目收敛成前端需要的形状；丢弃无 URL 的脏数据。"""
     if not isinstance(item, dict) or not item.get("url"):
@@ -122,6 +170,7 @@ def _normalize(item: Any) -> dict[str, Any] | None:
         "snippets": [str(s) for s in (item.get("snippets") or []) if s],
         "matched": [str(k) for k in (item.get("matched") or []) if k],
         "geometry": _normalize_geometry(item.get("geometry")),
+        "layout": _normalize_layout(item.get("layout")),
     }
 
 
@@ -505,49 +554,49 @@ def build_scan_argv(data_dir: Path | str, params: dict[str, Any]) -> list[str]:
 def default_scan_runner(
     data_dir: Path | str, params: dict[str, Any], log: Callable[[str], None]
 ) -> dict[str, Any]:
-    """默认扫描执行器：在看板进程内调用 ``cli.main``（不做 subprocess）。
+    """默认扫描执行器：进程内调用 ``cli.main``，并通过回调实时接收日志。
 
-    ``cli.main`` 的日志走 stdout/stderr，这里统一重定向并逐行喂给 ``log``；
-    argparse 的 ``SystemExit(2)`` 被兜住转成 ``exit_code``，绝不让工作线程炸掉。
+    不使用 ``redirect_stdout``：它会修改整个进程的全局流，在多线程 HTTP 服务里可能把
+    访问日志卷入扫描日志。argparse 的 ``SystemExit(2)`` 仍兜住转成 ``exit_code``。
     """
     argv = build_scan_argv(data_dir, params)
-    buffer = io.StringIO()
-    output = ""
+    lines: list[str] = []
     exit_code = 0
+
+    def capture(message: str = "") -> None:
+        line = str(message)
+        lines.append(line)
+        log(line)
+
     try:
-        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
-            exit_code = cli.main(argv)
+        exit_code = cli.main(argv, logger=capture)
     except SystemExit as exc:
         code = exc.code
         exit_code = code if isinstance(code, int) else (0 if code is None else 2)
-    finally:
-        output = buffer.getvalue()
-        for line in output.splitlines():
-            log(line)
+    output = "\n".join(lines)
     return {"exit_code": exit_code, "summary": _extract_summary(output)}
 
 
-# 试抓只用少量并发，避免为一条探测把站点打爆
-PROBE_WORKERS = max(1, min(config.DEFAULT_WORKERS, 4))
-
-
 def default_paper_probe(paper: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
-    """默认试抓探测：把这条 paper 作为**唯一目标**跑一次 dry-run。
-
-    直接复用 ``scanner.scan_paper(dry=True)``（只探测入口与版面，不抓文章），
-    因此**不写任何文件、不改仓库配置、不需要临时数据目录**。返回
-    ``{"entry_code": int, "sections": int, "note": str}``；拿不到 HTTP 码时
-    ``entry_code`` 为 0，并在 ``note`` 里说明原因（网络层失败等）。
-    """
+    """默认试抓：验证入口、版面规则与文章规则，不抓正文也不写文件。"""
     day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    kw_res = {kw: parse.make_kw_re(kw) for kw in config.DEFAULT_KEYWORDS}
-    log(f"试抓「{paper['name']}」（dry-run，仅探测入口与版面）…")
-    _hits, _articles, stats = scanner.scan_paper(paper, day, kw_res, PROBE_WORKERS, dry=True, fetcher=None)
-    entry_code = int(stats.get("entry_code", 0))
-    sections = int(stats.get("sections", 0))
-    note = str(stats.get("note") or "")
-    log(f"试抓结果：入口 {entry_code} · 版面 {sections}" + (f" · {note}" if note else ""))
-    return {"entry_code": entry_code, "sections": sections, "note": note}
+    log(f"试抓「{paper['name']}」（只验证结构，不抓正文）…")
+    result = scanner.probe_paper(paper, day)
+    entry_code = int(result.get("entry_code", 0))
+    sections = int(result.get("sections", 0))
+    sample_articles = int(result.get("sample_articles", 0))
+    note = str(result.get("note") or "")
+    log(
+        f"试抓结果：入口 {entry_code} · 版面 {sections} · 样例文章 {sample_articles}"
+        + (f" · {note}" if note else "")
+    )
+    return {
+        "entry": str(result.get("entry") or ""),
+        "entry_code": entry_code,
+        "sections": sections,
+        "sample_articles": sample_articles,
+        "note": note,
+    }
 
 
 # ---------------------------------------------------------------- 扫描任务
@@ -837,15 +886,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             entry_code = int(result.get("entry_code") or 0)
             sections = int(result.get("sections") or 0)
+            sample_articles = (
+                int(result["sample_articles"]) if result.get("sample_articles") is not None else None
+            )
         except (TypeError, ValueError):
-            entry_code, sections = 0, 0
+            entry_code, sections, sample_articles = 0, 0, None
         note = str(result.get("note") or "")
         self._send_json(
             200,
             {
+                "entry": str(result.get("entry") or ""),
                 "entry_code": entry_code,
                 "sections": sections,
-                "ok": entry_code == 200,
+                "sample_articles": sample_articles,
+                "ok": entry_code == 200 and (sample_articles is None or sample_articles > 0),
                 "note": note,
             },
         )
@@ -936,6 +990,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--port", type=int, default=DEFAULT_PORT, help=f"监听端口（默认 {DEFAULT_PORT}，0 表示自动分配）"
     )
     parser.add_argument("--open", action="store_true", help="启动后自动打开浏览器")
+    parser.add_argument(
+        "--scan",
+        action="store_true",
+        help="启动后按 state/web_config.json（不存在则用默认设置）立即扫描",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -957,7 +1016,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"看板已启动：{url}")
     print(f"数据目录：{data_dir}")
     print(f"数据源：{paths.archive_file(data_dir)}")
-    print("可在页面「扫描设置」中触发抓取；按 Ctrl+C 停止")
+    if args.scan:
+        params = load_web_config(data_dir)
+        task = server.start_scan(params)
+        if task is None:  # 理论上首次启动不会发生，保留明确失败信息
+            print("自动扫描未启动：已有扫描任务。", file=sys.stderr)
+        else:
+            print("自动扫描已启动：页面会显示实时进度。")
+    else:
+        print("可在页面「扫描设置」中触发抓取；按 Ctrl+C 停止")
 
     if args.open:
         webbrowser.open(url)
