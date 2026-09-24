@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import re
 import sys
@@ -52,6 +53,27 @@ STATIC_TYPES = {
     "app.js": "application/javascript; charset=utf-8",
     "style.css": "text/css; charset=utf-8",
 }
+# 小于该体积的静态资源不压缩（gzip 头开销不划算）
+STATIC_MIN_GZIP_BYTES = 1024
+
+
+def _accepts_gzip(header: str) -> bool:
+    """解析 ``Accept-Encoding``，判断客户端是否接受 gzip（尊重 ``q=0``）。"""
+    for part in header.split(","):
+        token, _, params = part.partition(";")
+        if token.strip().lower() != "gzip":
+            continue
+        quality = 1.0
+        for param in params.split(";"):
+            name, _, value = param.partition("=")
+            if name.strip().lower() == "q":
+                try:
+                    quality = float(value)
+                except ValueError:
+                    quality = 1.0
+        return quality > 0
+    return False
+
 
 DEFAULT_HOST = "127.0.0.1"
 # 默认 8788（8787 常被本机其他开发服务占用；8788~8791 已确认空闲）。
@@ -1289,7 +1311,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
         )
 
     # -- 输出 --------------------------------------------------------
-    def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
+    def _send(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str,
+        extra: dict[str, str] | None = None,
+        *,
+        cache_control: str = "no-store",
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -1303,7 +1333,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         for key, value in (extra or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -1335,12 +1365,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if name not in STATIC_TYPES:
             self._error_json(404, "静态资源不存在")
             return
+        path = STATIC_DIR / name
         try:
-            body = (STATIC_DIR / name).read_bytes()
+            stat = path.stat()
+            body = path.read_bytes()
         except OSError:
             self._error_json(500, "静态资源读取失败")
             return
-        self._send(200, body, STATIC_TYPES[name])
+        # ETag 由 mtime + size 派生：内容变了必然变，命中则回 304（省一次传输）
+        etag = f'W/"{int(stat.st_mtime)}-{stat.st_size}"'
+        if self.headers.get("If-None-Match") == etag:
+            self._send_not_modified(etag)
+            return
+        headers = {"ETag": etag, "Last-Modified": self.date_time_string(stat.st_mtime)}
+        if len(body) >= STATIC_MIN_GZIP_BYTES and _accepts_gzip(self.headers.get("Accept-Encoding", "")):
+            body = gzip.compress(body, 6)
+            headers["Content-Encoding"] = "gzip"
+            headers["Vary"] = "Accept-Encoding"
+        self._send(200, body, STATIC_TYPES[name], extra=headers, cache_control="no-cache")
+
+    def _send_not_modified(self, etag: str) -> None:
+        self.send_response(304)
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
 
     def log_message(self, fmt: str, *args: Any) -> None:  # 精简访问日志
         sys.stderr.write(f"[看板] {self.address_string()} {fmt % args}\n")

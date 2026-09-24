@@ -1,0 +1,47 @@
+name: Release
+
+# 打 v* tag 时构建 sdist/wheel 并挂到 GitHub Release。
+# 用户侧分发：pip install <release 里的 .whl> 或 uv tool install <whl/git>。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建并发布 (sdist + wheel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: 安装构建工具
+        run: python -m pip install --upgrade build
+
+      - name: 构建 sdist 与 wheel
+        run: python -m build
+
+      - name: 冒烟验证 wheel（全新安装 + 版本 + 前端资源随包）
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install dist/*.whl
+          "$RUNNER_TEMP/wheel-venv/bin/newspaper-scan" --version
+          "$RUNNER_TEMP/wheel-venv/bin/python" - <<'PY'
+          import pathlib
+          import newspaper_auto
+
+          static = pathlib.Path(newspaper_auto.__file__).parent / "static" / "app.js"
+          assert static.is_file(), "static/ 资源未随 wheel 安装"
+          print("static OK:", static)
+          PY
+
+      - name: 发布到 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes

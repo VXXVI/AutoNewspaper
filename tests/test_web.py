@@ -1341,3 +1341,45 @@ def test_papers_post_requires_json_content_type(tmp_path):
             headers={"Content-Type": "text/plain"},
         )
         assert status == 415
+
+
+# ---------------------------------------------------------------- 静态资源：ETag / gzip
+def _open(url, headers=None):
+    request = urllib.request.Request(url, headers=headers or {})
+    return urllib.request.urlopen(request, timeout=5)
+
+
+def test_static_serves_etag_last_modified_and_revalidates(base_url):
+    with _open(base_url + "/static/app.js") as resp:
+        assert resp.status == 200
+        etag = resp.headers.get("ETag")
+        assert etag
+        assert resp.headers.get("Last-Modified")
+        assert "no-cache" in (resp.headers.get("Cache-Control") or "")
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _open(base_url + "/static/app.js", {"If-None-Match": etag})
+    assert exc.value.code == 304
+    assert exc.value.headers.get("ETag") == etag
+
+
+def test_static_gzip_when_client_accepts(base_url):
+    import gzip
+
+    with _open(base_url + "/static/style.css", {"Accept-Encoding": "gzip"}) as resp:
+        assert resp.headers.get("Content-Encoding") == "gzip"
+        assert "Accept-Encoding" in (resp.headers.get("Vary") or "")
+        raw = resp.read()
+    text = gzip.decompress(raw).decode("utf-8")
+    assert "--bg" in text or "body" in text
+
+
+def test_static_q0_disables_gzip(base_url):
+    with _open(base_url + "/static/style.css", {"Accept-Encoding": "gzip;q=0"}) as resp:
+        assert resp.headers.get("Content-Encoding") is None
+
+
+def test_accepts_gzip_parsing():
+    assert web._accepts_gzip("gzip") is True
+    assert web._accepts_gzip("deflate, gzip;q=0.8") is True
+    assert web._accepts_gzip("gzip;q=0") is False
+    assert web._accepts_gzip("identity") is False
