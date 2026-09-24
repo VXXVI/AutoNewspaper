@@ -223,12 +223,43 @@ def _normalize(item: Any) -> dict[str, Any] | None:
     }
 
 
+def _file_stamp(path: Path) -> tuple[int, int]:
+    """(mtime_ns, size)；文件不存在记 (0, 0)。用于缓存失效判定。"""
+    try:
+        stat = path.stat()
+    except OSError:
+        return (0, 0)
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+# 看板装配缓存：key=数据目录，value=(文件指纹, 装配结果)。
+# 归档/增量/配置未变化时直接复用，避免每次请求都全量 parse + sort。
+_DASHBOARD_CACHE: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = {}
+_DASHBOARD_CACHE_LOCK = threading.Lock()
+
+
 def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[str, Any]:
-    """组装看板所需的全部数据（纯读取，无副作用）。"""
-    now = now or datetime.now()
+    """组装看板所需的全部数据（纯读取，无副作用）。
+
+    归档 / ``seen.json`` / ``web_config.json`` 的 (mtime, size) 未变时命中内存缓存，
+    省去全量 JSON 解析与排序；显式传入 ``now``（测试用）时跳过缓存，保证 ``generated_at`` 可控。
+    """
     data_dir = Path(data_dir)
     archive_path = paths.archive_file(data_dir)
+    cacheable = now is None
+    cache_key = str(data_dir)
+    stamp: tuple[Any, ...] = (
+        _file_stamp(archive_path),
+        _file_stamp(paths.state_file(data_dir)),
+        _file_stamp(paths.web_config_file(data_dir)),
+    )
+    if cacheable:
+        with _DASHBOARD_CACHE_LOCK:
+            cached = _DASHBOARD_CACHE.get(cache_key)
+            if cached is not None and cached[0] == stamp:
+                return cached[1]
 
+    now = now or datetime.now()
     records = [rec for rec in (_normalize(item) for item in _read_archive(archive_path)) if rec]
     records.sort(key=lambda r: (r["date"], r["paper"], r["url"]), reverse=True)
 
@@ -242,7 +273,7 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
         date_counts[rec["date"]] = date_counts.get(rec["date"], 0) + 1
         paper_counts[rec["paper"]] = paper_counts.get(rec["paper"], 0) + 1
 
-    return {
+    result = {
         "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
         "version": __version__,
         "data_dir": str(data_dir),
@@ -261,6 +292,10 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
         # 当前设备保存的扫描关键词。前端据此默认聚焦本轮主题，而不是把历史关键词全部混在一起。
         "configured_keywords": saved_config["keywords"],
     }
+    if cacheable:
+        with _DASHBOARD_CACHE_LOCK:
+            _DASHBOARD_CACHE[cache_key] = (stamp, result)
+    return result
 
 
 # ---------------------------------------------------------------- 参数校验

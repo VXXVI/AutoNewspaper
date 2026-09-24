@@ -73,6 +73,25 @@ def test_build_dashboard_corrupt_archive(tmp_path):
     assert web.build_dashboard(tmp_path)["count"] == 0
 
 
+def test_build_dashboard_cache_hit_and_invalidation(tmp_path):
+    _write_archive(tmp_path, ARCHIVE)
+    first = web.build_dashboard(tmp_path)
+    # 文件未变 → 命中缓存，返回同一对象（省去全量解析与排序）
+    assert web.build_dashboard(tmp_path) is first
+    # 归档内容变化 → 指纹变化 → 重新装配
+    _write_archive(tmp_path, [*ARCHIVE, {**ARCHIVE[0], "url": "http://x/new", "title": "新"}])
+    second = web.build_dashboard(tmp_path)
+    assert second is not first
+    assert second["count"] == first["count"] + 1
+
+
+def test_build_dashboard_now_argument_bypasses_cache(tmp_path):
+    _write_archive(tmp_path, ARCHIVE)
+    web.build_dashboard(tmp_path)
+    fixed = web.build_dashboard(tmp_path, now=datetime(2020, 1, 2, 3, 4, 5))
+    assert fixed["generated_at"] == "2020-01-02 03:04:05"
+
+
 def test_build_dashboard_reads_seen_counts(tmp_path):
     _write_archive(tmp_path, ARCHIVE)
     state_dir = tmp_path / "state"
