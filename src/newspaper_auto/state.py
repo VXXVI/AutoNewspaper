@@ -13,11 +13,14 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
+import uuid
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from . import config
+from . import config, report
 
 # 文章 URL 内含日期目录，如 /2026-09/22/ 或 /202609/22/
 _URL_DATE_RE = re.compile(r"/(\d{4})-?(\d{2})/")
@@ -26,23 +29,70 @@ SeenMap = dict[str, dict[str, int]]
 
 
 def load_seen(path: str | os.PathLike[str]) -> SeenMap:
-    """读取增量状态；文件缺失或损坏时返回空字典（不抛异常）。"""
+    """读取并归一化增量状态；文件缺失或局部损坏时安全降级。"""
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    normalized: SeenMap = {}
+    for keyword, bucket in data.items():
+        if not isinstance(keyword, str) or not keyword or not isinstance(bucket, dict):
+            continue
+        urls = {url: 1 for url in bucket if isinstance(url, str) and url}
+        if urls:
+            normalized[keyword] = urls
+    return normalized
 
 
 def save_seen(path: str | os.PathLike[str], seen: SeenMap) -> None:
-    """原子写入增量状态（先写临时文件再替换，避免中断导致半截文件）。"""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(seen, handle, ensure_ascii=False, indent=1)
-    os.replace(tmp, path)
+    """原子写入增量状态。"""
+    report.write_text(path, json.dumps(seen, ensure_ascii=False, indent=1))
+
+
+@contextmanager
+def exclusive_lock(state_path: str | os.PathLike[str], *, timeout: float = 30.0, stale_after: float = 7200.0):
+    """用 ``O_EXCL`` 锁住同一数据目录的状态提交阶段。
+
+    这是不依赖 ``fcntl`` 的跨平台实现，macOS / Linux / Windows 都可用。
+    锁文件内带唯一 token，释放时只删除自己创建的锁；超过两小时的残留锁
+    可被后续进程回收。
+    """
+    lock_path = Path(state_path).with_suffix(".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    token = f"{os.getpid()}:{uuid.uuid4().hex}"
+    deadline = time.monotonic() + timeout
+    acquired = False
+    while not acquired:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            try:
+                if time.time() - lock_path.stat().st_mtime > stale_after:
+                    lock_path.unlink()
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"等待状态锁超时：{lock_path}") from None
+            time.sleep(0.1)
+        else:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(token)
+            acquired = True
+    try:
+        yield
+    finally:
+        try:
+            if lock_path.read_text(encoding="utf-8") == token:
+                lock_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            with suppress(OSError):
+                lock_path.unlink()
 
 
 def prune_seen(seen: SeenMap, keep_days: int = config.SEEN_KEEP_DAYS, now: datetime | None = None) -> int:

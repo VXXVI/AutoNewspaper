@@ -102,6 +102,23 @@
 
 ### 修复
 
+- **防止 HTTP 200 静默漏报**：入口页未解析到 `node_*` / `content_*`、
+  所有版面均无文章，或所有文章抓取/解析失败时，现会记录结构异常并
+  以非零退出，不再把反爬挑战页或站点改版误报为「无命中」。
+- **CLI 参数校验收紧**：`--days` 限定 1~62，`--workers` 限定 1~16，
+  空关键词与超过 10 个关键词在联网前直接拒绝，重复关键词自动去重。
+- **自定义链接模板校验**：`tpl` 只允许使用不带 format spec/conversion 的
+  `{a}`，未闭合花括号或 `{other}` 等额外字段会在保存时被拒绝。
+- **状态与归档一致性**：JSON / HTML / Markdown 改为同目录临时文件原子替换；
+  状态提交阶段新增跨平台跨进程锁，`seen.json` 最后写入，避免报告写失败后
+  文章却被提前标记为已见。损坏的内层状态/归档记录会被安全跳过。
+- **HTML 属性解析增强**：链接与 `<area>` 改用标准库 `HTMLParser`，兼容
+  单引号、大小写与无引号属性。
+- **看板零安装入口**：新增根目录 `dashboard.py`，与 `daily_scan.py` 一样自动
+  加载 `src/`；Makefile 与 macOS / Windows 双击启动器统一改用该入口，
+  未执行 `pip install -e .` 也能打开看板。
+- **Actions 运维修正**：原生 schedule 避开整点高峰；修正「私有仓库不支持
+  schedule」的过度概括，并将 `checkout` / `setup-python` 固定到完整 commit SHA。
 - **CLI 入口失败不再伪装成功**：存在 `entry_code != 200` 时 `cli.main()` 返回退出码 1，
   让 GitHub Actions 步骤变红；文章级失败不影响退出码（`cli.py`）。
 - **Actions 失败时不再丢结果**：`scan.yml` 的「提交结果」步骤改为 `if: always()`，

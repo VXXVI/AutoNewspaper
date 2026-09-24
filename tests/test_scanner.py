@@ -101,6 +101,44 @@ def test_entry_failure_classification(zhanjiang_paper, fixed_day, code, body, ex
     assert stats["entry_code"] == code
 
 
+def test_http_200_challenge_page_is_structural_failure(zhanjiang_paper, fixed_day):
+    """HTTP 200 + 足够长不等于数字报页，不得静默当成「无命中」。"""
+    challenge = "<html><body>" + "访问挑战页" * 80 + "</body></html>"
+    hits, articles, stats = scanner.scan_paper(
+        zhanjiang_paper, fixed_day, KW, workers=2, fetcher=lambda _url: (200, challenge)
+    )
+    assert hits == [] and articles == []
+    assert stats["ok"] is False
+    assert stats["failure_kind"] == "entry_structure"
+    assert "结构异常" in stats["note"]
+
+
+def test_sections_without_any_articles_are_failure(zhanjiang_paper, fixed_day):
+    entry = '<a href="node_1.htm">第一版</a>' + "x" * 400
+
+    def fetch(url: str):
+        return 200, entry if url.endswith("node_1.htm") else ""
+
+    _hits, _articles, stats = scanner.scan_paper(zhanjiang_paper, fixed_day, KW, workers=2, fetcher=fetch)
+    assert stats["ok"] is False
+    assert stats["failure_kind"] == "section_structure"
+
+
+def test_all_empty_article_pages_are_failure(fixed_day):
+    paper = {"name": "测试报", "style": "ymd", "tpl": "https://x/{a}/node_1.html"}
+    section = '<a href="content_1.html">文章</a>' + "x" * 400
+    empty_article = "<html><body><script>" + "x" * 400 + "</script></body></html>"
+
+    def fetch(url: str):
+        return (200, empty_article) if "content_" in url else (200, section)
+
+    _hits, articles, stats = scanner.scan_paper(paper, fixed_day, KW, workers=2, fetcher=fetch)
+    assert articles == []
+    assert stats["articles_failed"] == 1
+    assert stats["failure_kind"] == "all_articles_failed"
+    assert stats["ok"] is False
+
+
 def test_section_fetch_failure_is_ignored(zhanjiang_paper, fixed_day, site_fetcher):
     base = f"http://paper.gdzjdaily.com.cn/html/{fixed_day:%Y-%m}/{fixed_day:%d}/"
     fetcher = site_fetcher(fixed_day, status_overrides={base + "node_2.htm": (500, "")})

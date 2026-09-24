@@ -18,14 +18,12 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
-import os
 import re
 import sys
-import tempfile
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from string import Formatter
 from typing import Any
 
 from . import config, report
@@ -76,8 +74,22 @@ def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
     tpl = tpl.strip()
     if not tpl.startswith(URL_PREFIXES):
         return None, "tpl 必须以 http:// 或 https:// 开头"
-    if "{a}" not in tpl:
+    try:
+        fields = [
+            (field, format_spec, conversion)
+            for _, field, format_spec, conversion in Formatter().parse(tpl)
+            if field
+        ]
+    except ValueError as exc:
+        return None, f"tpl 花括号格式非法：{exc}"
+    if not fields or not any(field == "a" for field, _, _ in fields):
         return None, "tpl 必须包含 {a} 日期占位符"
+    if any(field != "a" or format_spec or conversion for field, format_spec, conversion in fields):
+        return None, "tpl 只允许使用不带格式的 {a} 日期占位符"
+    try:
+        tpl.format(a="202609/24")
+    except (KeyError, IndexError, ValueError) as exc:
+        return None, f"tpl 无法正常生成日期链接：{exc}"
 
     paper: dict[str, Any] = {"name": name, "style": style, "tpl": tpl}
 
@@ -175,17 +187,8 @@ def merge_papers(builtin: Sequence[dict[str, Any]], custom: Iterable[dict[str, A
 def save_custom(root: Path, custom_papers: Iterable[dict[str, Any]]) -> None:
     """原子写回 ``<root>/papers.custom.json``（缩进 JSON，用户可直接手编）。"""
     path = _custom_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps({"version": 1, "papers": list(custom_papers)}, ensure_ascii=False, indent=2) + "\n"
-    handle, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".papers.custom.", suffix=".json")
-    os.close(handle)
-    try:
-        report.write_text(tmp_name, text)
-        os.replace(tmp_name, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_name)
-        raise
+    report.write_text(path, text)
 
 
 def custom_names(root: Path) -> set[str]:

@@ -59,9 +59,9 @@ LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 MAX_BODY_BYTES = 16384
 # 扫描日志最多保留的行数（超出丢最旧的）
 MAX_LOG_LINES = 300
-MAX_KEYWORDS = 10
-MAX_KEYWORD_LEN = 50
-MAX_WORKERS = 16
+MAX_KEYWORDS = config.MAX_KEYWORDS
+MAX_KEYWORD_LEN = config.MAX_KEYWORD_LEN
+MAX_WORKERS = config.MAX_WORKERS
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # 扫描范围模式：按天数 / 按日期范围（互斥，缺省按天数以兼容旧配置）
 SCAN_MODES = ("days", "range")
@@ -928,7 +928,7 @@ def create_server(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m newspaper_auto.web",
-        description="六家报社数字报监测 · 本地看板（可配置关键词/日期范围、管理自定义报社、一键触发扫描）",
+        description="数字报监测 · 本地看板（可配置关键词/日期范围、管理自定义报社、一键触发扫描）",
     )
     parser.add_argument("--data-dir", default=None, help="数据目录（含 hits/ 与 state/），默认自动探测项目根")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"监听地址（默认 {DEFAULT_HOST}，仅本机可访问）")

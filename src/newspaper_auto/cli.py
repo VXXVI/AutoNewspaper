@@ -22,16 +22,44 @@ def _parse_date(text: str) -> datetime:
         raise argparse.ArgumentTypeError(f"非法日期 {text!r}，应形如 2026-09-23") from None
 
 
+def _bounded_int(name: str, minimum: int, maximum: int) -> Callable[[str], int]:
+    """构造 argparse 整数校验器，让错误在联网前以退出码 2 暴露。"""
+
+    def parse_value(text: str) -> int:
+        try:
+            value = int(text)
+        except (TypeError, ValueError):
+            raise argparse.ArgumentTypeError(f"{name} 必须是整数") from None
+        if not minimum <= value <= maximum:
+            raise argparse.ArgumentTypeError(f"{name} 必须在 {minimum}~{maximum} 之间")
+        return value
+
+    return parse_value
+
+
+def _parse_keyword(text: str) -> str:
+    value = text.strip()
+    if not value:
+        raise argparse.ArgumentTypeError("关键词不能为空")
+    if len(value) > config.MAX_KEYWORD_LEN:
+        raise argparse.ArgumentTypeError(f"单个关键词不能超过 {config.MAX_KEYWORD_LEN} 个字符")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="daily_scan.py", description="六家报社数字报关键词每日监测")
+    parser = argparse.ArgumentParser(prog="daily_scan.py", description="数字报关键词每日监测")
     parser.add_argument(
-        "--kw", action="append", default=None, help="关键词，可多次指定（默认：广东海洋大学）"
+        "--kw",
+        action="append",
+        type=_parse_keyword,
+        default=None,
+        help=f"关键词，可多次指定（最多 {config.MAX_KEYWORDS} 个；默认：广东海洋大学）",
     )
     # --days 与 --since/--until 语义互斥；后者两者可共存，故不用 argparse 的
     # mutually exclusive group（它无法表达「days ⊕ (since ∨ until)」），改在 main 里显式判定。
     parser.add_argument(
         "--days",
-        type=int,
+        type=_bounded_int("--days", 1, config.MAX_RANGE_DAYS),
         default=None,
         help=f"回溯天数（默认 {config.DEFAULT_DAYS} = 今天+昨天）；与 --since/--until 互斥",
     )
@@ -50,7 +78,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="结束日期（含），缺省为今天；与 --days 互斥",
     )
     parser.add_argument(
-        "--workers", type=int, default=config.DEFAULT_WORKERS, help=f"并发数（默认 {config.DEFAULT_WORKERS}）"
+        "--workers",
+        type=_bounded_int("--workers", 1, config.MAX_WORKERS),
+        default=config.DEFAULT_WORKERS,
+        help=f"并发数（1~{config.MAX_WORKERS}，默认 {config.DEFAULT_WORKERS}）",
     )
     parser.add_argument("--only", default="", help="只扫指定报社，逗号分隔")
     parser.add_argument("--full", action="store_true", help="忽略增量记录，全量重报")
@@ -90,7 +121,7 @@ def resolve_dates(args: argparse.Namespace, parser: argparse.ArgumentParser | No
         p = parser or build_parser()
         p.error("--days 不能与 --since/--until 同时使用")
     if not use_range:
-        span = max(1, args.days or config.DEFAULT_DAYS)
+        span = args.days if args.days is not None else config.DEFAULT_DAYS
         return [today - timedelta(days=i) for i in range(span)]
 
     until = args.until or today
@@ -140,22 +171,72 @@ def select_papers(
 
 
 def update_archive(data_dir: os.PathLike[str] | str, all_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """把本次命中并入 ``archive.json``，返回合并后的归档。"""
+    """把本次命中并入 ``archive.json``，返回合并后的归档。
+
+    旧归档中的局部脏数据会被跳过；同 URL 再次命中时更新标题、版面与
+    几何信息，并对 ``matched`` 取有序并集，避免新关键词永远不进看板。
+    """
     archive_path = paths.archive_file(data_dir)
     try:
         with open(archive_path, encoding="utf-8") as handle:
-            archive = json.load(handle)
-        if not isinstance(archive, list):
-            archive = []
+            raw_archive = json.load(handle)
     except (OSError, ValueError):
-        archive = []
-    known = {item["url"] for item in archive}
+        raw_archive = []
+    archive = (
+        [item for raw in raw_archive if (item := _normalize_archive_item(raw)) is not None]
+        if isinstance(raw_archive, list)
+        else []
+    )
+    by_url = {item["url"]: index for index, item in enumerate(archive)}
     for hit in all_hits:
-        if hit["url"] not in known:
-            archive.append(hit)
-            known.add(hit["url"])
+        normalized_hit = _normalize_archive_item(hit)
+        if normalized_hit is None:
+            continue
+        url = normalized_hit["url"]
+        if url not in by_url:
+            by_url[url] = len(archive)
+            archive.append(normalized_hit)
+            continue
+        index = by_url[url]
+        previous = archive[index]
+        merged = {**previous, **normalized_hit}
+        merged["matched"] = list(
+            dict.fromkeys([*(previous.get("matched") or []), *(normalized_hit.get("matched") or [])])
+        )
+        archive[index] = merged
     report.write_text(archive_path, json.dumps(archive, ensure_ascii=False, indent=1))
     return archive
+
+
+def _normalize_archive_item(item: Any) -> dict[str, Any] | None:
+    """把归档条目收敛为报告渲染必需的安全形状。"""
+    if not isinstance(item, dict):
+        return None
+    url = item.get("url")
+    if not isinstance(url, str) or not url:
+        return None
+    normalized = dict(item)
+    normalized.update(
+        {
+            "paper": str(item.get("paper") or ""),
+            "date": str(item.get("date") or ""),
+            "section": str(item.get("section") or ""),
+            "section_no": str(item.get("section_no") or ""),
+            "title": str(item.get("title") or ""),
+            "url": url,
+            "snippets": [str(value) for value in item.get("snippets", []) if value]
+            if isinstance(item.get("snippets"), list)
+            else [],
+            "matched": [str(value) for value in item.get("matched", []) if value]
+            if isinstance(item.get("matched"), list)
+            else [],
+        }
+    )
+    try:
+        normalized["text_len"] = int(item.get("text_len") or 0)
+    except (TypeError, ValueError):
+        normalized["text_len"] = 0
+    return normalized
 
 
 def main(
@@ -170,7 +251,9 @@ def main(
     # 结构化输出模式下，人类可读日志重定向至 stderr，保证 stdout 纯净
     log: Callable[..., None] = _make_logger(sys.stderr if (args.json or args.csv) else sys.stdout)
 
-    keywords = args.kw or list(config.DEFAULT_KEYWORDS)
+    keywords = list(dict.fromkeys(args.kw or config.DEFAULT_KEYWORDS))
+    if len(keywords) > config.MAX_KEYWORDS:
+        parser.error(f"关键词最多 {config.MAX_KEYWORDS} 个")
     kw_res = {k: parse.make_kw_re(k) for k in keywords}
     kw_label = " / ".join(keywords)
 
@@ -191,8 +274,6 @@ def main(
     log(f"日期范围：{dates[-1]:%Y-%m-%d} ~ {dates[0]:%Y-%m-%d}（{len(dates)} 天）")
     log(f"报社：{'、'.join(p['name'] for p in selected)}")
     log("-" * 72)
-
-    seen = {} if args.no_state else state.load_seen(paths.state_file(data_dir))
 
     all_stats: list[dict[str, Any]] = []
     all_hits: list[dict[str, Any]] = []
@@ -218,24 +299,41 @@ def main(
         _emit_structured(args, [])
         return 0
 
-    new_hits = state.compute_new_hits(all_hits, seen, full=args.full, no_state=args.no_state)
-
-    if not args.full and not args.no_state:
-        state.record_hits(seen, all_hits)
-        dropped = state.prune_seen(seen)
-        state.save_seen(paths.state_file(data_dir), seen)
-        if dropped:
-            log(f"  （已清理 {dropped} 条过期增量记录）")
-
     md_path: Any = None
-    if not args.no_state:
-        archive = update_archive(data_dir, all_hits)
-        stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
-        md_path = paths.hits_dir(data_dir) / f"{stamp}.md"
-        report.write_md(
-            md_path, kw_label, dates, all_stats, new_hits, all_hits, "全量重报" if args.full else "增量"
-        )
-        report.write_html(paths.index_file(data_dir), kw_label, archive)
+    persistence_error: str | None = None
+    if args.no_state:
+        new_hits = state.compute_new_hits(all_hits, {}, full=args.full, no_state=True)
+    else:
+        state_path = paths.state_file(data_dir)
+        try:
+            # 扫描可以并行进行；只在快速的「重读→合并→提交」阶段持有跨进程锁。
+            with state.exclusive_lock(state_path):
+                seen = state.load_seen(state_path)
+                new_hits = state.compute_new_hits(all_hits, seen, full=args.full)
+                archive = update_archive(data_dir, all_hits)
+                stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                md_path = paths.hits_dir(data_dir) / f"{stamp}.md"
+                report.write_md(
+                    md_path,
+                    kw_label,
+                    dates,
+                    all_stats,
+                    new_hits,
+                    all_hits,
+                    "全量重报" if args.full else "增量",
+                )
+                report.write_html(paths.index_file(data_dir), kw_label, archive)
+                # seen.json 最后写：它是本次数据提交的标志。
+                # 中途任何写入失败时，下次仍会把命中视为新增，不会静默丢报。
+                if not args.full:
+                    state.record_hits(seen, all_hits)
+                    dropped = state.prune_seen(seen)
+                    state.save_seen(state_path, seen)
+                    if dropped:
+                        log(f"  （已清理 {dropped} 条过期增量记录）")
+        except (OSError, TimeoutError) as exc:
+            new_hits = state.compute_new_hits(all_hits, {}, full=True)
+            persistence_error = str(exc) or exc.__class__.__name__
 
     _emit_structured(args, all_hits)
 
@@ -258,12 +356,16 @@ def main(
         log(f"\n  报告：{md_path}")
         log(f"  汇总：{paths.index_file(data_dir)}")
 
+    if persistence_error:
+        log(f"\n  ⚠️  结果写入失败：{persistence_error}")
+        return 1
+
     # 入口失败 → 非零退出，让 Actions 步骤变红；但增量状态/报告已在上面写完，
     # Actions 的"提交结果"步骤应设  if: always()  确保提交仍然发生。
-    entry_failures = [s for s in all_stats if s.get("entry_code", 200) != 200]
+    entry_failures = [s for s in all_stats if not s.get("ok", s.get("entry_code", 200) == 200)]
     if entry_failures:
         names = "、".join(s["paper"] for s in entry_failures)
-        log(f"\n  ⚠️  {len(entry_failures)} 家报社入口失败（{names}），结果可能漏报！")
+        log(f"\n  ⚠️  {len(entry_failures)} 个报社/日期出现入口失败或扫描异常（{names}），结果可能漏报！")
         return 1
     return 0
 

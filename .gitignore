@@ -30,6 +30,11 @@ dist/
 # 属本机状态而非共享配置，不入库；否则 scan.yml 里的 `git add -A state hits`
 # 会在每天的自动扫描提交里把它一并扫进 main。
 state/web_config.json
+# 原子写入/跨进程提交的短命临时文件；崩溃残留也不应被 CI 提交。
+state/*.lock
+state/.*.tmp
+hits/.*.tmp
+/.papers.custom.json.*.tmp
 
 # 运行日志
 logs/

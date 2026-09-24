@@ -43,8 +43,8 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 
 | 方案 | 成本 | 需仓库转公开？ | 本机需常开？ | 适合场景 |
 |---|---|---|---|---|
-| GitHub Actions 原生 `schedule` | 免费 | **是**（私有仓库实测零触发） | 否 | 愿意把仓库转公开 |
-| 外部 cron 打 `repository_dispatch` | 免费 | 否 | 否（只需 cron 侧在线） | **当前生产方案**（VPS / cron-job.org 等） |
+| GitHub Actions 原生 `schedule` | 私有库消耗 Actions 额度 | 否 | 否 | 部署最简，允许延迟 |
+| 外部 cron 打 `repository_dispatch` | 取决于 cron 服务 | 否 | 否（只需 cron 侧在线） | **当前生产方案**，适合更看重准点 |
 | macOS `launchd` 本机 | 免费 | 否 | 需唤醒/登录 | 手边是 Mac、想当场看结果；无状态，可与 Actions 并存 |
 | Windows 任务计划程序 | 免费 | 否 | 需开机/登录 | 手边是 Windows；无状态，可与 Actions 并存 |
 
@@ -57,6 +57,7 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 ```
 .
 ├── daily_scan.py                 # 命令行兼容入口（推荐直接用它）
+├── dashboard.py                  # 看板兼容入口（无需先安装包）
 ├── pyproject.toml                # 打包/依赖/测试/ruff 配置
 ├── Makefile                      # 常用任务（make help）
 ├── src/newspaper_auto/           # 实现
@@ -73,7 +74,7 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   └── cli.py                    #   参数解析与主流程
 ├── papers.custom.json            # 自定义报社配置（项目根，有意入库，见「自定义报社」）
 ├── .github/workflows/            # CI 与每日扫描 workflow（生产调度入口）
-├── tests/                        # 214 个离线单元测试 + HTML fixture
+├── tests/                        # 248 个离线测试 + HTML fixture
 ├── scripts/                      # 定时任务
 │   ├── run_scan.sh               #   macOS/Linux 启动脚本（无状态运行，写日志）
 │   ├── com.quark.newspaperauto.plist.template  # launchd 模板
@@ -90,12 +91,24 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 
 ## 三、安装
 
-运行时只需要 **Python 3.9+** 和 **curl**（macOS 自带）。不装任何第三方包也能跑：
+项目支持 **macOS / Linux / Windows 10 1803+**。运行时只需要
+**Python 3.9+** 和 **curl**（macOS 与新版 Windows 自带），不装任何第三方包也能跑：
 
 ```bash
 cd /Users/quark/Codex/Project/NewsPaperAuto
 python3 daily_scan.py --dry        # 直接可用
 ```
+
+### 跨平台快速入口
+
+| 平台 | 手动扫描 | 本地看板 | 定时运行 |
+|---|---|---|---|
+| macOS | `python3 daily_scan.py` 或双击 `scripts/scan.command` | 双击 `scripts/dashboard.command` | `scripts/install_launchd.sh` |
+| Linux | `python3 daily_scan.py` | `python3 dashboard.py --open` | cron / GitHub Actions |
+| Windows | `python daily_scan.py` 或双击 `scripts\scan.cmd` | 双击 `scripts\dashboard.cmd` | `scripts\install_task_scheduler.ps1` |
+
+Windows 上把文档示例中的 `python3` 换成 `python`即可。启动脚本会按
+`NEWSPAPER_PYTHON` → `.venv` → PATH 中的 Python 顺序自动选择解释器。
 
 如需开发（跑测试 / lint）：
 
@@ -273,9 +286,10 @@ schtasks /Create /TN NewsPaperAuto /SC DAILY /ST 10:00 /F ^
 ### 外部定时（VPS crontab）
 
 不想让本机常开时，可用任意一台 VPS 的 crontab 触发 GitHub Actions。
-这是本项目**生产环境实际采用**的方式：私有仓库下 GitHub 原生 `schedule`
-触发器实测不会触发（`*/5` 探测约 36 分钟、`gh run list` 零条记录，见
-`.github/workflows/scan.yml` 注释），`repository_dispatch` 是唯一可靠的定时入口。
+这是本项目**生产环境当前采用**的方式。GitHub 官方支持私有仓库的
+`schedule`，但定时任务可能延迟，高负载时甚至丢弃；本项目曾出现原生定时
+长时间无记录，因此保留 `repository_dispatch` 作为更准点的生产入口。
+两者都配置时可能同日执行两次；建议选一个作为主触发器。
 
 **部署形态**
 
@@ -386,8 +400,8 @@ rm -rf ~/.newspaperauto
 用标准库起一个看板，零第三方依赖、无构建、无 CDN：
 
 ```bash
-python3 -m newspaper_auto.web               # http://127.0.0.1:8788（默认端口）
-python3 -m newspaper_auto.web --port 8799 --open
+python3 dashboard.py               # http://127.0.0.1:8788（默认端口）
+python3 dashboard.py --port 8799 --open
 make web                                    # 等价（默认 8788，被占用时自动改用空闲端口）
 ```
 
@@ -494,7 +508,8 @@ make web                                    # 等价（默认 8788，被占用�
 
 **解析兜底是按现有六家站点结构写的**（方正系 / 人民网系的三段式 `node_* → content_*`，
 正文取 `<founder-content>` 或 `<!--enpcontent-->`）。换到结构不同的站点，
-可能抓不到版面名 / 标题，甚至 `entry_code=200` 但 `sections=0`——**先用「试抓」探测**。
+可能抓不到版面名 / 标题；如果 HTTP 200 但解析不到版面或文章，扫描会明确报
+「结构异常」并以非零退出，不会静默当成无命中。**新增后先用「试抓」探测**。
 
 **SSRF 能力边界（如实说明，不封）**：`tpl` 是用户自己填的 URL，扫描器会用系统 `curl`
 去抓。这里**只允许 `http` / `https` 前缀**，**不封私网 IP 段**——因为用户很可能就是想扫

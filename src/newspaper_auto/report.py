@@ -5,11 +5,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import html as _html
 import io
 import json
 import os
+import tempfile
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
@@ -39,11 +41,26 @@ def geometry_label(geometry: Any) -> str:
 
 
 def write_text(path: str | os.PathLike[str], content: str) -> None:
-    """写入文本文件（自动建父目录）。"""
+    """原子写入文本文件（自动建父目录）。
+
+    先在同目录写入唯一临时文件，``flush`` + ``fsync`` 后再替换目标，
+    避免进程中断留下半截 JSON / HTML。
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(content)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def hits_to_json(hits: list[dict[str, Any]]) -> str:
@@ -117,16 +134,20 @@ def render_md(
 
     # 抓取失败（缺报）节——仅在存在失败时展示
     failed_stats = [s for s in stats if s.get("sections_failed", 0) or s.get("articles_failed", 0)]
-    entry_failed = [s for s in stats if s.get("entry_code", 200) != 200]
+    entry_failed = [s for s in stats if not s.get("ok", s.get("entry_code", 200) == 200)]
     if failed_stats or entry_failed:
         lines += ["## 抓取失败（缺报）", ""]
-        lines.append("> ⚠️ 下列失败可能导致**漏报**——「无命中」不代表真的没有，而是因为页面未能下载。")
+        lines.append(
+            "> ⚠️ 下列失败可能导致**漏报**——「无命中」不代表真的没有，页面可能下载失败或站点结构已变化。"
+        )
         lines.append("")
         for item in entry_failed:
             lines.append(
-                f"- **{item['paper']}** 入口失败：{item.get('note', '')}（code={item['entry_code']}）"
+                f"- **{item['paper']}** 扫描异常：{item.get('note', '')}（code={item['entry_code']}）"
             )
         for item in failed_stats:
+            if item in entry_failed:
+                continue
             sf = item.get("sections_failed", 0)
             af = item.get("articles_failed", 0)
             parts = []
@@ -136,7 +157,8 @@ def render_md(
                 parts.append(f"文章页失败 {af} 篇")
             lines.append(f"- **{item['paper']}** {item['date']}：{' / '.join(parts)}")
             for rec in item.get("failed_urls", []):
-                lines.append(f"  - code={rec['code']} {rec['url']}")
+                reason = f" · {rec['reason']}" if rec.get("reason") else ""
+                lines.append(f"  - code={rec['code']} {rec['url']}{reason}")
         lines.append("")
 
     if new_hits:
@@ -174,7 +196,7 @@ def render_md(
 _HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>「{kw}」六家报社监测</title>
+<title>「{kw}」数字报监测</title>
 <style>
  body{{margin:0;background:#f6f7f9;color:#1b1f24;
    font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}}
@@ -192,7 +214,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
  a{{color:#1a6ef5;text-decoration:none}} a:hover{{text-decoration:underline}}
  .sn{{font-size:12px;color:#8a94a3;margin-top:4px}}
 </style></head><body><div class="wrap">
-<h1>「{kw}」· 六家报社数字报监测</h1>
+<h1>「{kw}」· 数字报监测</h1>
 <div class="meta">共 {total} 条命中 · 更新于 {updated}</div>
 <table><thead><tr><th>报社</th><th>日期</th><th>版面</th><th>标题</th></tr></thead>
 <tbody>{rows}</tbody></table>

@@ -11,6 +11,9 @@ DEFAULT_DAYS = 2
 DEFAULT_WORKERS = 8
 # --since/--until 显式区间的跨度上限：防止误扫把六家报社站点打爆
 MAX_RANGE_DAYS = 62
+MAX_WORKERS = 16
+MAX_KEYWORDS = 10
+MAX_KEYWORD_LEN = 50
 
 # ---------------------------------------------------------------- HTTP
 # 这些报社站点对 curl 友好；并发压力下偶发空响应，靠重试兜底。

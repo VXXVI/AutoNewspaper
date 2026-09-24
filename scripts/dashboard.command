@@ -22,12 +22,12 @@ if [ -z "${PY}" ]; then
 fi
 
 PORT="${NEWSPAPER_PORT:-8788}"
-if "${PY}" -m newspaper_auto.web --port "${PORT}" --open; then
+if "${PY}" dashboard.py --port "${PORT}" --open; then
     exit 0
 fi
 echo
 echo "端口 ${PORT} 不可用，改用系统自动分配的空闲端口重试…"
-"${PY}" -m newspaper_auto.web --port 0 --open || {
+"${PY}" dashboard.py --port 0 --open || {
     echo
     echo "看板启动失败，按回车关闭窗口。"
     read -r _

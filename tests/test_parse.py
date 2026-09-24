@@ -62,6 +62,14 @@ def test_links_keeps_absolute_urls():
     ]
 
 
+def test_links_accepts_single_quotes_uppercase_and_unquoted_attributes():
+    html = "<A HREF='node_2.htm'>a</A><a href=node_3.htm>b</a>"
+    assert parse.links(html, "http://example.com/base/", r"node_\w+\.html?$") == [
+        "http://example.com/base/node_2.htm",
+        "http://example.com/base/node_3.htm",
+    ]
+
+
 # ---------------------------------------------------------------- title
 def test_extract_title_prefers_h1():
     html = "<title>站点标题</title><h1>真正的文章标题</h1>"
@@ -263,6 +271,13 @@ def test_area_rects_skips_malformed_or_unrelated():
         '<area coords="1,2,3" href="content_3.html">'
     )
     assert parse.area_rects(html, "http://x/", r"content_\w+\.html?$") == {}
+
+
+def test_area_rects_accepts_single_quotes_and_uppercase_attributes():
+    html = "<AREA COORDS='1,2,30,40' HREF='content_1.html'>"
+    assert parse.area_rects(html, "http://x/", r"content_\w+\.html?$") == {
+        "http://x/content_1.html": (1, 2, 30, 40)
+    }
 
 
 # ---------------------------------------------------------------- section_no

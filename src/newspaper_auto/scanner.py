@@ -23,6 +23,16 @@ def _classify_entry_failure(code: int, body_len: int) -> str:
     return f"入口内容异常（仅 {body_len} 字节）"
 
 
+def _entry_failure_kind(code: int, body_len: int) -> str:
+    if code == 0:
+        return "network"
+    if code != 200:
+        return "http"
+    if body_len < config.MIN_HTML_BYTES:
+        return "too_short"
+    return ""
+
+
 def _paper_fetch(paper: dict[str, Any], base_fetcher: Fetcher) -> Fetcher:
     """根据报社的 timeout/retries 覆盖键，包装出一个专用的 fetcher。
 
@@ -143,18 +153,27 @@ def scan_paper(
         "scanned": 0,
         "sections_failed": 0,
         "articles_failed": 0,
-        "failed_urls": [],  # [(url, http_code), ...] 代表性失败样本（最多 3 条）
+        "failed_urls": [],  # [{url, code, reason}, ...] 代表性失败样本（最多 3 条）
         "note": "",
+        "ok": False,
+        "failure_kind": "",
     }
 
     code, html = _fetch(entry)
     stats["entry_code"] = code
     if code != 200 or len(html) < config.MIN_HTML_BYTES:
         stats["note"] = _classify_entry_failure(code, len(html))
+        stats["failure_kind"] = _entry_failure_kind(code, len(html))
         return [], [], stats
 
     base = entry.rsplit("/", 1)[0] + "/"
     nodes_all = parse.links(html, base, NODE_RE)
+    entry_articles = parse.links(html, base, CONTENT_RE)
+    if not nodes_all and not entry_articles:
+        stats["note"] = "入口结构异常：HTTP 200 但未找到版面或文章链接（疑似改版/挑战页）"
+        stats["failure_kind"] = "entry_structure"
+        stats["failed_urls"] = [{"url": entry, "code": code, "reason": "未找到 node/content 链接"}]
+        return [], [], stats
     # 可选：按正则排除噪声版面链接（如人民日报 pc 版里的「手机版」/pad/ 镜像）
     node_exclude = paper.get("node_exclude")
     if node_exclude:
@@ -166,12 +185,13 @@ def scan_paper(
     stats["sections"] = len(nodes)
     if dry:
         stats["note"] = "dry-run"
+        stats["ok"] = True
         return [], [], stats
 
     # 版面页 → 文章链接 + 版面名 + 图像映射坐标（仅人民日报 / 湛江日报有）
     article_section: dict[str, str] = {}
     article_geometry: dict[str, dict[str, Any]] = {}
-    section_failed_records: list[tuple[str, int]] = []
+    section_failed_records: list[dict[str, Any]] = []
 
     def grab_section(
         node_url: str,
@@ -182,10 +202,14 @@ def scan_paper(
         dict[str, tuple[int, int, int, int]],
         dict[str, tuple[float, float, float, float]],
         int,
+        str,
     ]:
         section_code, section_html = _fetch(node_url)
         if section_code != 200 or len(section_html) < config.MIN_HTML_BYTES:
-            return node_url, "", [], {}, {}, section_code
+            reason = (
+                f"HTTP {section_code}" if section_code != 200 else f"内容过短（{len(section_html)} 字节）"
+            )
+            return node_url, "", [], {}, {}, section_code, reason
         section_base = node_url.rsplit("/", 1)[0] + "/"
         # 版面名优先走 page_section（pageLink / 版次版名注释，权威且干净），
         # 取不到再退回页面 title。反过来「title 先行」会让多家报社拿到错值：
@@ -196,31 +220,46 @@ def scan_paper(
         articles = [a for a in parse.links(section_html, section_base, CONTENT_RE) if date_part in a]
         rects = parse.area_rects(section_html, section_base, CONTENT_RE)
         mapping = parse.layout_mapping(section_html, section_base, CONTENT_RE)
-        return node_url, section_title, articles, rects, mapping, section_code
+        return node_url, section_title, articles, rects, mapping, section_code, ""
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for _node, section_title, articles, rects, mapping, sec_code in pool.map(grab_section, nodes):
-            if not articles and sec_code != 200:
-                section_failed_records.append((_node, sec_code))
+        for _node, section_title, articles, rects, mapping, sec_code, reason in pool.map(grab_section, nodes):
+            if reason:
+                section_failed_records.append({"url": _node, "code": sec_code, "reason": reason})
             merge_geometry(article_geometry, rects, mapping, articles)
             for article_url in articles:
                 article_section.setdefault(article_url, section_title)
 
     stats["sections_failed"] = len(section_failed_records)
     stats["articles"] = len(article_section)
+    if not article_section:
+        stats["note"] = "版面结构异常：未从任何版面解析到文章链接"
+        stats["failure_kind"] = "section_structure"
+        stats["failed_urls"] = (
+            section_failed_records or [{"url": entry, "code": 200, "reason": "所有版面均无 content 链接"}]
+        )[:3]
+        return [], [], stats
 
     # 文章页 → 标题 + 正文 → 匹配
     hits: list[dict[str, Any]] = []
     all_articles: list[dict[str, Any]] = []
-    article_failed_records: list[tuple[str, int]] = []
+    article_failed_records: list[dict[str, Any]] = []
 
     def grab_article(article_url: str) -> dict[str, Any] | None:
         article_code, article_html = _fetch(article_url)
         if article_code != 200 or len(article_html) < config.MIN_HTML_BYTES:
-            article_failed_records.append((article_url, article_code))
+            reason = (
+                f"HTTP {article_code}" if article_code != 200 else f"内容过短（{len(article_html)} 字节）"
+            )
+            article_failed_records.append({"url": article_url, "code": article_code, "reason": reason})
             return None
         title = parse.extract_title(article_html)
         text = parse.extract_text(article_html)
+        if not title and not text:
+            article_failed_records.append(
+                {"url": article_url, "code": article_code, "reason": "标题和正文均为空（疑似文章页改版）"}
+            )
+            return None
         blob = title + " " + text
         found = [match for match in (kr.search(blob) for kr in kw_res.values()) if match]
         section = article_section.get(article_url, "")
@@ -253,8 +292,11 @@ def scan_paper(
     stats["scanned"] = len(all_articles)
     stats["articles_failed"] = len(article_failed_records)
     # 记录代表性失败样本（最多 3 条），用于报告中展示
-    stats["failed_urls"] = [
-        {"url": u, "code": c} for u, c in (section_failed_records + article_failed_records)[:3]
-    ]
+    stats["failed_urls"] = (section_failed_records + article_failed_records)[:3]
+    if not all_articles:
+        stats["note"] = "文章抓取/解析全部失败"
+        stats["failure_kind"] = "all_articles_failed"
+    else:
+        stats["ok"] = True
     hits.sort(key=lambda r: r["url"])
     return hits, all_articles, stats

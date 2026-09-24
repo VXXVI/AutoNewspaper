@@ -13,15 +13,15 @@ name: daily-scan
 
 on:
   workflow_dispatch:
-  # 供外部定时服务调用（实测：私有仓库下 schedule 不生效，靠这个兜底）：
+  # 供外部定时服务调用（当前生产路径，也可作 schedule 的准点兜底）：
   #   gh api repos/<owner>/<repo>/dispatches -f event_type=scan
   #   或任意 HTTP POST /repos/<owner>/<repo>/dispatches  {"event_type":"scan"}
   repository_dispatch:
     types: [scan]
   schedule:
-    # 02:00 UTC = 当日 10:00 北京时间（配合下方 TZ）
-    # 注意：实测「私有仓库 + 免费个人账号」下该触发器一次都不会触发，仅公开仓库可靠
-    - cron: "0 2 * * *"
+    # GitHub 官方支持私有仓库的 schedule，但不保证精确准点；
+    # 避开整点高峰，02:07 UTC = 当日 10:07 北京时间（配合下方 TZ）。
+    - cron: "7 2 * * *"
 
 env:
   TZ: Asia/Shanghai
@@ -39,9 +39,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 

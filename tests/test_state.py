@@ -23,12 +23,29 @@ def test_load_non_dict_returns_empty(tmp_path):
     assert state.load_seen(path) == {}
 
 
+def test_load_seen_normalizes_nested_dirty_data(tmp_path):
+    path = tmp_path / "seen.json"
+    path.write_text(
+        '{"good":{"u1":99,"":1},"bad":7,"":{"u2":1}}',
+        encoding="utf-8",
+    )
+    assert state.load_seen(path) == {"good": {"u1": 1}}
+
+
 def test_save_load_roundtrip_and_no_tmp_leftover(tmp_path):
     path = tmp_path / "state" / "seen.json"
     data = {"广东海洋大学": {"http://x/2026-09/22/content_1.html": 1}}
     state.save_seen(path, data)
     assert state.load_seen(path) == data
     assert list(path.parent.glob("*.tmp")) == []
+
+
+def test_exclusive_lock_is_released(tmp_path):
+    path = tmp_path / "state" / "seen.json"
+    lock_path = path.with_suffix(".lock")
+    with state.exclusive_lock(path):
+        assert lock_path.exists()
+    assert not lock_path.exists()
 
 
 def test_prune_seen_drops_old_but_keeps_recent_and_dateless():

@@ -51,10 +51,10 @@ csv:  ## 无状态扫描并以 CSV 输出
 	$(PY) daily_scan.py --days 1 --no-state --csv
 
 web:  ## 启动本地看板（可在页面一键触发扫描；默认 http://127.0.0.1:8788，被占用时自动改用空闲端口）
-	@$(PY) -m newspaper_auto.web --port $(WEB_PORT) --open || { \
+	@$(PY) dashboard.py --port $(WEB_PORT) --open || { \
 		echo; \
 		echo "端口 $(WEB_PORT) 不可用，改用系统自动分配的空闲端口重试…"; \
-		$(PY) -m newspaper_auto.web --port 0 --open; \
+		$(PY) dashboard.py --port 0 --open; \
 	}
 
 plist:  ## 打印将要安装的 launchd plist

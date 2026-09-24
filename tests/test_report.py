@@ -87,6 +87,7 @@ def test_write_md_and_html_roundtrip(tmp_path):
     report.write_html(html_path, "kw", HITS)
     assert "标题A" in md_path.read_text(encoding="utf-8")
     assert "标题A" in html_path.read_text(encoding="utf-8")
+    assert list((tmp_path / "hits").glob("*.tmp")) == []
 
 
 # ---------------------------------------------------------------- 任务 B：版内位置

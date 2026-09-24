@@ -48,6 +48,10 @@ def test_validate_paper_strips_whitespace():
         {"name": "x", "style": "ymd", "tpl": "https://x/static"},  # 缺 {a}
         {"name": "x", "style": "ymd", "tpl": "ftp://x/{a}"},  # 非 http(s)
         {"name": "x", "style": "ymd", "tpl": "example.com/{a}"},  # 无协议
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a}/{other}"},  # 多余占位符
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a!r}"},  # 不允许 conversion
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a:>10}"},  # 不允许 format spec
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a"},  # 花括号未闭合
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "timeout": 4},
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "timeout": 121},
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "timeout": True},

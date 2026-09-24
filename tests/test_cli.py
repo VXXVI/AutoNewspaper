@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from newspaper_auto import cli, config
+from newspaper_auto import cli, config, report
 
 ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "广东海洋大学"]
 ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "广东海洋大学"]
@@ -45,6 +45,82 @@ def test_json_and_csv_are_mutually_exclusive(capsys, site_fetcher, today):
     assert exc.value.code == 2
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--days", "0"],
+        ["--days", "-3"],
+        ["--days", str(config.MAX_RANGE_DAYS + 1)],
+        ["--workers", "0"],
+        ["--workers", str(config.MAX_WORKERS + 1)],
+        ["--kw", ""],
+        ["--kw", "   "],
+    ],
+)
+def test_invalid_scalar_arguments_exit_2_before_network(argv):
+    calls: list[str] = []
+    with pytest.raises(SystemExit) as exc:
+        cli.main(argv, fetcher=lambda url: calls.append(url) or (200, "x" * 400))
+    assert exc.value.code == 2
+    assert calls == []
+
+
+def test_too_many_keywords_exit_2_before_network():
+    argv = [part for index in range(config.MAX_KEYWORDS + 1) for part in ("--kw", f"k{index}")]
+    with pytest.raises(SystemExit) as exc:
+        cli.main(argv, fetcher=lambda _url: (_ for _ in ()).throw(AssertionError("should not fetch")))
+    assert exc.value.code == 2
+
+
+def test_duplicate_keywords_are_deduplicated(tmp_path, capsys, site_fetcher, today):
+    code = cli.main(
+        [
+            "--only",
+            "湛江日报",
+            "--days",
+            "1",
+            "--kw",
+            "广东海洋大学",
+            "--kw",
+            "广东海洋大学",
+            "--no-state",
+            "--data-dir",
+            str(tmp_path),
+        ],
+        fetcher=site_fetcher(today),
+    )
+    out, _ = capsys.readouterr()
+    assert code == 0
+    assert "关键词：广东海洋大学\n" in out
+
+
+def test_archive_skips_dirty_rows_and_refreshes_existing_metadata(tmp_path):
+    archive_path = tmp_path / "hits" / "archive.json"
+    archive_path.parent.mkdir(parents=True)
+    archive_path.write_text(
+        json.dumps(
+            [
+                {"title": "缺 URL"},
+                {"url": "u1", "title": "旧", "matched": ["旧词"]},
+                {"url": "u2", "matched": "损坏字符串"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    merged = cli.update_archive(
+        tmp_path,
+        [{"url": "u1", "title": "新", "matched": ["新词"], "geometry": {"index": 1, "total": 1}}],
+    )
+    assert len(merged) == 2
+    assert merged[0]["url"] == "u1"
+    assert merged[0]["title"] == "新"
+    assert merged[0]["matched"] == ["旧词", "新词"]
+    assert merged[0]["geometry"] == {"index": 1, "total": 1}
+    assert merged[1]["url"] == "u2"
+    assert merged[1]["matched"] == []
+    assert merged[1]["paper"] == "" and merged[1]["date"] == ""
+
+
 def test_first_run_writes_state_and_reports_then_second_run_reports_zero_new(
     tmp_path, capsys, site_fetcher, today
 ):
@@ -66,6 +142,20 @@ def test_first_run_writes_state_and_reports_then_second_run_reports_zero_new(
     assert len(archive) == 3
     seen = json.loads((tmp_path / "state" / "seen.json").read_text(encoding="utf-8"))
     assert len(seen["广东海洋大学"]) == 3
+
+
+def test_seen_is_not_committed_when_report_write_fails(tmp_path, capsys, monkeypatch, site_fetcher, today):
+    """seen.json 是最后提交标志；报告写失败时不得把命中提前标成已见。"""
+
+    def fail_write(*_args, **_kwargs):
+        raise OSError("模拟磁盘写入失败")
+
+    monkeypatch.setattr(report, "write_md", fail_write)
+    code = cli.main([*ZJ_ARGS, "--data-dir", str(tmp_path)], fetcher=site_fetcher(today))
+    out, _ = capsys.readouterr()
+    assert code == 1
+    assert "结果写入失败" in out
+    assert not (tmp_path / "state" / "seen.json").exists()
 
 
 def test_no_state_ignores_existing_seen(tmp_path, capsys, site_fetcher, today):

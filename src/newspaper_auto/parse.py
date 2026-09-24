@@ -18,11 +18,11 @@ import math
 import re
 from datetime import datetime
 from html import unescape
+from html.parser import HTMLParser
 from urllib.parse import urljoin
 
 from . import config
 
-_HREF_RE = re.compile(r'href="([^"]+)"')
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.S | re.I)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -53,15 +53,39 @@ _SECTION_PLAIN_NO_RE = re.compile(r"^[（(]?\s*[A-Za-z]{1,3}\d{1,3}\s*[）)]?\s*
 #   纯版次  ：(A01 要闻) / (A02) 焦点
 _SECTION_NO_VERSION_RE = re.compile(r"第?\s*([A-Za-z]{0,3})\s*(\d{1,3})\s*版")
 _SECTION_PLAIN_VERSION_RE = re.compile(r"^[（(]?\s*([A-Za-z]{1,3})\s*(\d{1,3})\s*[）)]?")
-# 版面页的图像映射：方正系 / 人民网系用 <area> 标出每篇文章在版面图上的区域
-# 实测（2026-09-23）：
-#   湛江日报 <area coords="287,34,326,34,326,46,287,46" shape="polygon" href="content_…htm">
-#   人民日报 <Area coords="194.88,182.16,…" shape="polygon" href="../../../content/…html">
-# 坐标一律是 shape="polygon" 的顶点序列，站点并不保证给出矩形四元组。
-_AREA_TAG_RE = re.compile(r"<area\b[^>]*>", re.I)
-_AREA_COORDS_RE = re.compile(r'\bcoords\s*=\s*"([^"]*)"', re.I)
-_AREA_HREF_RE = re.compile(r'\bhref\s*=\s*"([^"]*)"', re.I)
 _MAPPING_ORIGINAL_RE = re.compile(r"mappingOriginal\s*:\s*`([^`]*)`", re.S)
+
+
+class _StartTagParser(HTMLParser):
+    """容错提取起始标签与属性。
+
+    标准库解析器会统一标签/属性大小写，并同时支持单引号、双引号
+    与无引号属性，避免站点只改了 HTML 书写形式就静默漏链接。
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tags: list[tuple[str, dict[str, str]]] = []
+
+    def _append(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.tags.append((tag.lower(), {key.lower(): value or "" for key, value in attrs}))
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._append(tag, attrs)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._append(tag, attrs)
+
+
+def _start_tags(html: str) -> list[tuple[str, dict[str, str]]]:
+    parser = _StartTagParser()
+    try:
+        parser.feed(html or "")
+        parser.close()
+    except Exception:
+        # 对极端损坏的页面继续返回已成功解析的前半部分。
+        pass
+    return parser.tags
 
 
 def clean(html_fragment: str) -> str:
@@ -84,9 +108,10 @@ def tidy_title(title: str) -> str:
 def links(html: str, base: str, suffix_re: str) -> list[str]:
     """抽取匹配 ``suffix_re`` 的链接，绝对化、去重并保持出现顺序。"""
     out: list[str] = []
-    for href in _HREF_RE.findall(html):
+    for _tag, attrs in _start_tags(html):
+        href = attrs.get("href", "")
         href = href.split("?")[0].split("#")[0].strip()
-        if not href or href.startswith("javascript:"):
+        if not href or href.lower().startswith("javascript:"):
             continue
         if re.search(suffix_re, href):
             absolute = urljoin(base, href)
@@ -107,16 +132,15 @@ def area_rects(html: str, base: str, suffix_re: str) -> dict[str, tuple[int, int
     此时返回空 dict，由调用方降级处理。
     """
     out: dict[str, tuple[int, int, int, int]] = {}
-    for tag in _AREA_TAG_RE.findall(html or ""):
-        href_match = _AREA_HREF_RE.search(tag)
-        coords_match = _AREA_COORDS_RE.search(tag)
-        if not href_match or not coords_match:
+    for tag, attrs in _start_tags(html):
+        if tag != "area":
             continue
-        href = href_match.group(1).split("?")[0].split("#")[0].strip()
-        if not href or href.startswith("javascript:") or not re.search(suffix_re, href):
+        href = attrs.get("href", "").split("?")[0].split("#")[0].strip()
+        coords = attrs.get("coords", "")
+        if not href or href.lower().startswith("javascript:") or not re.search(suffix_re, href):
             continue
         try:
-            nums = [float(part) for part in coords_match.group(1).split(",") if part.strip()]
+            nums = [float(part) for part in coords.split(",") if part.strip()]
         except ValueError:
             continue
         nums = nums[: len(nums) // 2 * 2]  # 奇数个坐标时丢掉落单的最后一个
