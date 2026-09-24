@@ -107,17 +107,36 @@ def resolve_dates(args: argparse.Namespace, parser: argparse.ArgumentParser | No
     return [until - timedelta(days=i) for i in range(span)]
 
 
-def select_papers(only: str, all_papers: Sequence[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
-    """按 ``--only`` 过滤报社；未匹配到任何报社时原样返回（不静默清空）。
+def select_papers(
+    only: str, all_papers: Sequence[dict[str, Any]] | None = None
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """按 ``--only`` 过滤报社，返回 ``(命中的报社列表, 未识别的名字列表)``。
+
+    语义边界（与 ``main`` 的退出行为一致）：
+
+    - ``only`` 为空 / 全空白 → 返回全部报社，未识别为空（与不传 ``--only`` 等价）；
+    - **部分匹配** → 返回命中的报社，未识别的名字放进第二个返回值，由调用方**警告后继续**；
+    - **零匹配** → 命中的报社为空列表、未识别为全部名字，由调用方 **报错退出（退出码 2）**，
+      绝不静默回退全部。
 
     ``all_papers`` 缺省时退回内置 ``config.PAPERS``（兼容既有调用与测试）；传入
     「内置 + 自定义」合并后的列表时，自定义报社也能被 ``--only`` 选中。
     """
     source = list(all_papers) if all_papers is not None else list(config.PAPERS)
-    if not only:
-        return source
-    wanted = {name.strip() for name in only.split(",") if name.strip()}
-    return [p for p in source if p["name"] in wanted] or source
+    if not only or not only.strip():
+        return source, []
+    wanted: list[str] = []
+    for name in only.split(","):
+        stripped = name.strip()
+        if stripped and stripped not in wanted:
+            wanted.append(stripped)
+    if not wanted:
+        return source, []
+    wanted_set = set(wanted)
+    known = {paper["name"] for paper in source}
+    selected = [paper for paper in source if paper["name"] in wanted_set]
+    unmatched = [name for name in wanted if name not in known]
+    return selected, unmatched
 
 
 def update_archive(data_dir: os.PathLike[str] | str, all_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -157,7 +176,13 @@ def main(
 
     # 自定义报社跟随**项目根**（配置层），与 --data-dir（数据层）无关
     all_papers = papers.merge_papers(config.PAPERS, papers.load_custom(paths.find_project_root()))
-    selected = select_papers(args.only, all_papers)
+    selected, unmatched = select_papers(args.only, all_papers)
+    # 部分匹配 = 警告后继续；零匹配 = 报错退出码 2，绝不开扫（避免静默回退全部）
+    if unmatched:
+        available = "、".join(paper["name"] for paper in all_papers)
+        log(f"⚠️ --only 未识别：{'、'.join(unmatched)}（可选：{available}）")
+        if not selected:
+            parser.error(f"--only 未匹配到任何报社：{'、'.join(unmatched)}（可选：{available}）")
     data_dir = paths.resolve_data_dir(args.data_dir, default_data_dir)
 
     dates = resolve_dates(args, parser)

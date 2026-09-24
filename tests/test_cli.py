@@ -150,10 +150,74 @@ def test_partial_failure_article_does_not_block_hits(tmp_path, capsys, site_fetc
     assert code == 0
 
 
-def test_select_papers_unknown_name_does_not_silently_empty():
-    assert cli.select_papers("不存在的报纸") == list(config.PAPERS)
-    assert [p["name"] for p in cli.select_papers("湛江日报")] == ["湛江日报"]
-    assert cli.select_papers("") == list(config.PAPERS)
+def test_select_papers_reports_unmatched():
+    """select_papers 返回 (选中, 未识别)；零匹配不再静默回退全部。"""
+    selected, unmatched = cli.select_papers("不存在的报纸")
+    assert selected == []
+    assert unmatched == ["不存在的报纸"]
+
+    selected, unmatched = cli.select_papers("湛江日报")
+    assert [p["name"] for p in selected] == ["湛江日报"]
+    assert unmatched == []
+
+    selected, unmatched = cli.select_papers("")
+    assert selected == list(config.PAPERS)
+    assert unmatched == []
+
+
+def test_select_papers_partial_match_warns_and_continues():
+    selected, unmatched = cli.select_papers("湛江日报,不存在的报")
+    assert [p["name"] for p in selected] == ["湛江日报"]
+    assert unmatched == ["不存在的报"]
+
+
+def test_only_single_paper_no_warning(tmp_path, capsys, site_fetcher, today):
+    code = cli.main([*ZJ_ARGS, "--no-state", "--data-dir", str(tmp_path)], fetcher=site_fetcher(today))
+    out, _err = capsys.readouterr()
+    assert code == 0
+    assert "未识别" not in out
+    assert "报社：湛江日报" in out
+
+
+def test_only_partial_match_warns(tmp_path, capsys, site_fetcher, today):
+    code = cli.main(
+        ["--only", "湛江日报,不存在的报", "--days", "1", "--no-state", "--data-dir", str(tmp_path)],
+        fetcher=site_fetcher(today),
+    )
+    out, _err = capsys.readouterr()
+    assert code == 0
+    assert "⚠️ --only 未识别：不存在的报" in out
+    assert "报社：湛江日报" in out
+
+
+def test_only_all_unmatched_exits_2_without_network(tmp_path):
+    """零匹配：退出码 2，且不发起任何网络请求。"""
+    calls: list[str] = []
+
+    def fetcher(url: str):
+        calls.append(url)
+        return (200, "")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            ["--only", "不存在的报", "--days", "1", "--data-dir", str(tmp_path)],
+            fetcher=fetcher,
+        )
+    assert exc.value.code == 2
+    assert calls == []
+
+
+def test_only_empty_behaves_like_all(tmp_path, capsys):
+    """--only "" 等价不传：扫全部、无警告。"""
+    code = cli.main(
+        ["--only", "", "--days", "1", "--no-state", "--data-dir", str(tmp_path)],
+        fetcher=lambda url: (404, ""),
+    )
+    out, _err = capsys.readouterr()
+    assert code == 1  # 全部入口 404，但扫描确实已对全部报社发起
+    assert "未识别" not in out
+    for paper in config.PAPERS:
+        assert paper["name"] in out
 
 
 # ---------------------------------------------------------------- 任务 A：日期范围 CLI
