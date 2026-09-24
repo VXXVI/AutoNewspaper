@@ -35,11 +35,19 @@ jobs:
       - name: 格式检查（ruff format）
         run: ruff format --check .
 
+      - name: 前端脚本语法检查
+        if: matrix.python-version == '3.12'
+        run: |
+          node --check src/newspaper_auto/static/api.js
+          node --check src/newspaper_auto/static/app.js
+
       - name: 单元测试
         run: pytest -q
 
       - name: Shell 脚本语法检查
-        run: bash -n scripts/run_scan.sh scripts/install_launchd.sh scripts/vps_dispatch.sh
+        run: >-
+          bash -n scripts/run_scan.sh scripts/install_launchd.sh scripts/vps_dispatch.sh
+          scripts/dashboard.command scripts/scan.command
 
   # 跨平台保障：Windows 本机调度脚本（.ps1）此前只能在 macOS 上做逻辑走查，
   # 这条 job 补上真机验证 —— 语法解析 + BOM 校验 + 测试套件。
@@ -104,4 +112,6 @@ jobs:
 
       - name: Shell 脚本语法检查
         shell: bash
-        run: bash -n scripts/run_scan.sh scripts/install_launchd.sh scripts/vps_dispatch.sh
+        run: >-
+          bash -n scripts/run_scan.sh scripts/install_launchd.sh scripts/vps_dispatch.sh
+          scripts/dashboard.command scripts/scan.command

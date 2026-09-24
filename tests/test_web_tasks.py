@@ -75,3 +75,22 @@ def test_concurrent_log_writes_and_snapshots_are_consistent():
         "percent": 100,
         "current": "✓ 报社 99",
     }
+
+
+def test_success_forces_complete_progress_and_terminal_state_ignores_late_updates():
+    task = ScanTask.running({"keywords": ["x"]}, total_units=3, max_log_lines=10)
+    task.append_log("准备中")
+    task.finish({"exit_code": 0, "summary": {"hits": 0}})
+
+    finished = task.snapshot()
+    assert finished["status"] == "done"
+    assert finished["progress"]["completed"] == 3
+    assert finished["progress"]["percent"] == 100
+
+    task.append_log("迟到日志")
+    task.fail("迟到错误")
+    task.finish({"exit_code": 1, "summary": None})
+    stable = task.snapshot()
+    assert stable["status"] == "done"
+    assert stable["log"] == ["准备中"]
+    assert stable["error"] is None

@@ -33,6 +33,7 @@ import sys
 import threading
 import webbrowser
 from collections.abc import Callable, Sequence
+from copy import deepcopy
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -66,6 +67,10 @@ MAX_WORKERS = config.MAX_WORKERS
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # 扫描范围模式：按天数 / 按日期范围（互斥，缺省按天数以兼容旧配置）
 SCAN_MODES = ("days", "range")
+
+
+class ScanRequestError(ValueError):
+    """扫描请求在进入后台线程前即已确定无效。"""
 
 
 # ---------------------------------------------------------------- 数据装配
@@ -574,10 +579,18 @@ def default_scan_runner(
     try:
         exit_code = cli.main(argv, logger=capture)
     except SystemExit as exc:
-        code = exc.code
-        exit_code = code if isinstance(code, int) else (0 if code is None else 2)
+        exit_code = _system_exit_code(exc.code)
     output = "\n".join(lines)
     return {"exit_code": exit_code, "summary": _extract_summary(output)}
+
+
+def _system_exit_code(code: Any) -> int:
+    """按 Python 的 ``SystemExit`` 语义归一化退出码。"""
+    if code is None:
+        return 0
+    if isinstance(code, int):
+        return int(code)
+    return 1
 
 
 def default_paper_probe(paper: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
@@ -665,13 +678,23 @@ class DashboardServer(ThreadingHTTPServer):
             return None
         task: ScanTask | None = None
         try:
+            # HTTP 层的预检用于快速返回；这里在占有 scan_lock 后再校验一次，
+            # 封住“预检完成后、线程启动前报社配置被另一请求修改”的窗口。
+            selection_error = self.paper_selection_error(str(params.get("only") or ""))
+            if selection_error:
+                raise ScanRequestError(selection_error)
             task = ScanTask.running(
                 params,
                 total_units=self.scan_units(params),
                 max_log_lines=MAX_LOG_LINES,
             )
             self.scan_task = task
-            threading.Thread(target=self._run_scan, args=(task, params), daemon=True).start()
+            threading.Thread(
+                target=self._run_scan,
+                args=(task, deepcopy(params)),
+                name=f"newspaper-scan-{task.task_id}",
+                daemon=True,
+            ).start()
             return task
         except Exception as exc:
             if task is not None:
@@ -685,12 +708,14 @@ class DashboardServer(ThreadingHTTPServer):
             sys.stderr.write(f"[扫描] {line}\n")
 
         try:
-            result = self.scan_runner(self.data_dir, dict(params), log)
+            result = self.scan_runner(self.data_dir, deepcopy(params), log)
             task.finish(result)
         except SystemExit as exc:  # 注入的 runner 也可能抛 SystemExit
-            code = exc.code
-            exit_code = code if isinstance(code, int) else 1
-            task.fail(f"扫描进程提前退出（退出码 {exit_code}）", exit_code=exit_code)
+            exit_code = _system_exit_code(exc.code)
+            if exit_code == 0:
+                task.finish({"exit_code": 0, "summary": None})
+            else:
+                task.fail(f"扫描进程提前退出（退出码 {exit_code}）", exit_code=exit_code)
         except Exception as exc:  # 兜底：runner 抛错也必须释放任务锁
             task.fail(exc)
         finally:
@@ -732,7 +757,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif route.startswith("/static/"):
             self._serve_static(route[len("/static/") :])
         else:
-            self._send(404, b"Not Found", "text/plain; charset=utf-8")
+            self._error_json(404, "请求的页面或接口不存在")
 
     def do_HEAD(self) -> None:
         self.do_GET()
@@ -751,7 +776,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "/api/papers/delete",
             "/api/papers/test",
         ):
-            self._send(404, b"Not Found", "text/plain; charset=utf-8")
+            # 请求体尚未读取，HTTP/1.1 keep-alive 下必须关闭连接，避免残留字节
+            # 被服务器误当成下一条请求。
+            self._error_json(404, "请求的接口不存在", close=True)
             return
         if not self._check_content_type():
             return
@@ -803,20 +830,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return True
 
     def _read_body(self) -> bytes | None:
-        """按 Content-Length 精确读取；缺失或超限一律 413，且只读到上限为止。"""
+        """按 Content-Length 精确读取，并给出符合 HTTP 语义的错误码。"""
         raw_length = self.headers.get("Content-Length")
         if raw_length is None:
-            self._error_json(413, "缺少 Content-Length 或请求体过大", close=True)
+            self._error_json(411, "缺少 Content-Length", close=True)
             return None
         try:
             length = int(raw_length)
         except ValueError:
-            self._error_json(413, "Content-Length 非法", close=True)
+            self._error_json(400, "Content-Length 非法", close=True)
             return None
-        if length < 0 or length > MAX_BODY_BYTES:
+        if length < 0:
+            self._error_json(400, "Content-Length 不能为负数", close=True)
+            return None
+        if length > MAX_BODY_BYTES:
             self._error_json(413, f"请求体超过上限 {MAX_BODY_BYTES} 字节", close=True)
             return None
-        return self.rfile.read(length)
+        body = self.rfile.read(length)
+        if len(body) != length:
+            self._error_json(400, "请求体长度与 Content-Length 不一致", close=True)
+            return None
+        return body
 
     # -- 业务处理 ----------------------------------------------------
     def _handle_scan_start(self, payload: Any) -> None:
@@ -831,6 +865,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         try:
             task = self.server.start_scan(params)
+        except ScanRequestError as exc:
+            self._error_json(400, str(exc))
+            return
         except Exception as exc:
             self._error_json(503, f"扫描任务启动失败：{exc}")
             return
@@ -973,11 +1010,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
+            "default-src 'self'; script-src 'self'; connect-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'",
         )
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
         self.send_header("Cache-Control", "no-store")
         for key, value in (extra or {}).items():
             self.send_header(key, value)
@@ -999,15 +1038,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
         body = json.dumps({"error": message}, ensure_ascii=False).encode("utf-8")
         self._send(status, body, "application/json; charset=utf-8")
 
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        """把未实现方法等标准库错误也收敛成带安全头的 JSON。"""
+        del explain
+        fallback = self.responses.get(code, ("请求失败", ""))[0]
+        self._error_json(code, message or fallback, close=True)
+
     def _serve_static(self, name: str) -> None:
         # 白名单匹配，天然杜绝路径穿越（../）
         if name not in STATIC_TYPES:
-            self._send(404, b"Not Found", "text/plain; charset=utf-8")
+            self._error_json(404, "静态资源不存在")
             return
         try:
             body = (STATIC_DIR / name).read_bytes()
         except OSError:
-            self._send(500, b"Static file missing", "text/plain; charset=utf-8")
+            self._error_json(500, "静态资源读取失败")
             return
         self._send(200, body, STATIC_TYPES[name])
 
@@ -1039,6 +1084,9 @@ def create_server(
     """
     if host not in LOOPBACK_HOSTS:
         raise ValueError("看板没有登录鉴权，只允许监听 127.0.0.1 或 localhost")
+    # 不依赖本机 hosts / DNS 对 localhost 的解析结果，始终绑定明确的环回字面量。
+    if host == "localhost":
+        host = DEFAULT_HOST
     return DashboardServer(
         (host, port),
         data_dir,
@@ -1096,11 +1144,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         if selection_error:
             print(f"自动扫描未启动：{selection_error}。", file=sys.stderr)
         else:
-            task = server.start_scan(params)
-            if task is None:  # 理论上首次启动不会发生，保留明确失败信息
-                print("自动扫描未启动：已有扫描任务。", file=sys.stderr)
+            try:
+                task = server.start_scan(params)
+            except ScanRequestError as exc:
+                print(f"自动扫描未启动：{exc}。", file=sys.stderr)
+            except Exception as exc:
+                print(f"自动扫描启动失败：{exc}。", file=sys.stderr)
             else:
-                print("自动扫描已启动：页面会显示实时进度。")
+                if task is None:  # 理论上首次启动不会发生，保留明确失败信息
+                    print("自动扫描未启动：已有扫描任务。", file=sys.stderr)
+                else:
+                    print("自动扫描已启动：页面会显示实时进度。")
     else:
         print("可在页面顶部填写关键词并开始扫描；按 Ctrl+C 停止")
 

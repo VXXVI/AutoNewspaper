@@ -7,8 +7,9 @@
 (function () {
   "use strict";
 
-  var MAX_ROWS = 500;
-  var MAX_LAYOUTS = 48;
+  var INITIAL_ROWS = 50;
+  var ROW_STEP = 50;
+  var MAX_LAYOUTS = 24;
   var SCAN_POLL_MS = 1200;
   var api = window.NewspaperApi;
 
@@ -37,7 +38,8 @@
     from: "",
     to: "",
     sort: "date-desc",
-    preset: "all"
+    preset: "all",
+    visibleRows: INITIAL_ROWS
   };
 
   function $(id) { return document.getElementById(id); }
@@ -88,6 +90,7 @@
           state.to = "";
           state.sort = "date-desc";
           state.preset = "all";
+          state.visibleRows = INITIAL_ROWS;
           $("q").value = "";
           $("from").value = "";
           $("to").value = "";
@@ -146,6 +149,7 @@
       chip.classList.toggle("on", on);
       chip.setAttribute("aria-pressed", on ? "true" : "false");
       toggle(on);
+      state.visibleRows = INITIAL_ROWS;
       render();
     });
     return chip;
@@ -229,6 +233,7 @@
   // 以「数据里最新的日期」为基准，避免用今天算导致历史数据筛不出东西
   function applyPreset(kind) {
     state.preset = kind;
+    state.visibleRows = INITIAL_ROWS;
     if (state.data) {
       var latest = dateBounds()[1];
       if (kind === "all") { state.from = ""; state.to = ""; }
@@ -284,10 +289,21 @@
     return isFinite(n) && Math.floor(n) === n ? n : NaN;
   }
 
-  function setScanStatus(text) { $("scan-status").textContent = text; }
+  function setScanStatus(text, tone) {
+    var status = $("scan-status");
+    status.textContent = text;
+    if (!tone) {
+      if (/失败|未完整|错误|至少|不能|最多|请选择|晚于|超过/.test(text)) tone = "error";
+      else if (/完成/.test(text)) tone = "success";
+      else if (/正在|扫描中|已启动|接入进度/.test(text)) tone = "running";
+      else tone = "idle";
+    }
+    status.setAttribute("data-state", tone);
+  }
 
   function setScanRunning(running) {
     scanRunning = running;
+    $("scan-card").setAttribute("aria-busy", running ? "true" : "false");
     updateScanButton();
   }
 
@@ -312,7 +328,10 @@
     if (!btn) return;
     var zero = scanPaperNames.length > 0 && scanSelectedNames().length === 0;
     btn.disabled = scanRunning || zero;
-    btn.textContent = scanRunning ? "扫描中…" : "开始扫描";
+    var label = btn.querySelector("span:last-child");
+    if (label) label.textContent = scanRunning ? "扫描中…" : "开始扫描";
+    else btn.textContent = scanRunning ? "扫描中…" : "开始扫描";
+    btn.classList.toggle("is-running", scanRunning);
   }
 
   // 渲染扫描用的报社多选 chips（默认全选；全部用 createElement/textContent）
@@ -507,6 +526,7 @@
       wrap.hidden = true;
       bar.style.width = "0%";
       text.textContent = "正在准备…";
+      wrap.setAttribute("aria-valuenow", "0");
       return;
     }
     var progress = task.progress || {};
@@ -827,8 +847,8 @@
     renderLayouts(list);
     renderRows(list);
 
-    var visibleCount = Math.min(list.length, MAX_ROWS);
-    if (list.length > MAX_ROWS) {
+    var visibleCount = Math.min(list.length, state.visibleRows);
+    if (list.length > visibleCount) {
       $("shown").textContent = "显示 " + visibleCount + " / " + list.length + " 条" +
         (list.length === all.length ? "" : "（已筛选）");
     } else {
@@ -836,6 +856,11 @@
         ? "共 " + all.length + " 条"
         : "显示 " + list.length + " / " + all.length + " 条（已筛选）";
     }
+    var resultFooter = $("results-footer");
+    resultFooter.hidden = list.length <= visibleCount;
+    $("results-limit").textContent = list.length > visibleCount
+      ? "已显示前 " + visibleCount + " 条，还有 " + (list.length - visibleCount) + " 条"
+      : "";
     if (all.length === 0) {
       renderEmptyState(data);
     } else {
@@ -892,20 +917,25 @@
     var papers = Array.from(new Set(list.map(function (r) { return r.paper; })));
 
     var cards = [
-      ["归档命中总数", all.length, ""],
-      ["当前筛选", list.length, list.length === all.length ? "全部" : "共 " + all.length + " 条中筛选"],
-      ["覆盖报社", papers.length, papers.join("、") || "—"],
-      ["覆盖日期", dates.length, dates.length ? dates[0] + " ~ " + dates[dates.length - 1] : "—"],
-      ["增量索引", seenTotal, "用于识别新增报道"]
+      ["全部归档", all.length, "历史命中报道"],
+      ["当前结果", list.length, list.length === all.length ? "未使用筛选" : "从 " + all.length + " 条中筛出"],
+      ["相关报社", papers.length, papers.join("、") || "暂无报社"],
+      ["覆盖日期", dates.length, dates.length ? dates[0] + " 至 " + dates[dates.length - 1] : "暂无日期"],
+      ["已检索文章", seenTotal, "用于识别新增报道"]
     ];
 
     var box = $("stats");
     box.textContent = "";
     cards.forEach(function (item) {
-      var card = el("div", "stat");
+      var card = el("article", "stat");
+      card.setAttribute("aria-label", item[0] + "：" + item[1] + (item[2] ? "，" + item[2] : ""));
       card.appendChild(el("div", "k", item[0]));
       card.appendChild(el("div", "v", item[1]));
-      if (item[2]) card.appendChild(el("div", "x", item[2]));
+      if (item[2]) {
+        var detail = el("div", "x", item[2]);
+        detail.title = item[2];
+        card.appendChild(detail);
+      }
       box.appendChild(card);
     });
   }
@@ -917,11 +947,15 @@
     records.forEach(function (r) { counts[r.date] = (counts[r.date] || 0) + 1; });
     var dates = Object.keys(counts).sort();
     if (!dates.length) {
+      box.setAttribute("aria-label", "每日命中数量趋势图，暂无数据");
       box.appendChild(el("div", "hint", "暂无数据"));
       return;
     }
     if (dates.length > 90) dates = dates.slice(dates.length - 90);
     var max = dates.reduce(function (m, d) { return Math.max(m, counts[d]); }, 1);
+    var total = dates.reduce(function (sum, d) { return sum + counts[d]; }, 0);
+    box.setAttribute("aria-label", "每日命中数量趋势图，从 " + dates[0] + " 到 " +
+      dates[dates.length - 1] + "，共 " + total + " 条，单日最高 " + max + " 条");
     var full = 96;
 
     dates.forEach(function (d) {
@@ -929,6 +963,7 @@
       var col = el("div", "bar-col");
       col.appendChild(el("div", "bar-n", n));
       var bar = el("div", "bar");
+      bar.setAttribute("aria-hidden", "true");
       bar.style.height = Math.max(3, Math.round((n / max) * full)) + "px";
       bar.title = d + "：" + n + " 条";
       col.appendChild(bar);
@@ -1002,7 +1037,8 @@
       var ratio = Number(group.layout.aspect_ratio) || 0.72;
       page.style.aspectRatio = String(Math.max(0.35, Math.min(1.5, ratio)));
       page.setAttribute("role", "img");
-      page.setAttribute("aria-label", group.paper + " " + group.date + " " + group.section + "版面位置图");
+      page.setAttribute("aria-label", group.paper + " " + group.date + " " + group.section +
+        "版面位置图，命中 " + group.hitUrls.size + " 条，共 " + group.layout.items.length + " 个位置");
 
       group.layout.items.forEach(function (item) {
         var block = el("span", group.hitUrls.has(item.url) ? "layout-block hit" : "layout-block");
@@ -1041,17 +1077,25 @@
   function renderRows(records) {
     var body = $("rows");
     body.textContent = "";
+    var fragment = document.createDocumentFragment();
 
-    records.slice(0, MAX_ROWS).forEach(function (r) {
+    records.slice(0, state.visibleRows).forEach(function (r) {
       var tr = document.createElement("tr");
-      tr.appendChild(el("td", "col-paper", r.paper));
-      tr.appendChild(el("td", "col-date", r.date));
+      var paperCell = el("td", "col-paper", r.paper);
+      paperCell.setAttribute("data-label", "报社");
+      tr.appendChild(paperCell);
+      var dateCell = el("td", "col-date", r.date);
+      dateCell.setAttribute("data-label", "日期");
+      tr.appendChild(dateCell);
       var sectionText = r.section || "—";
       var position = geomText(r.geometry);
       if (position) sectionText += " · " + position;
-      tr.appendChild(el("td", "col-section", sectionText));
+      var sectionCell = el("td", "col-section", sectionText);
+      sectionCell.setAttribute("data-label", "版面位置");
+      tr.appendChild(sectionCell);
 
       var td = el("td", "title");
+      td.setAttribute("data-label", "报道");
       var url = safeUrl(r.url);
       if (url) {
         var a = el("a", null, r.title || r.url);
@@ -1063,19 +1107,20 @@
         td.appendChild(el("span", null, r.title));
       }
 
-      r.snippets.slice(0, 2).forEach(function (s) {
+      (Array.isArray(r.snippets) ? r.snippets : []).slice(0, 2).forEach(function (s) {
         td.appendChild(el("div", "sn", s));
       });
 
-      if (r.matched.length) {
+      if (Array.isArray(r.matched) && r.matched.length) {
         var tags = el("div", "tags");
         r.matched.forEach(function (k) { tags.appendChild(el("span", "tag", k)); });
         td.appendChild(tags);
       }
 
       tr.appendChild(td);
-      body.appendChild(tr);
+      fragment.appendChild(tr);
     });
+    body.appendChild(fragment);
   }
 
   /* -------------------------------------------------------------- 启动 */
@@ -1089,7 +1134,10 @@
 
   function init() {
     $("reload").addEventListener("click", function () { load({ preserve: true }); });
-    $("scan-run").addEventListener("click", startScan);
+    $("scan-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (!scanRunning) startScan();
+    });
     $("scan-mode").addEventListener("change", function () {
       if ($("scan-mode").value === "range") ensureRangeDefaults();
       updateScanModeUI();
@@ -1103,18 +1151,27 @@
     loadScanConfig();
     loadPapers();
     resumeScan();
-    $("q").addEventListener("input", function (e) { state.q = e.target.value; scheduleRender(); });
-    $("scan-kw").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); startScan(); }
+    $("q").addEventListener("input", function (e) {
+      state.q = e.target.value;
+      state.visibleRows = INITIAL_ROWS;
+      scheduleRender();
     });
     $("from").addEventListener("change", function (e) {
-      state.from = e.target.value; state.preset = "custom"; updatePresetUI(); render();
+      state.from = e.target.value; state.preset = "custom"; state.visibleRows = INITIAL_ROWS;
+      updatePresetUI(); render();
     });
     $("to").addEventListener("change", function (e) {
-      state.to = e.target.value; state.preset = "custom"; updatePresetUI(); render();
+      state.to = e.target.value; state.preset = "custom"; state.visibleRows = INITIAL_ROWS;
+      updatePresetUI(); render();
     });
-    $("sort").addEventListener("change", function (e) { state.sort = e.target.value; render(); });
+    $("sort").addEventListener("change", function (e) {
+      state.sort = e.target.value; state.visibleRows = INITIAL_ROWS; render();
+    });
     $("export").addEventListener("click", exportCsv);
+    $("results-more").addEventListener("click", function () {
+      state.visibleRows += ROW_STEP;
+      render();
+    });
     Array.prototype.forEach.call($("preset-chips").querySelectorAll("[data-preset]"), function (btn) {
       btn.addEventListener("click", function () { applyPreset(btn.getAttribute("data-preset")); });
     });
@@ -1128,6 +1185,7 @@
       state.to = "";
       state.sort = "date-desc";
       state.preset = "all";
+      state.visibleRows = INITIAL_ROWS;
       $("q").value = "";
       $("from").value = "";
       $("to").value = "";

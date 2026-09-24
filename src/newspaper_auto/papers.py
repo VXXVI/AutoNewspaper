@@ -25,6 +25,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from string import Formatter
 from typing import Any
+from urllib.parse import urlsplit
 
 from . import config, report
 
@@ -76,6 +77,8 @@ def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
     name = name.strip()
     if len(name) > MAX_NAME_LEN:
         return None, f"name 不能超过 {MAX_NAME_LEN} 个字符"
+    if "," in name or any(ord(char) < 32 or ord(char) == 127 for char in name):
+        return None, "name 不能包含英文逗号或控制字符"
 
     style = obj.get("style")
     if style not in STYLES:
@@ -100,9 +103,23 @@ def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
     if any(field != "a" or format_spec or conversion for field, format_spec, conversion in fields):
         return None, "tpl 只允许使用不带格式的 {a} 日期占位符"
     try:
-        tpl.format(a="202609/24")
+        sample_url = tpl.format(a="202609/24")
     except (KeyError, IndexError, ValueError) as exc:
         return None, f"tpl 无法正常生成日期链接：{exc}"
+    if any(char.isspace() for char in sample_url):
+        return None, "tpl 生成的链接不能包含空白字符"
+    try:
+        parsed_url = urlsplit(sample_url)
+        # 访问 ``port`` 会顺带验证端口是否合法（例如拒绝 :abc / :99999）。
+        port = parsed_url.port
+    except ValueError as exc:
+        return None, f"tpl 生成的链接不合法：{exc}"
+    if (
+        parsed_url.scheme not in ("http", "https")
+        or not parsed_url.hostname
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        return None, "tpl 必须生成带有效主机名的 http/https 链接"
 
     paper: dict[str, Any] = {"name": name, "style": style, "tpl": tpl}
 
@@ -194,18 +211,27 @@ def load_custom(root: Path) -> list[dict[str, Any]]:
     if not isinstance(data, dict):
         _warn('顶层必须是对象（形如 {"version": 1, "papers": [...]}），已忽略')
         return []
+    version = data.get("version", 1)
+    if version != 1:
+        _warn(f"不支持 version={version!r}，已忽略整个文件")
+        return []
     raw_papers = data.get("papers")
     if not isinstance(raw_papers, list):
         _warn("papers 字段必须是数组，已忽略")
         return []
 
     result: list[dict[str, Any]] = []
+    names: set[str] = set()
     for index, item in enumerate(raw_papers, 1):
         paper, error = validate_paper(item)
         if error:
             _warn(f"第 {index} 条无效（{error}），已跳过")
             continue
         assert paper is not None
+        if paper["name"] in names:
+            _warn(f"第 {index} 条与前文报社同名（{paper['name']}），已跳过")
+            continue
+        names.add(paper["name"])
         result.append(paper)
     return result
 
@@ -231,16 +257,23 @@ def load_custom_for_update(root: Path) -> list[dict[str, Any]]:
         raise CustomPapersError(f"{path.name} JSON 解析失败：{exc}") from exc
     if not isinstance(data, dict):
         raise CustomPapersError(f'{path.name} 顶层必须是对象（形如 {{"version": 1, "papers": [...]}}）')
+    version = data.get("version", 1)
+    if version != 1:
+        raise CustomPapersError(f"{path.name} 使用不支持的 version={version!r}")
     raw_papers = data.get("papers")
     if not isinstance(raw_papers, list):
         raise CustomPapersError(f"{path.name} 的 papers 字段必须是数组")
 
     result: list[dict[str, Any]] = []
+    names: set[str] = set()
     for index, item in enumerate(raw_papers, 1):
         paper, error = validate_paper(item)
         if error:
             raise CustomPapersError(f"{path.name} 第 {index} 条无效：{error}")
         assert paper is not None
+        if paper["name"] in names:
+            raise CustomPapersError(f"{path.name} 第 {index} 条报社名称重复：{paper['name']}")
+        names.add(paper["name"])
         result.append(paper)
     return result
 

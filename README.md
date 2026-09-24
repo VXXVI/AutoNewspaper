@@ -75,7 +75,7 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   └── cli.py                    #   参数解析与主流程
 ├── papers.custom.json            # 自定义报社配置（项目根，有意入库，见「自定义报社」）
 ├── .github/workflows/            # CI 与每日扫描 workflow（生产调度入口）
-├── tests/                        # 248 个离线测试 + HTML fixture
+├── tests/                        # 离线回归测试 + HTML fixture
 ├── scripts/                      # 定时任务
 │   ├── run_scan.sh               #   macOS/Linux 启动脚本（无状态运行，写日志）
 │   ├── com.quark.newspaperauto.plist.template  # launchd 模板
@@ -96,7 +96,7 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 **Python 3.9+** 和 **curl**（macOS 与新版 Windows 自带），不装任何第三方包也能跑：
 
 ```bash
-cd /Users/quark/Codex/Project/NewsPaperAuto
+cd /path/to/AutoNewspaper
 python3 daily_scan.py --dry        # 直接可用
 ```
 
@@ -416,15 +416,18 @@ make start                         # 打开看板 + 按上次页面设置自动�
 ```
 
 > 端口可用 `--port` 或环境变量 `NEWSPAPER_PORT` 覆盖（`scripts/dashboard.command` /
-> `scripts/dashboard.cmd` 会读取后者）；默认端口被占用时自动回退到系统分配的空闲端口
-> （等价 `--port 0`），无需手动改端口。
+> `scripts/dashboard.cmd` 会读取后者）。`make web` / `make start` 和双击启动器在默认端口
+> 被占用时会自动改用系统分配的空闲端口；直接运行 `dashboard.py` 时请显式传
+> `--port 0` 或换一个端口。
 
 - **数据来源**：`hits/archive.json`（历史命中）与 `state/seen.json`（已判定文章数）。
 - **版面位置图**：扫描器会把网站提供的 `<area>` 或 `mappingOriginal` 坐标统一为 0~1
   的二维布局；看板按报社 / 日期 / 版面分组绘制，红色标出当前筛选命中。网站只给文章
   顺序、不提供二维坐标时，只显示 `版内 k/m`，不会伪造版面图。旧归档会在下一次扫描
   同一文章时自动补齐布局元数据。
-- **功能**：概览统计卡片、按日期分布柱状图；按报社 / 命中关键词 / **日期区间**
+- **功能**：首屏是「扫描配置 + 实时任务状态」双区工作台；概览指标会跟随筛选变化；
+  结果列表使用独立筛选栏和 50 条一批的渐进加载，避免长期归档一次性渲染卡顿；
+  按报社 / 命中关键词 / **日期区间**
   （含「全部 / 今天 / 近 7 天 / 近 30 天」**快捷区间**）筛选；标题与上下文搜索、排序；
   命中列表展示**版面**（报纸中的相对位置）与**版内位置**（`版内 k/m`，无 `<area>` 的报社
   按版面页链接顺序给出；`上版 xx%` 仅在网站提供 `<area>` / mapping 坐标时出现）并可点击标题跳原文；
@@ -480,8 +483,9 @@ make start                         # 打开看板 + 按上次页面设置自动�
   猜测与来源泄露等浏览器安全头。VPS 上需要远程查看时，请使用 SSH 隧道：先在 VPS 启动
   看板，再从自己的电脑执行 `ssh -L 8788:127.0.0.1:8788 user@vps`，最后访问
   `http://127.0.0.1:8788`，不要把看板端口直接暴露到公网。
-- **端口**：默认 `8788`；被占用时自动回退到系统分配的空闲端口（等价 `--port 0`），
-  也可用 `--port` / `NEWSPAPER_PORT` 指定。
+- **端口**：默认 `8788`；`make web` / `make start` 和双击启动器会在端口冲突时
+  自动回退到系统分配的空闲端口。直接运行 `dashboard.py` 可用 `--port 0`，或用
+  `--port` / `NEWSPAPER_PORT` 指定其他端口。
 
 ### 自定义报社
 
@@ -619,7 +623,8 @@ make unlock        # 删除沙箱/异常中断可能残留的 .git/index.lock
 ```
 
 测试全部**离线**：通过注入 fake fetcher 驱动扫描，HTML 样例在 `tests/fixtures/`。
-CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查、测试与 shell 语法检查。
+CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查和测试，同时检查前端 JavaScript 与
+macOS/Linux Shell 启动脚本语法；Windows job 另外验证 PowerShell 解析与 BOM。
 
 ### 故障排查
 

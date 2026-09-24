@@ -65,6 +65,10 @@ class ScanTask:
         """追加一行日志，并从 CLI 的“报社/日期结果行”推导总体进度。"""
         text = str(line)
         with self._lock:
+            # 执行器若把 logger 交给自己的后台线程，可能在 runner 返回后继续回调。
+            # 终态必须保持稳定，不能再被迟到日志改写进度或游标。
+            if self.status != "running":
+                return
             self._log.append(text)
             self._log_cursor += 1
             overflow = len(self._log) - self.max_log_lines
@@ -79,6 +83,8 @@ class ScanTask:
 
     def finish(self, result: dict[str, Any]) -> None:
         with self._lock:
+            if self.status != "running":
+                return
             try:
                 self.exit_code = int(result.get("exit_code", 0))
             except (TypeError, ValueError):
@@ -86,12 +92,18 @@ class ScanTask:
             summary = result.get("summary")
             self.summary = deepcopy(summary) if isinstance(summary, dict) else None
             self.status = "done" if self.exit_code == 0 else "error"
+            if self.exit_code == 0 and self.total_units:
+                # 成功返回代表所有工作单元已经结束。自定义 runner 未输出标准进度行时，
+                # 也不应让已经完成的任务停在 0%。
+                self.completed_units = self.total_units
             if self.exit_code != 0 and not self.error:
                 self.error = f"扫描未完整完成（退出码 {self.exit_code}），请查看日志。"
             self._finish_clock()
 
     def fail(self, error: BaseException | str, *, exit_code: int = 1) -> None:
         with self._lock:
+            if self.status in ("done", "error"):
+                return
             message = str(error).strip()
             self.error = message or error.__class__.__name__
             self.exit_code = exit_code

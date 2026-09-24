@@ -20,6 +20,15 @@ from typing import Any
 # 结构化输出字段（保持与历史 hits 记录一致，便于下游消费）
 JSON_FIELDS = ("paper", "date", "section", "section_no", "title", "url", "text_len", "snippets", "matched")
 CSV_FIELDS = ("paper", "date", "section", "title", "url", "text_len", "matched")
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe_text(value: Any) -> str:
+    """Escape text that spreadsheet applications could interpret as a formula."""
+    text = "" if value is None else str(value)
+    if text.startswith(CSV_FORMULA_PREFIXES):
+        return f"'{text}"
+    return text
 
 
 def geometry_label(geometry: Any) -> str:
@@ -76,13 +85,13 @@ def hits_to_csv(hits: list[dict[str, Any]]) -> str:
     for hit in hits:
         writer.writerow(
             {
-                "paper": hit.get("paper", ""),
-                "date": hit.get("date", ""),
-                "section": hit.get("section", ""),
-                "title": hit.get("title", ""),
-                "url": hit.get("url", ""),
+                "paper": _csv_safe_text(hit.get("paper", "")),
+                "date": _csv_safe_text(hit.get("date", "")),
+                "section": _csv_safe_text(hit.get("section", "")),
+                "title": _csv_safe_text(hit.get("title", "")),
+                "url": _csv_safe_text(hit.get("url", "")),
                 "text_len": hit.get("text_len", 0),
-                "matched": ";".join(hit.get("matched", [])),
+                "matched": _csv_safe_text(";".join(hit.get("matched", []))),
             }
         )
     return buffer.getvalue()

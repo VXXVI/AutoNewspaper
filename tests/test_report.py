@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 from datetime import datetime
+
+import pytest
 
 from newspaper_auto import report
 
@@ -60,6 +64,39 @@ def test_hits_to_csv_header_and_semicolon_join():
     assert lines[0] == "paper,date,section,title,url,text_len,matched"
     assert lines[1].endswith("广东海洋大学")
     assert len(lines) == 2
+
+
+@pytest.mark.parametrize("dangerous", ["=1+1", "+cmd", "-2+3", "@SUM(A1)", "\t=1+1", "\r=1+1"])
+def test_hits_to_csv_escapes_formula_prefixes(dangerous):
+    hit = {**HITS[0], "title": dangerous}
+
+    row = next(csv.DictReader(io.StringIO(report.hits_to_csv([hit]))))
+
+    assert row["title"] == f"'{dangerous}"
+
+
+def test_hits_to_csv_escapes_all_text_fields_but_preserves_numeric_text_len():
+    hit = {
+        "paper": "=paper",
+        "date": "+date",
+        "section": "-section",
+        "title": "@title",
+        "url": "\turl",
+        "text_len": -42,
+        "matched": ["\rkeyword"],
+    }
+
+    row = next(csv.DictReader(io.StringIO(report.hits_to_csv([hit]))))
+
+    assert row == {
+        "paper": "'=paper",
+        "date": "'+date",
+        "section": "'-section",
+        "title": "'@title",
+        "url": "'\turl",
+        "text_len": "-42",
+        "matched": "'\rkeyword",
+    }
 
 
 def test_render_html_escapes_untrusted_content():

@@ -232,7 +232,7 @@ def _get(url):
 def test_serves_index_and_static(base_url):
     status, body, ctype = _get(base_url + "/")
     assert status == 200 and "text/html" in ctype
-    assert "命中列表" in body.decode("utf-8")
+    assert "命中报道" in body.decode("utf-8")
 
     status, _body, ctype = _get(base_url + "/static/app.js")
     assert status == 200 and "javascript" in ctype
@@ -260,7 +260,18 @@ def test_security_headers_on_success_and_error(base_url):
             assert headers["X-Content-Type-Options"] == "nosniff"
             assert headers["Referrer-Policy"] == "no-referrer"
             assert headers["X-Frame-Options"] == "DENY"
+            assert headers["Permissions-Policy"] == "camera=(), geolocation=(), microphone=()"
             assert headers["Cache-Control"] == "no-store"
+
+
+def test_unsupported_method_returns_json_error_with_security_headers(base_url):
+    request = urllib.request.Request(base_url + "/api/scan", data=b"{}", method="PUT")
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(request, timeout=5)
+    assert exc.value.code == 501
+    assert "application/json" in exc.value.headers["Content-Type"]
+    assert exc.value.headers["X-Content-Type-Options"] == "nosniff"
+    assert json.loads(exc.value.read())["error"]
 
 
 def test_api_hits(base_url):
@@ -329,6 +340,16 @@ def test_scan_thread_start_failure_releases_lock(tmp_path, monkeypatch):
             server.start_scan({"keywords": ["x"], "days": 1, "only": ""})
         assert server.scan_lock.locked() is False
         assert server.scan_task.snapshot()["status"] == "error"
+    finally:
+        server.server_close()
+
+
+def test_start_scan_revalidates_paper_selection_and_releases_lock(tmp_path):
+    server = web.create_server(tmp_path, host="127.0.0.1", port=0, papers_root=tmp_path)
+    try:
+        with pytest.raises(web.ScanRequestError, match="不存在报"):
+            server.start_scan({"keywords": ["x"], "days": 1, "only": "不存在报"})
+        assert server.scan_lock.locked() is False
     finally:
         server.server_close()
 
@@ -554,6 +575,24 @@ def test_scan_nonzero_exit_is_error_and_lock_is_released(tmp_path):
 
         status, _ = _request("POST", url + "/api/scan", {"keywords": ["x"]})
         assert status == 202
+
+
+@pytest.mark.parametrize(
+    "exit_value, expected_status, expected_code",
+    [(None, "done", 0), (0, "done", 0), ("停止", "error", 1)],
+)
+def test_scan_runner_system_exit_uses_python_exit_semantics(
+    tmp_path, exit_value, expected_status, expected_code
+):
+    def runner(data_dir, params, log):
+        raise SystemExit(exit_value)
+
+    with _serve(tmp_path, runner) as url:
+        status, _ = _request("POST", url + "/api/scan", {"keywords": ["x"], "days": 1})
+        assert status == 202
+        task = _wait_done(url)
+        assert task["status"] == expected_status
+        assert task["exit_code"] == expected_code
 
 
 def test_scan_only_invalid_element_returns_400(tmp_path):

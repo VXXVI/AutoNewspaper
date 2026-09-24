@@ -77,6 +77,10 @@ def test_validate_paper_strips_whitespace():
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "retries": 7},
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "node_exclude": "("},
         {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "node_exclude": 3},
+        {"name": "测试,报", "style": "ymd", "tpl": "https://x/{a}"},
+        {"name": "测试\n报", "style": "ymd", "tpl": "https://x/{a}"},
+        {"name": "x", "style": "ymd", "tpl": "https:///{a}"},
+        {"name": "x", "style": "ymd", "tpl": "https://x:abc/{a}"},
         {"name": "x", "style": "custom", "tpl": "https://x/{a}"},
         {"name": "x", "style": "custom", "tpl": "https://x/{a}", "date_format": "%Y/%m"},
         {"name": "x", "style": "custom", "tpl": "https://x/{a}", "date_format": "%Y/%m/%d/%H"},
@@ -150,6 +154,35 @@ def test_load_custom_skips_invalid_entries(tmp_path, capsys):
     loaded = papers.load_custom(tmp_path)
     assert [p["name"] for p in loaded] == ["好报社", "也好"]
     assert "已跳过" in capsys.readouterr().err
+
+
+def test_load_custom_skips_duplicate_names_and_unsupported_version(tmp_path, capsys):
+    path = tmp_path / config.CUSTOM_PAPERS_FILENAME
+    path.write_text(
+        json.dumps({"version": 1, "papers": [_valid(name="甲"), _valid(name="甲")]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    assert papers.load_custom(tmp_path) == [_valid(name="甲")]
+    assert "同名" in capsys.readouterr().err
+
+    path.write_text(json.dumps({"version": 2, "papers": [_valid(name="乙")]}), encoding="utf-8")
+    assert papers.load_custom(tmp_path) == []
+    assert "不支持" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "payload, message",
+    [
+        ({"version": 2, "papers": []}, "version"),
+        ({"version": 1, "papers": [_valid(name="甲"), _valid(name="甲")]}, "重复"),
+    ],
+)
+def test_load_custom_for_update_rejects_ambiguous_files(tmp_path, payload, message):
+    (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+    )
+    with pytest.raises(papers.CustomPapersError, match=message):
+        papers.load_custom_for_update(tmp_path)
 
 
 def test_custom_names(tmp_path):
