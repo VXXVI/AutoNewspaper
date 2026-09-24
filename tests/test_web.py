@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from newspaper_auto import config, web
+from newspaper_auto import config, papers, web
 
 ARCHIVE = [
     {
@@ -95,6 +95,41 @@ def test_build_dashboard_exposes_empty_state_hints(tmp_path):
     state_dir.mkdir()
     (state_dir / "web_config.json").write_text("{}", encoding="utf-8")
     assert web.build_dashboard(tmp_path)["has_web_config"] is True
+
+
+def test_build_dashboard_exposes_configured_keywords_and_normalizes_malformed_matched(tmp_path):
+    _write_archive(
+        tmp_path,
+        [
+            {
+                "paper": "甲报",
+                "date": "2026-09-24",
+                "title": "错误 matched 类型",
+                "url": "http://x/bad",
+                "matched": "人工智能",
+            },
+            {
+                "paper": "乙报",
+                "date": "2026-09-24",
+                "title": "正常 matched",
+                "url": "http://x/good",
+                "matched": ["人工智能", "", None],
+            },
+        ],
+    )
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "web_config.json").write_text(
+        json.dumps({"keywords": ["人工智能"], "days": 2, "workers": 8}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    data = web.build_dashboard(tmp_path)
+    by_url = {record["url"]: record for record in data["records"]}
+    assert data["configured_keywords"] == ["人工智能"]
+    assert data["keywords"] == ["人工智能"]
+    assert by_url["http://x/bad"]["matched"] == []
+    assert by_url["http://x/good"]["matched"] == ["人工智能"]
 
 
 # ---------------------------------------------------------------- 任务 B/C：geometry / section_no
@@ -639,6 +674,71 @@ def test_export_api_writes_filtered_json_to_requested_directory(tmp_path):
     assert [record["title"] for record in records] == ["标题B"]
 
 
+def test_export_api_filters_by_server_validated_urls(tmp_path):
+    export_dir = tmp_path / "url-filtered"
+    selected_url = ARCHIVE[1]["url"]
+
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/export",
+            {
+                "directory": str(export_dir),
+                "format": "json",
+                "filters": {"urls": [selected_url]},
+            },
+        )
+
+    response = json.loads(body)
+    assert status == 201
+    assert response["count"] == 1
+    records = json.loads(Path(response["path"]).read_text(encoding="utf-8"))
+    assert [record["url"] for record in records] == [selected_url]
+
+
+def test_export_allows_unmatched_selected_keyword_and_projects_matched_labels(tmp_path):
+    export_dir = tmp_path / "partial-keywords"
+    with _serve(tmp_path) as url:
+        _write_archive(
+            tmp_path,
+            [
+                {
+                    **ARCHIVE[0],
+                    "matched": ["人工智能", "旧关键词"],
+                }
+            ],
+        )
+        status, body = _request(
+            "POST",
+            url + "/api/export",
+            {
+                "directory": str(export_dir),
+                "format": "json",
+                "filters": {"keywords": ["人工智能", "生成式人工智能"]},
+            },
+        )
+
+    response = json.loads(body)
+    assert status == 201
+    assert response["count"] == 1
+    records = json.loads(Path(response["path"]).read_text(encoding="utf-8"))
+    assert records[0]["matched"] == ["人工智能"]
+
+
+def test_validate_export_request_normalizes_and_deduplicates_urls(tmp_path):
+    request, error = web.validate_export_request(
+        {
+            "directory": "exports",
+            "format": "json",
+            "filters": {"urls": [" http://x/a ", "http://x/a", "http://x/b"]},
+        },
+        base_dir=tmp_path,
+    )
+
+    assert error is None
+    assert request["filters"]["urls"] == ["http://x/a", "http://x/b"]
+
+
 def test_export_api_empty_selection_still_writes_valid_csv(tmp_path):
     export_dir = tmp_path / "exports"
 
@@ -691,6 +791,9 @@ def test_export_api_resolves_relative_directory_from_data_dir(tmp_path):
         },
         {"directory": "/tmp", "format": "csv", "filters": {"sort": "unknown"}},
         {"directory": "/tmp", "format": "csv", "filters": {"papers": ["不存在报"]}},
+        {"directory": "/tmp", "format": "csv", "filters": {"urls": "http://x/a"}},
+        {"directory": "/tmp", "format": "csv", "filters": {"urls": [""]}},
+        {"directory": "/tmp", "format": "csv", "filters": {"urls": ["http://x/missing"]}},
     ],
 )
 def test_export_api_rejects_invalid_request_without_writing(tmp_path, payload):
@@ -924,6 +1027,42 @@ def test_papers_list_structure(tmp_path):
         assert view["builtin"] == [p["name"] for p in config.PAPERS]
         assert view["custom"] == []
         assert view["effective"] == view["builtin"]
+        assert view["disabled"] == []
+        assert [item["name"] for item in view["items"]] == view["builtin"]
+        assert all(item["source"] == "builtin" for item in view["items"])
+        assert all(item["enabled"] is True for item in view["items"])
+
+
+def test_papers_list_items_include_disabled_override_and_custom(tmp_path):
+    override = _paper_entry(
+        name=BUILTIN_FIRST,
+        tpl="https://example.com/override/{a}/node_01.html",
+    )
+    custom = _paper_entry(name="自定义日报")
+    # 反向写入 disabled，确认 GET 按报社目录顺序返回稳定结果。
+    papers.save_settings(tmp_path, [override, custom], ["自定义日报", BUILTIN_FIRST])
+
+    with _serve(tmp_path) as url:
+        status, body = _request("GET", url + "/api/papers")
+
+    view = json.loads(body)
+    items = {item["name"]: item for item in view["items"]}
+    assert status == 200
+    assert view["disabled"] == [BUILTIN_FIRST, "自定义日报"]
+    assert BUILTIN_FIRST not in view["effective"]
+    assert "自定义日报" not in view["effective"]
+    assert items[BUILTIN_FIRST] == {
+        "name": BUILTIN_FIRST,
+        "source": "override",
+        "enabled": False,
+        "config": override,
+    }
+    assert items["自定义日报"] == {
+        "name": "自定义日报",
+        "source": "custom",
+        "enabled": False,
+        "config": custom,
+    }
 
 
 def test_papers_add_then_list(tmp_path):
@@ -1028,6 +1167,102 @@ def test_papers_delete_override_reverts_to_builtin(tmp_path):
         assert json.loads(body)["custom"] == []
 
 
+def test_papers_status_disables_and_enables_builtin_and_custom(tmp_path):
+    custom_name = "自定义日报"
+    with _serve(tmp_path) as url:
+        assert _request("POST", url + "/api/papers", _paper_entry(name=custom_name))[0] == 200
+
+        status, body = _request("POST", url + "/api/papers/status", {"name": BUILTIN_FIRST, "enabled": False})
+        view = json.loads(body)
+        assert status == 200
+        assert BUILTIN_FIRST in view["disabled"]
+        assert BUILTIN_FIRST not in view["effective"]
+
+        status, body = _request("POST", url + "/api/papers/status", {"name": custom_name, "enabled": False})
+        view = json.loads(body)
+        assert status == 200
+        assert custom_name in view["disabled"]
+        assert custom_name not in view["effective"]
+
+        status, body = _request("POST", url + "/api/papers/status", {"name": BUILTIN_FIRST, "enabled": True})
+        view = json.loads(body)
+        assert status == 200
+        assert BUILTIN_FIRST not in view["disabled"]
+        assert BUILTIN_FIRST in view["effective"]
+        assert custom_name in view["disabled"]
+
+
+@pytest.mark.parametrize(
+    "payload, expected_status",
+    [
+        ({"name": "不存在报", "enabled": False}, 404),
+        ({"name": BUILTIN_FIRST, "enabled": "false"}, 400),
+        ({"name": BUILTIN_FIRST}, 400),
+        ({"name": BUILTIN_FIRST, "enabled": False, "extra": 1}, 400),
+        ([BUILTIN_FIRST, False], 400),
+    ],
+)
+def test_papers_status_rejects_unknown_or_invalid_payload(tmp_path, payload, expected_status):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers/status", payload)
+
+    assert status == expected_status
+    assert json.loads(body)["error"]
+
+
+def test_papers_status_cannot_change_while_scan_is_running(tmp_path):
+    release = threading.Event()
+
+    def runner(data_dir, params, log):
+        release.wait(timeout=5)
+        return {"exit_code": 0, "summary": None}
+
+    with _serve(tmp_path, runner) as url:
+        try:
+            status, _ = _request("POST", url + "/api/scan", {"keywords": ["x"]})
+            assert status == 202
+            status, body = _request(
+                "POST", url + "/api/papers/status", {"name": BUILTIN_FIRST, "enabled": False}
+            )
+            assert status == 409
+            assert "扫描进行中" in json.loads(body)["error"]
+            assert not (tmp_path / config.CUSTOM_PAPERS_FILENAME).exists()
+        finally:
+            release.set()
+        assert _wait_done(url)["status"] == "done"
+
+
+def test_papers_status_persists_across_server_restart(tmp_path):
+    with _serve(tmp_path) as url:
+        status, _ = _request("POST", url + "/api/papers/status", {"name": BUILTIN_FIRST, "enabled": False})
+        assert status == 200
+
+    with _serve(tmp_path) as url:
+        status, body = _request("GET", url + "/api/papers")
+
+    view = json.loads(body)
+    assert status == 200
+    assert view["disabled"] == [BUILTIN_FIRST]
+    assert next(item for item in view["items"] if item["name"] == BUILTIN_FIRST)["enabled"] is False
+
+
+def test_scan_rejects_when_all_papers_are_disabled(tmp_path):
+    papers.save_settings(tmp_path, [], [paper["name"] for paper in config.PAPERS])
+    called = False
+
+    def runner(data_dir, params, log):  # pragma: no cover - 不应执行
+        nonlocal called
+        called = True
+        return {"exit_code": 0, "summary": None}
+
+    with _serve(tmp_path, runner) as url:
+        status, body = _request("POST", url + "/api/scan", {"keywords": ["人工智能"]})
+
+    assert status == 400
+    assert "没有已启用的报社" in json.loads(body)["error"]
+    assert called is False
+
+
 def test_papers_test_uses_injected_probe(tmp_path):
     seen = {}
 
@@ -1068,6 +1303,22 @@ def test_papers_test_invalid_returns_400(tmp_path):
         status, body = _request("POST", url + "/api/papers/test", {"name": "不存在的报社"})
         assert status == 400
         assert json.loads(body)["error"]
+
+
+def test_papers_test_invalid_complete_object_does_not_fall_back_to_builtin_name(tmp_path):
+    def probe(paper, log):  # pragma: no cover - 非法完整对象不应触发探测
+        raise AssertionError("非法完整对象不应退化为按名称试抓")
+
+    payload = {
+        "name": BUILTIN_FIRST,
+        "style": "weekly",
+        "tpl": "https://example.com/{a}/node_01.html",
+    }
+    with _serve(tmp_path, paper_probe=probe) as url:
+        status, body = _request("POST", url + "/api/papers/test", payload)
+
+    assert status == 400
+    assert "style" in json.loads(body)["error"]
 
 
 def test_papers_post_rejects_foreign_origin(tmp_path):

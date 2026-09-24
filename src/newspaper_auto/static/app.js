@@ -20,6 +20,8 @@
   var currentScanTaskId = null;
   var renderTimer = null;
   var exportBusy = false;
+  var editingPaperName = null;
+  var loadRequestId = 0;
 
   // 「只扫选中报社」：scanPaperNames = 可选报社（GET /api/papers 的 effective）；
   // scanPaperSelected = null 表示尚未筛选（全选），否则为选中名字集合。
@@ -29,13 +31,15 @@
   var scanRunning = false;
 
   var PAPERS_COMMIT_CMD =
-    'git add papers.custom.json && git commit -m "chore(papers): 更新自定义报社" && git push';
+    'git fetch origin main && git pull --rebase --autostash origin main && git add papers.custom.json && git commit -m "chore(papers): 更新报社配置" && git push && git ls-remote origin refs/heads/main';
 
   var state = {
     data: null,
     q: "",
     papers: new Set(),
     keywords: new Set(),
+    focusKeywords: null,
+    linkedFilter: null,
     from: "",
     to: "",
     sort: "date-desc",
@@ -76,16 +80,24 @@
   /* -------------------------------------------------------------- 数据 */
   function load(options) {
     options = options || {};
+    var requestId = ++loadRequestId;
     $("meta").textContent = "加载中…";
     var hadData = Boolean(state.data);
     var allPapersSelected = hadData && state.papers.size === state.data.papers.length;
     var allKeywordsSelected = hadData && state.keywords.size === state.data.keywords.length;
     api.get("/api/hits")
       .then(function (data) {
+        if (requestId !== loadRequestId) return;
         state.data = data;
-        if (!hadData || !options.preserve) {
+        var requestedFocus = Array.isArray(options.focusKeywords) && options.focusKeywords.length
+          ? options.focusKeywords
+          : (!hadData && Array.isArray(data.configured_keywords) && data.configured_keywords.length
+            ? data.configured_keywords : null);
+        if (!hadData || !options.preserve || requestedFocus) {
           state.papers = new Set(data.papers);
-          state.keywords = new Set(data.keywords);
+          state.focusKeywords = requestedFocus ? requestedFocus.slice() : null;
+          state.keywords = new Set(requestedFocus || data.keywords);
+          state.linkedFilter = null;
           state.q = "";
           state.from = "";
           state.to = "";
@@ -100,9 +112,11 @@
           state.papers = allPapersSelected
             ? new Set(data.papers)
             : new Set(data.papers.filter(function (name) { return state.papers.has(name); }));
-          state.keywords = allKeywordsSelected
-            ? new Set(data.keywords)
-            : new Set(data.keywords.filter(function (name) { return state.keywords.has(name); }));
+          state.keywords = state.focusKeywords
+            ? new Set(state.focusKeywords)
+            : (allKeywordsSelected
+              ? new Set(data.keywords)
+              : new Set(data.keywords.filter(function (name) { return state.keywords.has(name); })));
         }
         $("version").textContent = "v" + data.version;
         buildControls();
@@ -110,6 +124,7 @@
         render();
       })
       .catch(function (err) {
+        if (requestId !== loadRequestId) return;
         $("meta").textContent = "加载失败：" + err.message;
       });
   }
@@ -127,9 +142,14 @@
 
     var kwBox = $("keyword-chips");
     kwBox.textContent = "";
-    data.keywords.forEach(function (kw) {
+    var keywordNames = data.keywords.slice();
+    (state.focusKeywords || []).forEach(function (kw) {
+      if (keywordNames.indexOf(kw) === -1) keywordNames.unshift(kw);
+    });
+    keywordNames.forEach(function (kw) {
       kwBox.appendChild(makeChip(kw, state.keywords.has(kw), function (on) {
         if (on) state.keywords.add(kw); else state.keywords.delete(kw);
+        state.focusKeywords = null;
       }));
     });
 
@@ -150,6 +170,7 @@
       chip.classList.toggle("on", on);
       chip.setAttribute("aria-pressed", on ? "true" : "false");
       toggle(on);
+      state.linkedFilter = null;
       state.visibleRows = INITIAL_ROWS;
       render();
     });
@@ -163,11 +184,15 @@
     return state.data.records.filter(function (r) {
       if (!state.papers.has(r.paper)) return false;
       if (!state.keywords.size || !r.matched.some(function (k) { return state.keywords.has(k); })) return false;
-      if (state.from && r.date && r.date < state.from) return false;
-      if (state.to && r.date && r.date > state.to) return false;
+      if (state.from && (!r.date || r.date < state.from)) return false;
+      if (state.to && (!r.date || r.date > state.to)) return false;
       if (q) {
         var hay = (r.title + " " + r.section + " " + r.snippets.join(" ")).toLowerCase();
         if (hay.indexOf(q) === -1) return false;
+      }
+      if (state.linkedFilter) {
+        if (state.linkedFilter.type === "date" && r.date !== state.linkedFilter.date) return false;
+        if (state.linkedFilter.type === "layout" && !state.linkedFilter.urls.has(r.url)) return false;
       }
       return true;
     });
@@ -188,6 +213,31 @@
     }[state.sort] || byDateDesc;
     copy.sort(cmp);
     return copy;
+  }
+
+  function clearLinkedFilter(renderNow) {
+    state.linkedFilter = null;
+    state.visibleRows = INITIAL_ROWS;
+    if (renderNow !== false) render();
+  }
+
+  function showLinkedResults(filter) {
+    var current = state.linkedFilter;
+    var same = current && current.type === filter.type && current.key === filter.key;
+    state.linkedFilter = same ? null : filter;
+    state.visibleRows = INITIAL_ROWS;
+    render();
+    $("results-card").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function showAllHistory() {
+    if (!state.data) return;
+    state.focusKeywords = null;
+    state.keywords = new Set(state.data.keywords);
+    state.linkedFilter = null;
+    state.visibleRows = INITIAL_ROWS;
+    buildControls();
+    render();
   }
 
   /* -------------------------------------------------------------- 日期快捷区间 */
@@ -233,6 +283,7 @@
 
   // 以「数据里最新的日期」为基准，避免用今天算导致历史数据筛不出东西
   function applyPreset(kind) {
+    state.linkedFilter = null;
     state.preset = kind;
     state.visibleRows = INITIAL_ROWS;
     if (state.data) {
@@ -265,7 +316,8 @@
     rows.forEach(function (r) {
       lines.push([
         r.paper, r.date, r.section || "", r.title, r.url,
-        r.matched.join(";"), r.snippets.slice(0, 2).join(" ")
+        r.matched.filter(function (keyword) { return state.keywords.has(keyword); }).join(";"),
+        r.snippets.slice(0, 2).join(" ")
       ].map(csvCell).join(","));
     });
     var blob = new Blob(["\ufeff" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
@@ -286,11 +338,16 @@
   }
 
   function exportFilters() {
+    var linkedDate = state.linkedFilter && state.linkedFilter.type === "date"
+      ? state.linkedFilter.date : null;
+    var linkedUrls = state.linkedFilter && state.linkedFilter.type === "layout"
+      ? Array.from(state.linkedFilter.urls) : null;
     return {
       papers: Array.from(state.papers),
       keywords: Array.from(state.keywords),
-      from: state.from,
-      to: state.to,
+      urls: linkedUrls,
+      from: linkedDate || state.from,
+      to: linkedDate || state.to,
       query: state.q.trim(),
       sort: state.sort
     };
@@ -392,8 +449,13 @@
   /* -------------------------------------------------------------- 扫描设置 */
   // 关键词支持逗号（中英文）、顿号、换行分隔；split + trim + 去空
   function splitKeywords(raw) {
-    return raw.split(/[,，、\n\r]+/).map(function (s) { return s.trim(); })
-      .filter(function (s) { return s.length > 0; });
+    var result = [];
+    raw.split(/[,，、\n\r]+/).map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length > 0; })
+      .forEach(function (keyword) {
+        if (result.indexOf(keyword) === -1) result.push(keyword);
+      });
+    return result;
   }
 
   function parseInt10(value) {
@@ -429,7 +491,7 @@
   function updateScanPapersHint() {
     var hint = $("scan-papers-hint");
     if (!hint) return;
-    if (!scanPaperNames.length) { hint.textContent = ""; return; }
+    if (!scanPaperNames.length) { hint.textContent = "⚠ 没有已启用的报社，请先在下方恢复或添加"; return; }
     var n = scanSelectedNames().length;
     hint.textContent = n === 0
       ? "⚠ 至少选择一家报社才能扫描"
@@ -439,7 +501,7 @@
   function updateScanButton() {
     var btn = $("scan-run");
     if (!btn) return;
-    var zero = scanPaperNames.length > 0 && scanSelectedNames().length === 0;
+    var zero = scanPaperNames.length === 0 || scanSelectedNames().length === 0;
     btn.disabled = scanRunning || zero;
     var label = btn.querySelector("span:last-child");
     if (label) label.textContent = scanRunning ? "扫描中…" : "开始扫描";
@@ -481,7 +543,8 @@
     wanted.forEach(function (name) {
       if (scanPaperNames.indexOf(name) !== -1) selected.add(name);
     });
-    scanPaperSelected = selected.size ? selected : null;
+    // 有显式选择但交集为空时必须保留空集合并禁用扫描，绝不静默扩大为“全选”。
+    scanPaperSelected = selected;
   }
 
   // 切换「按天数 / 按日期范围」时显示/隐藏对应输入
@@ -684,13 +747,13 @@
           setScanStatus(summary && typeof summary.hits === "number"
             ? "扫描完成：命中 " + summary.hits + " 篇，新增 " + Number(summary.new_hits || 0) + " 篇"
             : "扫描完成");
-          load({ preserve: true });
+          load({ preserve: true, focusKeywords: task.params && task.params.keywords });
         } else if (task.status === "error") {
           stopPolling();
           setScanRunning(false);
           setScanStatus("扫描未完整完成：" + (task.error || "请查看运行日志"));
           $("scan-log-details").open = true;
-          load({ preserve: true });
+          load({ preserve: true, focusKeywords: task.params && task.params.keywords });
         } else {
           var progress = task.progress || {};
           setScanStatus(progress.total
@@ -729,7 +792,17 @@
   }
 
   /* -------------------------------------------------------------- 报社管理 */
-  function setPapersStatus(text) { $("papers-status").textContent = text; }
+  function setPapersStatus(text, tone) {
+    $("papers-status").textContent = text;
+    var feedback = $("papers-feedback");
+    feedback.textContent = text === "—" ? "" : text;
+    if (!tone) {
+      if (/失败|不能|请先|至少|未找到/.test(text)) tone = "error";
+      else if (/已保存|已删除|已停用|已恢复|已启用/.test(text)) tone = "success";
+      else tone = "idle";
+    }
+    feedback.setAttribute("data-state", tone);
+  }
 
   function setPapersHint(text) { $("papers-hint").textContent = text; }
 
@@ -738,42 +811,53 @@
     if (!box) return;
     box.textContent = "";
 
-    var builtin = {};
-    var customMap = {};
-    (view.builtin || []).forEach(function (name) { builtin[name] = true; });
-    (view.custom || []).forEach(function (paper) { customMap[paper.name] = paper; });
-    var names = (view.effective || []).slice();
+    var items = Array.isArray(view.items) ? view.items.slice() : [];
 
-    if (!names.length) {
+    if (!items.length) {
       box.appendChild(el("span", "hint", "暂无报社"));
       return;
     }
 
-    names.forEach(function (name) {
-      var row = el("div", "papers-row");
+    items.forEach(function (item) {
+      var name = item.name;
+      var enabled = item.enabled !== false;
+      var sourceLabels = { builtin: "内置", custom: "自定义", override: "已覆盖" };
+      var source = sourceLabels[item.source] || "自定义";
+      var row = el("div", enabled ? "papers-row" : "papers-row is-disabled");
+      row.setAttribute("data-paper-name", name);
       row.appendChild(el("span", "paper-name", name));
-
-      var source = customMap[name] ? (builtin[name] ? "覆盖" : "自定义") : "内置";
-      row.appendChild(el("span", "paper-src " + (source === "内置" ? "src-builtin" : "src-custom"), source));
+      row.appendChild(el("span", "paper-src " + (item.source === "builtin" ? "src-builtin" : "src-custom"), source));
+      row.appendChild(el("span", enabled ? "paper-state is-on" : "paper-state", enabled ? "已启用" : "已停用"));
 
       var actions = el("span", "paper-actions");
       var testBtn = el("button", "chip", "试抓");
       testBtn.type = "button";
+      testBtn.setAttribute("aria-label", "试抓" + name);
       testBtn.addEventListener("click", function () {
-        // 内置且未覆盖：前端拿不到完整对象，只传 name 由后端解析
-        runPaperTest(customMap[name] || { name: name });
+        runPaperTest(item.config || { name: name });
       });
       actions.appendChild(testBtn);
 
-      if (customMap[name]) {
-        var editBtn = el("button", "chip", "编辑");
-        editBtn.type = "button";
-        editBtn.addEventListener("click", function () { fillPaperForm(customMap[name]); });
-        actions.appendChild(editBtn);
+      var editBtn = el("button", "chip", item.source === "builtin" ? "修改规则" : "编辑");
+      editBtn.type = "button";
+      editBtn.setAttribute("aria-label", "编辑" + name + "抓取规则");
+      editBtn.addEventListener("click", function () { fillPaperForm(item.config || {}, item.source); });
+      actions.appendChild(editBtn);
 
-        var delBtn = el("button", "chip danger", "删除");
+      var toggleBtn = el("button", enabled ? "chip danger" : "chip enable", enabled ? "停用" : "恢复");
+      toggleBtn.type = "button";
+      toggleBtn.setAttribute("role", "switch");
+      toggleBtn.setAttribute("aria-checked", enabled ? "true" : "false");
+      toggleBtn.setAttribute("aria-label", (enabled ? "停用" : "恢复") + name);
+      toggleBtn.addEventListener("click", function () { setPaperEnabled(name, !enabled, row, toggleBtn); });
+      actions.appendChild(toggleBtn);
+
+      if (item.source === "custom" || item.source === "override") {
+        var deleteLabel = item.source === "override" ? "恢复默认" : "删除";
+        var delBtn = el("button", item.source === "override" ? "chip" : "chip danger", deleteLabel);
         delBtn.type = "button";
-        delBtn.addEventListener("click", function () { deletePaper(name); });
+        delBtn.setAttribute("aria-label", deleteLabel + name);
+        delBtn.addEventListener("click", function () { deletePaper(name, item.source); });
         actions.appendChild(delBtn);
       }
 
@@ -781,9 +865,9 @@
       box.appendChild(row);
     });
 
-    // 存在自定义 / 覆盖报社时，显示「复制提交命令」（写进 papers.custom.json 后需 commit+push 才进 CI）
+    // 存在自定义 / 覆盖 / 停用配置时，提供先同步再推送的安全 Shell 命令。
     var commitRow = $("papers-commit-row");
-    if (commitRow) commitRow.hidden = !(view.custom && view.custom.length);
+    if (commitRow) commitRow.hidden = !((view.custom && view.custom.length) || (view.disabled && view.disabled.length));
   }
 
   function applyPapersView(view) {
@@ -797,7 +881,6 @@
       scanPaperSelected = new Set(scanPaperNames.filter(function (name) {
         return scanPaperSelected.has(name);
       }));
-      if (!scanPaperSelected.size) scanPaperSelected = null;
     }
     renderScanPapers();
   }
@@ -815,6 +898,7 @@
     var style = $("paper-style").value;
     var tpl = $("paper-tpl").value.trim();
     if (!name) return { error: "请填写报社名称" };
+    if (editingPaperName && name !== editingPaperName) return { error: "编辑时不能修改报社名称；请新建报社" };
     if (name.length > 30) return { error: "名称不能超过 30 个字符" };
     if (!/^https?:\/\//.test(tpl)) return { error: "版面页链接必须以 http:// 或 https:// 开头" };
     if (tpl.indexOf("{a}") === -1) return { error: "版面页链接必须包含 {a} 占位符" };
@@ -850,13 +934,17 @@
   }
 
   function clearPaperForm() {
+    editingPaperName = null;
     [
       "paper-name", "paper-tpl", "paper-date-format", "paper-node-pattern",
       "paper-article-pattern", "paper-timeout", "paper-retries", "paper-exclude"
     ].forEach(function (id) {
       $(id).value = "";
     });
+    $("paper-name").readOnly = false;
     $("paper-style").value = "ymd";
+    $("paper-form-summary").textContent = "添加报社";
+    $("paper-add").textContent = "保存报社";
     updatePaperStyleUI();
     setPapersStatus("—");
   }
@@ -865,10 +953,12 @@
     $("paper-date-format-field").hidden = $("paper-style").value !== "custom";
   }
 
-  function fillPaperForm(paper) {
+  function fillPaperForm(paper, source) {
+    editingPaperName = paper.name || null;
     $("papers-card").open = true;
     $("paper-form-details").open = true;
     $("paper-name").value = paper.name || "";
+    $("paper-name").readOnly = true;
     $("paper-style").value = paper.style || "ymd";
     $("paper-date-format").value = paper.date_format || "";
     $("paper-tpl").value = paper.tpl || "";
@@ -877,9 +967,13 @@
     $("paper-timeout").value = paper.timeout === undefined ? "" : paper.timeout;
     $("paper-retries").value = paper.retries === undefined ? "" : paper.retries;
     $("paper-exclude").value = paper.node_exclude || "";
+    $("paper-form-summary").textContent = "编辑「" + paper.name + "」";
+    $("paper-add").textContent = "保存修改";
     updatePaperStyleUI();
-    setPapersStatus("正在编辑「" + paper.name + "」，保存后会同名覆盖。");
-    window.setTimeout(function () { $("paper-name").focus(); }, 0);
+    setPapersStatus(source === "builtin"
+      ? "正在修改内置报社「" + paper.name + "」，保存后会创建可撤销的自定义覆盖。"
+      : "正在编辑「" + paper.name + "」。");
+    window.setTimeout(function () { $("paper-tpl").focus(); }, 0);
   }
 
   function addPaper() {
@@ -896,13 +990,34 @@
       .catch(function (err) { setPapersStatus("保存失败：" + err.message); });
   }
 
-  function deletePaper(name) {
-    if (!window.confirm("删除自定义报社「" + name + "」？内置报社的同名覆盖会恢复为默认配置。")) return;
+  function setPaperEnabled(name, enabled, row, button) {
+    if (!enabled && !window.confirm("停用报社「" + name + "」？它将不再参与后续扫描，但历史报道和抓取规则都会保留。")) return;
+    row.setAttribute("aria-busy", "true");
+    button.disabled = true;
+    setPapersStatus(enabled ? "正在恢复…" : "正在停用…");
+    api.post("/api/papers/status", { name: name, enabled: enabled })
+      .then(function (data) {
+        applyPapersView(data);
+        setPapersStatus((enabled ? "已恢复「" : "已停用「") + name + "」");
+      })
+      .catch(function (err) {
+        row.removeAttribute("aria-busy");
+        button.disabled = false;
+        setPapersStatus((enabled ? "恢复失败：" : "停用失败：") + err.message);
+      });
+  }
+
+  function deletePaper(name, source) {
+    var restoring = source === "override";
+    var question = restoring
+      ? "恢复「" + name + "」的内置默认规则？当前自定义覆盖会被删除，启用状态和历史报道不变。"
+      : "删除自定义报社「" + name + "」？它将不再参与扫描，但已有历史报道不会被删除。";
+    if (!window.confirm(question)) return;
     setPapersStatus("正在删除…");
     api.post("/api/papers/delete", { name: name })
       .then(function (data) {
         applyPapersView(data);
-        setPapersStatus("已删除「" + name + "」");
+        setPapersStatus(restoring ? "已恢复「" + name + "」的内置默认规则" : "已删除「" + name + "」");
       })
       .catch(function (err) { setPapersStatus("删除失败：" + err.message); });
   }
@@ -938,7 +1053,7 @@
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(PAPERS_COMMIT_CMD).then(function () {
-        setPapersStatus("已复制提交命令，粘贴到终端执行即可推送给每日 CI。");
+        setPapersStatus("已复制安全同步命令（macOS/Linux Shell）。");
       }, fallback);
     } else {
       fallback();
@@ -946,6 +1061,26 @@
   }
 
   /* -------------------------------------------------------------- 渲染 */
+  function renderResultContext(list) {
+    var box = $("result-context");
+    var hasFocus = Array.isArray(state.focusKeywords) && state.focusKeywords.length > 0;
+    var hasLinked = Boolean(state.linkedFilter);
+    box.hidden = !hasFocus && !hasLinked;
+    $("result-show-history").hidden = !hasFocus;
+    $("result-clear-linked").hidden = !hasLinked;
+    if (!hasFocus && !hasLinked) return;
+
+    var parts = [];
+    if (hasFocus) parts.push("当前关键词：" + state.focusKeywords.join("、"));
+    if (hasLinked) parts.push("图表筛选：" + state.linkedFilter.label);
+    $("result-context-title").textContent = parts.join(" · ");
+    $("result-context-detail").textContent = list.length
+      ? "三处视图已联动，当前显示 " + list.length + " 条命中报道。"
+      : (hasFocus
+        ? "当前关键词暂无命中；历史归档仍然保留，可切换查看。"
+        : "当前图表筛选没有匹配报道，可取消筛选返回。");
+  }
+
   function render() {
     if (!state.data) return;
     var data = state.data;
@@ -956,9 +1091,11 @@
       " 家报社 · 数据更新于 " + data.generated_at;
 
     renderStats(all, list);
+    // 报道、时间趋势与版面位置始终消费同一筛选结果。
     renderChart(list);
     renderLayouts(list);
     renderRows(list);
+    renderResultContext(list);
 
     var visibleCount = Math.min(list.length, state.visibleRows);
     if (list.length > visibleCount) {
@@ -978,7 +1115,9 @@
       renderEmptyState(data);
     } else {
       $("empty").hidden = list.length > 0;
-      $("empty").textContent = "没有符合条件的命中。";
+      $("empty").textContent = state.focusKeywords
+        ? "当前关键词「" + state.focusKeywords.join("、") + "」暂无命中；历史归档仍保留。"
+        : "没有符合条件的命中。";
     }
 
     var hint = $("range-hint");
@@ -1034,7 +1173,7 @@
       ["当前结果", list.length, list.length === all.length ? "未使用筛选" : "从 " + all.length + " 条中筛出"],
       ["相关报社", papers.length, papers.join("、") || "暂无报社"],
       ["覆盖日期", dates.length, dates.length ? dates[0] + " 至 " + dates[dates.length - 1] : "暂无日期"],
-      ["已检索文章", seenTotal, "用于识别新增报道"]
+      ["历史已检索", seenTotal, "所有关键词累计，用于识别新增"]
     ];
 
     var box = $("stats");
@@ -1073,7 +1212,15 @@
 
     dates.forEach(function (d) {
       var n = counts[d];
-      var col = el("div", "bar-col");
+      var active = state.linkedFilter && state.linkedFilter.type === "date" && state.linkedFilter.date === d;
+      var col = el("button", active ? "bar-col is-active" : "bar-col");
+      col.type = "button";
+      col.setAttribute("aria-label", d + "，命中 " + n + " 条；" + (active ? "取消当天筛选" : "仅查看当天报道"));
+      col.setAttribute("aria-pressed", active ? "true" : "false");
+      col.setAttribute("aria-controls", "rows");
+      col.addEventListener("click", function () {
+        showLinkedResults({ type: "date", key: d, date: d, label: "日期 " + d });
+      });
       col.appendChild(el("div", "bar-n", n));
       var bar = el("div", "bar");
       bar.setAttribute("aria-hidden", "true");
@@ -1109,9 +1256,10 @@
     records.forEach(function (record) {
       var layout = record.layout || fallbackLayout(record);
       if (!layout || !Array.isArray(layout.items) || !layout.items.length) return;
-      var key = [record.paper, record.date, record.section || "—"].join("\u0001");
+      var key = [record.paper, record.date, record.section_no || "", record.section || "—"].join("\u0001");
       if (!groups[key]) {
         groups[key] = {
+          key: key,
           paper: record.paper,
           date: record.date,
           section: record.section || "—",
@@ -1145,7 +1293,9 @@
     }
 
     visibleLayouts.forEach(function (group) {
-      var card = el("article", "layout-item");
+      var active = state.linkedFilter && state.linkedFilter.type === "layout" &&
+        state.linkedFilter.key === group.key;
+      var card = el("article", active ? "layout-item is-active" : "layout-item");
       var page = el("div", "layout-page");
       var ratio = Number(group.layout.aspect_ratio) || 0.72;
       page.style.aspectRatio = String(Math.max(0.35, Math.min(1.5, ratio)));
@@ -1172,6 +1322,20 @@
         info.appendChild(el("p", null, "· " + title));
       });
       if (group.layout.partial) info.appendChild(el("p", null, "历史记录仅保留命中块，背景文章将在下次扫描后补全。"));
+      var viewButton = el("button", active ? "btn subtle layout-action is-active" : "btn subtle layout-action",
+        active ? "取消本版筛选" : "查看本版 " + group.hitUrls.size + " 篇报道");
+      viewButton.type = "button";
+      viewButton.setAttribute("aria-pressed", active ? "true" : "false");
+      viewButton.setAttribute("aria-controls", "rows");
+      viewButton.addEventListener("click", function () {
+        showLinkedResults({
+          type: "layout",
+          key: group.key,
+          urls: new Set(group.hitUrls),
+          label: group.paper + " · " + group.date + " · " + group.section
+        });
+      });
+      info.appendChild(viewButton);
       var legend = el("div", "layout-legend");
       var hitKey = el("span", "hit-key");
       hitKey.appendChild(el("i"));
@@ -1226,7 +1390,9 @@
 
       if (Array.isArray(r.matched) && r.matched.length) {
         var tags = el("div", "tags");
-        r.matched.forEach(function (k) { tags.appendChild(el("span", "tag", k)); });
+        r.matched.filter(function (k) { return state.keywords.has(k); }).forEach(function (k) {
+          tags.appendChild(el("span", "tag", k));
+        });
         td.appendChild(tags);
       }
 
@@ -1256,25 +1422,36 @@
       updateScanModeUI();
     });
     $("paper-add").addEventListener("click", addPaper);
+    $("paper-create").addEventListener("click", function () {
+      clearPaperForm();
+      $("papers-card").open = true;
+      $("paper-form-details").open = true;
+      window.setTimeout(function () { $("paper-name").focus(); }, 0);
+    });
     $("paper-test").addEventListener("click", testPaperForm);
     $("paper-clear").addEventListener("click", clearPaperForm);
     $("paper-style").addEventListener("change", updatePaperStyleUI);
     $("papers-commit-cmd").value = PAPERS_COMMIT_CMD;
     $("papers-commit").addEventListener("click", copyCommitCommand);
+    $("result-clear-linked").addEventListener("click", function () { clearLinkedFilter(true); });
+    $("result-show-history").addEventListener("click", showAllHistory);
     loadScanConfig();
     loadPapers();
     resumeScan();
     $("q").addEventListener("input", function (e) {
       state.q = e.target.value;
+      state.linkedFilter = null;
       state.visibleRows = INITIAL_ROWS;
       scheduleRender();
     });
     $("from").addEventListener("change", function (e) {
       state.from = e.target.value; state.preset = "custom"; state.visibleRows = INITIAL_ROWS;
+      state.linkedFilter = null;
       updatePresetUI(); render();
     });
     $("to").addEventListener("change", function (e) {
       state.to = e.target.value; state.preset = "custom"; state.visibleRows = INITIAL_ROWS;
+      state.linkedFilter = null;
       updatePresetUI(); render();
     });
     $("sort").addEventListener("change", function (e) {
@@ -1305,8 +1482,9 @@
     $("reset").addEventListener("click", function () {
       if (state.data) {
         state.papers = new Set(state.data.papers);
-        state.keywords = new Set(state.data.keywords);
+        state.keywords = new Set(state.focusKeywords || state.data.keywords);
       }
+      state.linkedFilter = null;
       state.q = "";
       state.from = "";
       state.to = "";

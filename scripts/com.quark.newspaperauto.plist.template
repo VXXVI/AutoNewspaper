@@ -43,7 +43,7 @@
 
         <!-- 可选：自定义关键词（逗号或分号分隔），取消注释即生效
         <key>NEWSPAPER_KW</key>
-        <string>广东海洋大学,广海,海大</string>
+        <string>人工智能,生成式人工智能</string>
         -->
 
         <!-- 可选：显式指定 Python 解释器（默认用项目 .venv 或 PATH 中的 python3）

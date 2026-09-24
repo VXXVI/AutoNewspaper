@@ -7,6 +7,14 @@
 
 ### 新增
 
+- **默认主题与历史查看联动**：默认关键词调整为「人工智能」。看板首次加载聚焦已配置关键词，
+  每轮扫描完成后自动聚焦本轮关键词；更换关键词不会清除 `hits/archive.json`，可用「查看全部历史」
+  一键回看旧关键词结果。趋势日期柱和版面「查看本版报道」按钮会让趋势、版面与报道使用同一结果集，
+  并支持再次点击取消筛选；静态 `hits/index.html` 明确标注为历史汇总。
+- **完整报社生命周期管理**：看板支持新增、编辑、试抓、停用、恢复、删除自定义报社，以及
+  安全停用内置报社、编辑同名覆盖和恢复内置默认。`papers.custom.json` 新增向后兼容的顶层
+  `disabled` 名称数组；`GET /api/papers` 新增 `items` / `disabled`，并增加幂等的
+  `POST /api/papers/status`，停用不删除规则与历史归档。
 - **指定目录导出**：CLI 新增 `--export-dir` / `--export-format csv|json`，看板新增
   「导出结果」对话框与 `POST /api/export`。服务端从归档重新应用受控筛选，以原子写入、
   安全唯一文件名和 CSV 公式注入防护保存 CSV / JSON；浏览器 CSV 下载作为兼容兜底。
@@ -46,13 +54,14 @@
   改为「按天数 / 按日期范围」二选一 + 条件显示（日期默认 `until`=今天、`since`=今天减 1 天），
   前端就地校验且与后端一致（`web.py`、`static/*`）。
 - **自定义报社**：新增 `src/newspaper_auto/papers.py`，读写项目根 `papers.custom.json`
-  （`load_custom` / `merge_papers` / `validate_paper` / `save_custom` / `custom_names`），
+  （配置含 `papers` 与顶层 `disabled`；加载、合并、校验和原子保存均集中管理），
   支持 `name` / `style` / `tpl` / `timeout` / `retries` / `node_exclude` 六字段校验，
   **同名覆盖内置、不重复则追加**，文件缺失/损坏/单条非法只警告不崩。`cli.select_papers`
   接受合并后的报社列表（未匹配仍回退全部）；`cli.main` 用
   `merge_papers(config.PAPERS, load_custom(find_project_root()))`。看板新增
-  `GET /api/papers`、`POST /api/papers`、`POST /api/papers/delete`、`POST /api/papers/test`
-  四条路由与「报社」卡片（列表 + 来源标注 + 新增/试抓/删除，零 `innerHTML`）；
+  `GET /api/papers`、`POST /api/papers`、`POST /api/papers/status`、
+  `POST /api/papers/delete`、`POST /api/papers/test` 五条路由与「报社」卡片（列表 + 来源标注 +
+  新增/编辑/试抓/停用/恢复/删除，零 `innerHTML`）；
   试抓探测 `paper_probe` 可注入，默认实现直接 `scanner.scan_paper(dry=True)`，不写文件。
   `create_server` 增加 `paper_probe` / `papers_root` 供测试隔离。
 - **本地看板支持配置与一键触发扫描**：`python3 -m newspaper_auto.web` 新增「扫描设置」卡片

@@ -27,7 +27,7 @@
 ----
     python3 daily_scan.py                    # 扫今天+昨天，只报「新增」命中
     python3 daily_scan.py --days 7           # 往前回溯 7 天
-    python3 daily_scan.py --kw 广东海洋大学    # 换关键词（可多次指定）
+    python3 daily_scan.py --kw 人工智能          # 换关键词（可多次指定）
     python3 daily_scan.py --full             # 忽略增量记录，全量重扫重报
     python3 daily_scan.py --workers 8        # 并发数（默认 8）
     python3 daily_scan.py --only 光明日报,南方日报

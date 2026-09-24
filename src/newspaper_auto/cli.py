@@ -49,12 +49,13 @@ def _parse_keyword(text: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="daily_scan.py", description="数字报关键词每日监测")
+    default_keywords = "、".join(config.DEFAULT_KEYWORDS)
     parser.add_argument(
         "--kw",
         action="append",
         type=_parse_keyword,
         default=None,
-        help=f"关键词，可多次指定（最多 {config.MAX_KEYWORDS} 个；默认：广东海洋大学）",
+        help=f"关键词，可多次指定（最多 {config.MAX_KEYWORDS} 个；默认：{default_keywords}）",
     )
     # --days 与 --since/--until 语义互斥；后者两者可共存，故不用 argparse 的
     # mutually exclusive group（它无法表达「days ⊕ (since ∨ until)」），改在 main 里显式判定。
@@ -276,7 +277,10 @@ def main(
     kw_label = " / ".join(keywords)
 
     # 自定义报社跟随**项目根**（配置层），与 --data-dir（数据层）无关
-    all_papers = papers.merge_papers(config.PAPERS, papers.load_custom(paths.find_project_root()))
+    paper_settings = papers.load_settings(paths.find_project_root())
+    all_papers = papers.merge_papers(config.PAPERS, paper_settings.custom, paper_settings.disabled)
+    if not all_papers:
+        parser.error("没有已启用的报社，请先在看板中恢复或添加报社")
     selected, unmatched = select_papers(args.only, all_papers)
     # 部分匹配 = 警告后继续；零匹配 = 报错退出码 2，绝不开扫（避免静默回退全部）
     if unmatched:

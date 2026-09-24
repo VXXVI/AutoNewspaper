@@ -48,7 +48,7 @@
         <div class="scan-primary">
           <label class="field field-keywords">
             <span><b>1</b> 监测关键词</span>
-            <input id="scan-kw" type="text" placeholder="例如：广东海洋大学、海大" autocomplete="off">
+            <input id="scan-kw" type="text" placeholder="例如：人工智能、生成式人工智能" autocomplete="off">
             <small>多个关键词可用逗号、顿号或换行分隔，最多 10 个</small>
           </label>
 
@@ -146,6 +146,17 @@
       <div class="button-group">
         <button id="export" class="btn ghost" type="button">导出结果</button>
         <button id="reset" class="btn subtle" type="button">清除筛选</button>
+      </div>
+    </div>
+
+    <div class="result-context" id="result-context" role="status" aria-live="polite" hidden>
+      <div>
+        <b id="result-context-title">当前结果范围</b>
+        <span id="result-context-detail">命中报道、时间趋势与版面位置保持同步。</span>
+      </div>
+      <div class="button-group">
+        <button id="result-clear-linked" class="btn subtle compact-button" type="button" hidden>取消图表筛选</button>
+        <button id="result-show-history" class="btn ghost compact-button" type="button" hidden>查看全部历史</button>
       </div>
     </div>
 
@@ -251,7 +262,7 @@
         </div>
         <span class="hint">最近 90 个有记录的日期</span>
       </div>
-      <div class="chart" id="chart" role="img" aria-label="每日命中数量趋势图"></div>
+      <div class="chart" id="chart" role="group" aria-label="每日命中数量趋势，可选择日期筛选报道"></div>
     </section>
   </section>
 
@@ -263,16 +274,18 @@
     </summary>
     <div class="disclosure-body">
       <div class="settings-intro">
-        <div><b>已接入的报社</b><span>建议先使用“试抓”确认网站结构正常，再保存自定义规则。</span></div>
+        <div><b>已接入的报社</b><span>可停用内置报社；自定义报社可编辑或删除，历史结果不会受影响。</span></div>
+        <button id="paper-create" class="btn primary compact-button" type="button">＋ 添加报社</button>
       </div>
       <div class="papers-list" id="papers-list"></div>
+      <p class="papers-feedback" id="papers-feedback" role="status" aria-live="polite"></p>
       <div class="button-row" id="papers-commit-row" hidden>
-        <button id="papers-commit" class="btn ghost" type="button">复制提交命令</button>
+        <button id="papers-commit" class="btn ghost" type="button">复制安全同步命令</button>
         <input id="papers-commit-cmd" class="commit-cmd" type="text" readonly aria-label="提交自定义报社的命令">
       </div>
 
       <details class="source-form" id="paper-form-details">
-        <summary>添加或编辑报社</summary>
+        <summary id="paper-form-summary">添加报社</summary>
         <div class="form-section">
           <div class="filters">
             <label class="field"><span>报社名称</span><input id="paper-name" type="text" maxlength="30" placeholder="例如：某某日报" autocomplete="off"></label>

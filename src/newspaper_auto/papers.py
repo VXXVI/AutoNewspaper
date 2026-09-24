@@ -9,6 +9,8 @@
 - **同名覆盖语义**：custom 里的 ``name`` 与内置重复时**覆盖内置那条**（可用来改内置
   报社的 URL / 超时）；不重复则**追加**。合并后内置原有顺序在前，纯新增按文件顺序
   追加在后。
+- **停用不是删除**：顶层 ``disabled`` 保存暂时不参与扫描的报社名称。这样内置报社无需
+  修改源代码也能安全停用，并可随时恢复；旧文件没有该字段时自动视为空列表。
 - **容错**：文件缺失 / JSON 非法 / 单条非法 → 忽略并向 stderr 打一行警告，
   绝不让整个扫描崩掉。
 - **SSRF 边界（如实说明，不试图"修"）**：``tpl`` 是用户自己填的 URL，扫描器会用系统
@@ -22,6 +24,7 @@ import json
 import re
 import sys
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from string import Formatter
 from typing import Any
@@ -40,6 +43,19 @@ DATE_FORMATS = {
     "ymd": "%Y%m/%d",
     "dash": "%Y-%m/%d",
 }
+PAPER_FIELDS = frozenset(
+    {
+        "name",
+        "style",
+        "tpl",
+        "date_format",
+        "timeout",
+        "retries",
+        "node_exclude",
+        "node_pattern",
+        "article_pattern",
+    }
+)
 # 自定义日期路径只允许年月日指令与常见路径分隔符，避免平台相关的 strftime
 # 指令产生不可预测结果。例：%Y/%m/%d、%Y%m%d、%y-%m/%d。
 _DATE_FORMAT_RE = re.compile(r"^(?:%[Yymd]|[-_./])+$")
@@ -47,6 +63,14 @@ _DATE_FORMAT_RE = re.compile(r"^(?:%[Yymd]|[-_./])+$")
 
 class CustomPapersError(ValueError):
     """自定义报社文件无法安全读改写。"""
+
+
+@dataclass(frozen=True)
+class PaperSettings:
+    """``papers.custom.json`` 的规范化内容。"""
+
+    custom: tuple[dict[str, Any], ...] = ()
+    disabled: tuple[str, ...] = ()
 
 
 def _custom_path(root: Path) -> Path:
@@ -62,7 +86,21 @@ def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
+def _clean_name(value: Any) -> tuple[str | None, str | None]:
+    """校验并规范化报社名称，供报社对象与 ``disabled`` 共用。"""
+    if not isinstance(value, str) or not value.strip():
+        return None, "name 必须是非空字符串"
+    name = value.strip()
+    if len(name) > MAX_NAME_LEN:
+        return None, f"name 不能超过 {MAX_NAME_LEN} 个字符"
+    if "," in name or any(ord(char) < 32 or ord(char) == 127 for char in name):
+        return None, "name 不能包含英文逗号或控制字符"
+    return name, None
+
+
+def validate_paper(
+    obj: Any, *, allow_unknown_fields: bool = False
+) -> tuple[dict[str, Any] | None, str | None]:
     """逐条校验一条自定义报社，返回 ``(归一化后的 paper, 错误说明)``。
 
     合法时错误为 None；否则 paper 为 None、错误是给用户看的中文说明。可选字段
@@ -70,15 +108,14 @@ def validate_paper(obj: Any) -> tuple[dict[str, Any] | None, str | None]:
     """
     if not isinstance(obj, dict):
         return None, "每条报社必须是一个 JSON 对象"
+    unknown = set(obj) - PAPER_FIELDS
+    if unknown and not allow_unknown_fields:
+        return None, f"不支持的字段：{'、'.join(sorted(unknown))}"
 
-    name = obj.get("name")
-    if not isinstance(name, str) or not name.strip():
-        return None, "name 必须是非空字符串"
-    name = name.strip()
-    if len(name) > MAX_NAME_LEN:
-        return None, f"name 不能超过 {MAX_NAME_LEN} 个字符"
-    if "," in name or any(ord(char) < 32 or ord(char) == 127 for char in name):
-        return None, "name 不能包含英文逗号或控制字符"
+    name, name_error = _clean_name(obj.get("name"))
+    if name_error:
+        return None, name_error
+    assert name is not None
 
     style = obj.get("style")
     if style not in STYLES:
@@ -188,66 +225,115 @@ def format_date_path(paper: dict[str, Any], day: Any) -> str:
     return day.strftime(date_format)
 
 
-def load_custom(root: Path) -> list[dict[str, Any]]:
-    """读取 ``<root>/papers.custom.json`` 并逐条校验。
+def _parse_settings(data: Any, *, strict: bool, path_name: str) -> PaperSettings:
+    """解析配置；只读扫描容错，写接口严格拒绝歧义配置。"""
+    if not isinstance(data, dict):
+        message = '顶层必须是对象（形如 {"version": 1, "papers": [], "disabled": []}）'
+        if strict:
+            raise CustomPapersError(f"{path_name} {message}")
+        _warn(f"{message}，已忽略")
+        return PaperSettings()
+    version = data.get("version", 1)
+    if version != 1:
+        message = f"不支持 version={version!r}"
+        if strict:
+            raise CustomPapersError(f"{path_name} 使用{message}")
+        _warn(f"{message}，已忽略整个文件")
+        return PaperSettings()
+    raw_papers = data.get("papers")
+    if not isinstance(raw_papers, list):
+        message = "papers 字段必须是数组"
+        if strict:
+            raise CustomPapersError(f"{path_name} 的 {message}")
+        _warn(f"{message}，已忽略")
+        return PaperSettings()
 
-    缺失 / 读取失败 / JSON 非法 / 顶层结构不对 → 返回 ``[]``（并打警告）；
-    单条非法则跳过该条、其余照常返回。绝不抛异常。
-    """
+    custom: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for index, item in enumerate(raw_papers, 1):
+        # version=1 的历史语义是忽略额外字段。文件读取保持这一兼容性；
+        # Web 新增/编辑接口仍会严格拒绝未知字段，防止拼写错误被静默忽略。
+        paper, error = validate_paper(item, allow_unknown_fields=True)
+        if error:
+            if strict:
+                raise CustomPapersError(f"{path_name} 第 {index} 条无效：{error}")
+            _warn(f"第 {index} 条无效（{error}），已跳过")
+            continue
+        assert paper is not None
+        if paper["name"] in names:
+            if strict:
+                raise CustomPapersError(f"{path_name} 第 {index} 条报社名称重复：{paper['name']}")
+            _warn(f"第 {index} 条与前文报社同名（{paper['name']}），已跳过")
+            continue
+        names.add(paper["name"])
+        custom.append(paper)
+
+    raw_disabled = data.get("disabled", [])
+    if not isinstance(raw_disabled, list):
+        message = "disabled 字段必须是字符串数组"
+        if strict:
+            raise CustomPapersError(f"{path_name} 的 {message}")
+        _warn(f"{message}，已忽略该字段")
+        raw_disabled = []
+    disabled: list[str] = []
+    for index, value in enumerate(raw_disabled, 1):
+        name, error = _clean_name(value)
+        if error:
+            if strict:
+                raise CustomPapersError(f"{path_name} disabled 第 {index} 项无效：{error}")
+            _warn(f"disabled 第 {index} 项无效（{error}），已跳过")
+            continue
+        assert name is not None
+        if name in disabled:
+            if strict:
+                raise CustomPapersError(f"{path_name} disabled 第 {index} 项名称重复：{name}")
+            _warn(f"disabled 第 {index} 项名称重复（{name}），已跳过")
+            continue
+        disabled.append(name)
+    return PaperSettings(tuple(custom), tuple(disabled))
+
+
+def load_settings(root: Path) -> PaperSettings:
+    """容错读取完整报社设置；配置损坏时警告并回落安全默认。"""
     path = _custom_path(root)
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return []
+        return PaperSettings()
     except OSError as exc:  # 权限 / 编码等
         _warn(f"读取失败（{exc}），已忽略")
-        return []
+        return PaperSettings()
 
     try:
         data = json.loads(text)
     except ValueError as exc:
         _warn(f"JSON 解析失败（{exc}），已忽略整个文件")
-        return []
-    if not isinstance(data, dict):
-        _warn('顶层必须是对象（形如 {"version": 1, "papers": [...]}），已忽略')
-        return []
-    version = data.get("version", 1)
-    if version != 1:
-        _warn(f"不支持 version={version!r}，已忽略整个文件")
-        return []
-    raw_papers = data.get("papers")
-    if not isinstance(raw_papers, list):
-        _warn("papers 字段必须是数组，已忽略")
-        return []
-
-    result: list[dict[str, Any]] = []
-    names: set[str] = set()
-    for index, item in enumerate(raw_papers, 1):
-        paper, error = validate_paper(item)
-        if error:
-            _warn(f"第 {index} 条无效（{error}），已跳过")
-            continue
-        assert paper is not None
-        if paper["name"] in names:
-            _warn(f"第 {index} 条与前文报社同名（{paper['name']}），已跳过")
-            continue
-        names.add(paper["name"])
-        result.append(paper)
-    return result
+        return PaperSettings()
+    return _parse_settings(data, strict=False, path_name=path.name)
 
 
-def load_custom_for_update(root: Path) -> list[dict[str, Any]]:
-    """严格读取自定义报社，供 Web 写接口执行“读—改—写”。
+def load_custom(root: Path) -> list[dict[str, Any]]:
+    """兼容接口：只返回 ``papers`` 列表。"""
+    return [dict(paper) for paper in load_settings(root).custom]
 
-    与容错读取 :func:`load_custom` 不同，已有文件只要损坏或含非法条目就抛出
+
+def load_disabled(root: Path) -> set[str]:
+    """返回持久化的停用报社名称。"""
+    return set(load_settings(root).disabled)
+
+
+def load_settings_for_update(root: Path) -> PaperSettings:
+    """严格读取设置，供 Web 写接口执行“读—改—写”。
+
+    与容错读取 :func:`load_settings` 不同，已有文件只要损坏或含非法条目就抛出
     :class:`CustomPapersError`。这样用户手工编辑出错时，界面保存不会把原文件静默覆盖。
-    文件不存在仍表示尚无自定义报社，返回空列表。
+    文件不存在仍表示尚无自定义设置。
     """
     path = _custom_path(root)
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return []
+        return PaperSettings()
     except OSError as exc:
         raise CustomPapersError(f"无法读取 {path.name}：{exc}") from exc
 
@@ -255,36 +341,26 @@ def load_custom_for_update(root: Path) -> list[dict[str, Any]]:
         data = json.loads(text)
     except ValueError as exc:
         raise CustomPapersError(f"{path.name} JSON 解析失败：{exc}") from exc
-    if not isinstance(data, dict):
-        raise CustomPapersError(f'{path.name} 顶层必须是对象（形如 {{"version": 1, "papers": [...]}}）')
-    version = data.get("version", 1)
-    if version != 1:
-        raise CustomPapersError(f"{path.name} 使用不支持的 version={version!r}")
-    raw_papers = data.get("papers")
-    if not isinstance(raw_papers, list):
-        raise CustomPapersError(f"{path.name} 的 papers 字段必须是数组")
-
-    result: list[dict[str, Any]] = []
-    names: set[str] = set()
-    for index, item in enumerate(raw_papers, 1):
-        paper, error = validate_paper(item)
-        if error:
-            raise CustomPapersError(f"{path.name} 第 {index} 条无效：{error}")
-        assert paper is not None
-        if paper["name"] in names:
-            raise CustomPapersError(f"{path.name} 第 {index} 条报社名称重复：{paper['name']}")
-        names.add(paper["name"])
-        result.append(paper)
-    return result
+    return _parse_settings(data, strict=True, path_name=path.name)
 
 
-def merge_papers(builtin: Sequence[dict[str, Any]], custom: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    """把内置与自定义合并：同名覆盖、不重复则追加。
+def load_custom_for_update(root: Path) -> list[dict[str, Any]]:
+    """兼容接口：严格读取后只返回 ``papers`` 列表。"""
+    return [dict(paper) for paper in load_settings_for_update(root).custom]
+
+
+def merge_papers(
+    builtin: Sequence[dict[str, Any]],
+    custom: Iterable[dict[str, Any]],
+    disabled: Iterable[str] = (),
+) -> list[dict[str, Any]]:
+    """把内置与自定义合并，再排除停用项：同名覆盖、不重复则追加。
 
     内置原有顺序在前；纯新增按 ``custom`` 的给出顺序追加在后。返回的是「浅拷贝」，
     调用方修改结果不会影响入参。
     """
     custom_list = list(custom)
+    disabled_names = set(disabled)
     custom_by_name: dict[str, dict[str, Any]] = {}
     for paper in custom_list:
         custom_by_name.setdefault(paper["name"], paper)
@@ -295,21 +371,55 @@ def merge_papers(builtin: Sequence[dict[str, Any]], custom: Iterable[dict[str, A
         name = paper["name"]
         seen.add(name)
         override = custom_by_name.get(name)
-        merged.append(dict(override if override is not None else paper))
+        if name not in disabled_names:
+            merged.append(dict(override if override is not None else paper))
     for paper in custom_list:
         name = paper["name"]
         if name in seen:
             continue
         seen.add(name)
-        merged.append(dict(paper))
+        if name not in disabled_names:
+            merged.append(dict(paper))
     return merged
 
 
-def save_custom(root: Path, custom_papers: Iterable[dict[str, Any]]) -> None:
-    """原子写回 ``<root>/papers.custom.json``（缩进 JSON，用户可直接手编）。"""
+def save_settings(
+    root: Path,
+    custom_papers: Iterable[dict[str, Any]],
+    disabled: Iterable[str] = (),
+) -> None:
+    """原子写回完整设置（缩进 JSON，用户可直接手编）。"""
+    normalized_papers: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for index, item in enumerate(custom_papers, 1):
+        paper, error = validate_paper(item)
+        if error:
+            raise CustomPapersError(f"待保存的第 {index} 条报社无效：{error}")
+        assert paper is not None
+        if paper["name"] in seen_names:
+            raise CustomPapersError(f"待保存的报社名称重复：{paper['name']}")
+        seen_names.add(paper["name"])
+        normalized_papers.append(paper)
+
+    normalized_disabled: list[str] = []
+    for index, value in enumerate(disabled, 1):
+        name, error = _clean_name(value)
+        if error:
+            raise CustomPapersError(f"待保存的 disabled 第 {index} 项无效：{error}")
+        assert name is not None
+        if name not in normalized_disabled:
+            normalized_disabled.append(name)
+
     path = _custom_path(root)
-    text = json.dumps({"version": 1, "papers": list(custom_papers)}, ensure_ascii=False, indent=2) + "\n"
+    payload = {"version": 1, "papers": normalized_papers, "disabled": normalized_disabled}
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     report.write_text(path, text)
+
+
+def save_custom(root: Path, custom_papers: Iterable[dict[str, Any]]) -> None:
+    """兼容接口：保存自定义报社，并保留现有停用列表。"""
+    disabled = load_settings_for_update(root).disabled
+    save_settings(root, custom_papers, disabled)
 
 
 def custom_names(root: Path) -> set[str]:

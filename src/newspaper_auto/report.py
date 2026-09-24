@@ -205,7 +205,7 @@ def render_md(
 _HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>「{kw}」数字报监测</title>
+<title>数字报历史命中汇总</title>
 <style>
  body{{margin:0;background:#f6f7f9;color:#1b1f24;
    font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}}
@@ -220,12 +220,13 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
  td.p{{white-space:nowrap;font-weight:600;font-size:13px;color:#4a5462}}
  td.d{{white-space:nowrap;color:#8a94a3;font-size:12.5px}}
  td.s{{color:#8a94a3;font-size:12.5px}}
+ td.k{{color:#4f5f78;font-size:12px}}
  a{{color:#1a6ef5;text-decoration:none}} a:hover{{text-decoration:underline}}
  .sn{{font-size:12px;color:#8a94a3;margin-top:4px}}
 </style></head><body><div class="wrap">
-<h1>「{kw}」· 数字报监测</h1>
-<div class="meta">共 {total} 条命中 · 更新于 {updated}</div>
-<table><thead><tr><th>报社</th><th>日期</th><th>版面</th><th>标题</th></tr></thead>
+<h1>数字报历史命中汇总</h1>
+<div class="meta">本次更新关键词：{kw} · 共 {total} 条历史命中 · 更新于 {updated}</div>
+<table><thead><tr><th>报社</th><th>日期</th><th>版面</th><th>命中关键词</th><th>标题</th></tr></thead>
 <tbody>{rows}</tbody></table>
 </div></body></html>
 """
@@ -238,6 +239,12 @@ def render_html(kw: str, archive: list[dict[str, Any]], now: datetime | None = N
     for hit in sorted(archive, key=lambda x: (x["date"], x["paper"]), reverse=True):
         snippets = "".join(f'<div class="sn">{_html.escape(s)}</div>' for s in hit.get("snippets", [])[:1])
         section = _html.escape(hit.get("section") or "—")
+        raw_matched = hit.get("matched")
+        matched = (
+            "、".join(str(keyword) for keyword in raw_matched if keyword)
+            if isinstance(raw_matched, list)
+            else ""
+        )
         position = geometry_label(hit.get("geometry"))
         if position:
             section += f'<div class="sn">{_html.escape(position)}</div>'
@@ -246,6 +253,7 @@ def render_html(kw: str, archive: list[dict[str, Any]], now: datetime | None = N
             f'<td class="p">{_html.escape(hit["paper"])}</td>'
             f'<td class="d">{_html.escape(hit["date"])}</td>'
             f'<td class="s">{section}</td>'
+            f'<td class="k">{_html.escape(matched) or "—"}</td>'
             f'<td><a href="{_html.escape(hit["url"])}" target="_blank" rel="noopener">'
             f"{_html.escape(hit['title'])}</a>{snippets}</td></tr>"
         )
@@ -253,7 +261,7 @@ def render_html(kw: str, archive: list[dict[str, Any]], now: datetime | None = N
         kw=_html.escape(kw),
         total=len(archive),
         updated=now.strftime("%Y-%m-%d %H:%M"),
-        rows="".join(rows) or '<tr><td colspan="4">暂无命中</td></tr>',
+        rows="".join(rows) or '<tr><td colspan="5">暂无命中</td></tr>',
     )
 
 

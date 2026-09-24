@@ -18,7 +18,8 @@
   ``POST /api/export`` 把当前受控筛选结果原子写入指定目录。
 - **自定义报社**：``GET /api/papers`` 列出「内置 / 自定义 / 覆盖」；``POST /api/papers``
   新增或同名覆盖；``POST /api/papers/delete`` 删除自定义条目；``POST /api/papers/test``
-  试抓探测。写回的是**项目根**的 ``papers.custom.json``（配置层，与 ``--data-dir`` 无关）。
+  试抓探测；``POST /api/papers/status`` 可停用或恢复任意已接入报社。写回的是**项目根**的
+  ``papers.custom.json``（配置层，与 ``--data-dir`` 无关）。
 - **只允许监听环回地址**，不对外网暴露；并对所有请求做 Host / Origin 校验，
   只接受环回来源，避免浏览器里的任意网页跨站触发抓取。
 - 前端为原生 HTML/CSS/JS，无构建、无 npm、无 CDN，且**零 ``innerHTML``**（数据一律
@@ -170,6 +171,8 @@ def _normalize(item: Any) -> dict[str, Any] | None:
         text_len = int(item.get("text_len") or 0)
     except (TypeError, ValueError):
         text_len = 0
+    raw_snippets = item.get("snippets")
+    raw_matched = item.get("matched")
     return {
         "paper": str(item.get("paper", "")),
         "date": str(item.get("date", "")),
@@ -178,8 +181,8 @@ def _normalize(item: Any) -> dict[str, Any] | None:
         "title": str(item.get("title", "")),
         "url": str(item.get("url", "")),
         "text_len": text_len,
-        "snippets": [str(s) for s in (item.get("snippets") or []) if s],
-        "matched": [str(k) for k in (item.get("matched") or []) if k],
+        "snippets": [str(s) for s in raw_snippets if s] if isinstance(raw_snippets, list) else [],
+        "matched": [str(k) for k in raw_matched if k] if isinstance(raw_matched, list) else [],
         "geometry": _normalize_geometry(item.get("geometry")),
         "layout": _normalize_layout(item.get("layout")),
     }
@@ -195,6 +198,7 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
     records.sort(key=lambda r: (r["date"], r["paper"], r["url"]), reverse=True)
 
     seen = state.load_seen(paths.state_file(data_dir))
+    saved_config = load_web_config(data_dir)
     seen_counts = {kw: len(bucket) for kw, bucket in seen.items() if isinstance(bucket, dict)}
 
     date_counts: dict[str, int] = {}
@@ -219,6 +223,8 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
         # 以及默认关键词（全新环境时提示用户「默认扫什么」）。
         "has_web_config": paths.web_config_file(data_dir).exists(),
         "default_keywords": list(config.DEFAULT_KEYWORDS),
+        # 当前设备保存的扫描关键词。前端据此默认聚焦本轮主题，而不是把历史关键词全部混在一起。
+        "configured_keywords": saved_config["keywords"],
     }
 
 
@@ -252,7 +258,8 @@ def _clean_keywords(raw: Any) -> tuple[list[str] | None, str | None]:
             return None, "keywords 不能包含空字符串"
         if len(value) > MAX_KEYWORD_LEN:
             return None, f"单个关键词不能超过 {MAX_KEYWORD_LEN} 个字符"
-        cleaned.append(value)
+        if value not in cleaned:
+            cleaned.append(value)
     if len(cleaned) > MAX_KEYWORDS:
         return None, f"keywords 最多 {MAX_KEYWORDS} 个"
     return cleaned, None
@@ -540,7 +547,7 @@ def validate_export_request(
         raw_filters = {}
     if not isinstance(raw_filters, dict):
         return None, "filters 必须是 JSON 对象"
-    unknown_filters = set(raw_filters) - {"papers", "keywords", "from", "to", "query", "sort"}
+    unknown_filters = set(raw_filters) - {"papers", "keywords", "urls", "from", "to", "query", "sort"}
     if unknown_filters:
         return None, f"不支持的 filters 字段：{'、'.join(sorted(unknown_filters))}"
 
@@ -548,6 +555,9 @@ def validate_export_request(
     if error:
         return None, error
     keywords, error = _clean_export_filter_list(raw_filters.get("keywords"), "keywords")
+    if error:
+        return None, error
+    urls, error = _clean_export_filter_list(raw_filters.get("urls"), "urls")
     if error:
         return None, error
 
@@ -584,6 +594,7 @@ def validate_export_request(
         "filters": {
             "papers": paper_names,
             "keywords": keywords,
+            "urls": urls,
             "from": normalized_dates["from"],
             "to": normalized_dates["to"],
             "query": query,
@@ -596,6 +607,7 @@ def filter_export_records(records: list[dict[str, Any]], filters: dict[str, Any]
     """在服务端对归档记录应用看板同语义筛选，避免信任前端上传的记录。"""
     paper_names = filters.get("papers")
     keywords = filters.get("keywords")
+    urls = filters.get("urls")
     from_date = filters.get("from")
     to_date = filters.get("to")
     query = str(filters.get("query") or "").casefold()
@@ -604,17 +616,25 @@ def filter_export_records(records: list[dict[str, Any]], filters: dict[str, Any]
     for record in records:
         if paper_names is not None and record["paper"] not in paper_names:
             continue
-        if keywords is not None and not any(keyword in keywords for keyword in record["matched"]):
+        export_record = record
+        if keywords is not None:
+            visible_matched = [keyword for keyword in record["matched"] if keyword in keywords]
+            if not visible_matched:
+                continue
+            # 导出内容与当前关键词视图保持一致，但不修改原始归档。
+            export_record = dict(record)
+            export_record["matched"] = visible_matched
+        if urls is not None and record["url"] not in urls:
             continue
-        if from_date and record["date"] and record["date"] < from_date:
+        if from_date and (not record["date"] or record["date"] < from_date):
             continue
-        if to_date and record["date"] and record["date"] > to_date:
+        if to_date and (not record["date"] or record["date"] > to_date):
             continue
         if query:
             haystack = " ".join((record["title"], record["section"], *record["snippets"])).casefold()
             if query not in haystack:
                 continue
-        selected.append(record)
+        selected.append(export_record)
 
     # 先建立统一的日期倒序基线；paper/title 排序利用 Python 稳定排序保留同组日期顺序。
     selected.sort(key=lambda item: (item["date"], item["url"]), reverse=True)
@@ -630,14 +650,38 @@ def filter_export_records(records: list[dict[str, Any]], filters: dict[str, Any]
 
 # ---------------------------------------------------------------- 自定义报社
 def build_papers_view(root: Path | str) -> dict[str, Any]:
-    """组装 ``GET /api/papers`` 的返回：内置名单 + 自定义对象 + 合并后的生效名单。"""
+    """组装报社目录；保留旧字段，并提供前端可直接渲染的结构化 ``items``。"""
     root = Path(root)
-    custom = papers.load_custom(root)
-    effective = papers.merge_papers(config.PAPERS, custom)
+    settings = papers.load_settings(root)
+    custom = list(settings.custom)
+    disabled = set(settings.disabled)
+    catalog = papers.merge_papers(config.PAPERS, custom)
+    effective = papers.merge_papers(config.PAPERS, custom, disabled)
+    builtin_names = {paper["name"] for paper in config.PAPERS}
+    custom_names = {paper["name"] for paper in custom}
+    items = []
+    for paper in catalog:
+        name = paper["name"]
+        if name in builtin_names and name in custom_names:
+            source = "override"
+        elif name in custom_names:
+            source = "custom"
+        else:
+            source = "builtin"
+        items.append(
+            {
+                "name": name,
+                "source": source,
+                "enabled": name not in disabled,
+                "config": dict(paper),
+            }
+        )
     return {
         "builtin": [paper["name"] for paper in config.PAPERS],
         "custom": custom,
         "effective": [paper["name"] for paper in effective],
+        "disabled": [paper["name"] for paper in catalog if paper["name"] in disabled],
+        "items": items,
     }
 
 
@@ -646,7 +690,8 @@ def _resolve_paper_by_name(root: Path | str, name: Any) -> dict[str, Any] | None
     if not isinstance(name, str) or not name.strip():
         return None
     wanted = name.strip()
-    for paper in papers.merge_papers(config.PAPERS, papers.load_custom(Path(root))):
+    settings = papers.load_settings(Path(root))
+    for paper in papers.merge_papers(config.PAPERS, settings.custom):
         if paper["name"] == wanted:
             return dict(paper)
     return None
@@ -778,7 +823,8 @@ class DashboardServer(ThreadingHTTPServer):
     def scan_units(self, params: dict[str, Any]) -> int:
         """计算预计的“报社 × 日期”工作单元数，供前端显示真实总体进度。"""
         with self.papers_lock:
-            effective = papers.merge_papers(config.PAPERS, papers.load_custom(self.papers_root))
+            settings = papers.load_settings(self.papers_root)
+            effective = papers.merge_papers(config.PAPERS, settings.custom, settings.disabled)
         selected = {name.strip() for name in str(params.get("only") or "").split(",") if name.strip()}
         paper_count = sum(1 for paper in effective if not selected or paper["name"] in selected)
         if params.get("since") and params.get("until"):
@@ -792,13 +838,16 @@ class DashboardServer(ThreadingHTTPServer):
     def paper_selection_error(self, only: str) -> str | None:
         """在启动线程前验证报社名，避免 CLI 启动后才以退出码 2 失败。"""
         wanted = [name.strip() for name in only.split(",") if name.strip()]
-        if not wanted:
-            return None
         with self.papers_lock:
+            settings = papers.load_settings(self.papers_root)
             known = {
                 paper["name"]
-                for paper in papers.merge_papers(config.PAPERS, papers.load_custom(self.papers_root))
+                for paper in papers.merge_papers(config.PAPERS, settings.custom, settings.disabled)
             }
+        if not known:
+            return "没有已启用的报社，请先在“报社与抓取规则”中恢复或添加报社"
+        if not wanted:
+            return None
         unknown = [name for name in wanted if name not in known]
         if unknown:
             return f"未找到报社：{'、'.join(unknown)}，请刷新报社列表后重试"
@@ -906,6 +955,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "/api/config",
             "/api/papers",
             "/api/papers/delete",
+            "/api/papers/status",
             "/api/papers/test",
             "/api/export",
         ):
@@ -931,6 +981,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_paper_add(payload)
         elif route == "/api/papers/delete":
             self._handle_paper_delete(payload)
+        elif route == "/api/papers/status":
+            self._handle_paper_status(payload)
         elif route == "/api/papers/test":
             self._handle_paper_test(payload)
         else:
@@ -1039,14 +1091,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         dashboard = build_dashboard(self.server.data_dir)
         filters = request["filters"]
-        for field, available_field in (("papers", "papers"), ("keywords", "keywords")):
-            requested = filters[field]
-            if requested is None:
-                continue
-            available = set(dashboard[available_field])
-            unknown = [value for value in requested if value not in available]
+        requested_papers = filters["papers"]
+        if requested_papers is not None:
+            available = set(dashboard["papers"])
+            unknown = [value for value in requested_papers if value not in available]
             if unknown:
-                self._error_json(400, f"filters.{field} 包含未知值：{'、'.join(unknown)}")
+                self._error_json(400, f"filters.papers 包含未知值：{'、'.join(unknown)}")
+                return
+        requested_urls = filters["urls"]
+        if requested_urls is not None:
+            available_urls = {record["url"] for record in dashboard["records"]}
+            unknown_urls = [value for value in requested_urls if value not in available_urls]
+            if unknown_urls:
+                self._error_json(400, "filters.urls 包含未知或已失效的报道链接")
                 return
 
         records = filter_export_records(dashboard["records"], filters)
@@ -1079,7 +1136,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if self.server.scan_lock.locked():
                     self._error_json(409, "扫描进行中，完成后才能修改报社配置")
                     return
-                current = papers.load_custom_for_update(root)
+                settings = papers.load_settings_for_update(root)
+                current = list(settings.custom)
                 updated: list[dict[str, Any]] = []
                 replaced = False
                 for existing in current:
@@ -1090,7 +1148,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         updated.append(existing)
                 if not replaced:
                     updated.append(paper)
-                papers.save_custom(root, updated)
+                known_before = {item["name"] for item in config.PAPERS} | {item["name"] for item in current}
+                disabled = (
+                    settings.disabled
+                    if paper["name"] in known_before
+                    else tuple(item for item in settings.disabled if item != paper["name"])
+                )
+                papers.save_settings(root, updated, disabled)
         except papers.CustomPapersError as exc:
             self._error_json(409, f"报社配置未保存：{exc}。请先修复原文件")
             return
@@ -1118,7 +1182,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if self.server.scan_lock.locked():
                     self._error_json(409, "扫描进行中，完成后才能修改报社配置")
                     return
-                current = papers.load_custom_for_update(root)
+                settings = papers.load_settings_for_update(root)
+                current = list(settings.custom)
                 if all(existing["name"] != name for existing in current):
                     builtin_names = {paper["name"] for paper in config.PAPERS}
                     if name in builtin_names:
@@ -1126,7 +1191,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     else:
                         self._error_json(404, f"未找到报社「{name}」")
                     return
-                papers.save_custom(root, [p for p in current if p["name"] != name])
+                builtin_names = {paper["name"] for paper in config.PAPERS}
+                disabled = (
+                    settings.disabled
+                    if name in builtin_names
+                    else tuple(item for item in settings.disabled if item != name)
+                )
+                papers.save_settings(root, [p for p in current if p["name"] != name], disabled)
         except papers.CustomPapersError as exc:
             self._error_json(409, f"报社配置未删除：{exc}。请先修复原文件")
             return
@@ -1135,11 +1206,57 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, build_papers_view(root))
 
+    def _handle_paper_status(self, payload: Any) -> None:
+        """显式启用/停用报社；操作幂等且不会删除历史结果或抓取规则。"""
+        if not isinstance(payload, dict):
+            self._error_json(400, "请求体必须是 JSON 对象")
+            return
+        unknown = set(payload) - {"name", "enabled"}
+        if unknown:
+            self._error_json(400, f"不支持的字段：{'、'.join(sorted(unknown))}")
+            return
+        name = payload.get("name")
+        enabled = payload.get("enabled")
+        if not isinstance(name, str) or not name.strip():
+            self._error_json(400, "name 必须是非空字符串")
+            return
+        if not isinstance(enabled, bool):
+            self._error_json(400, "enabled 必须是布尔值")
+            return
+        name = name.strip()
+        root = self.server.papers_root
+        if self.server.scan_lock.locked():
+            self._error_json(409, "扫描进行中，完成后才能修改报社配置")
+            return
+        try:
+            with self.server.papers_lock:
+                if self.server.scan_lock.locked():
+                    self._error_json(409, "扫描进行中，完成后才能修改报社配置")
+                    return
+                settings = papers.load_settings_for_update(root)
+                catalog = papers.merge_papers(config.PAPERS, settings.custom)
+                if name not in {paper["name"] for paper in catalog}:
+                    self._error_json(404, f"未找到报社「{name}」")
+                    return
+                disabled = list(settings.disabled)
+                if enabled:
+                    disabled = [item for item in disabled if item != name]
+                elif name not in disabled:
+                    disabled.append(name)
+                papers.save_settings(root, settings.custom, disabled)
+        except papers.CustomPapersError as exc:
+            self._error_json(409, f"报社状态未保存：{exc}。请先修复原文件")
+            return
+        except OSError as exc:
+            self._error_json(500, f"报社状态保存失败：{exc}")
+            return
+        self._send_json(200, build_papers_view(root))
+
     def _handle_paper_test(self, payload: Any) -> None:
         """试抓探测：body 为完整 paper 对象；只给 ``name`` 时按名称解析内置/自定义。"""
         paper, error = papers.validate_paper(payload)
         if error:
-            name = payload.get("name") if isinstance(payload, dict) else None
+            name = payload.get("name") if isinstance(payload, dict) and set(payload) == {"name"} else None
             paper = _resolve_paper_by_name(self.server.papers_root, name)
             if paper is None:
                 self._error_json(400, error)

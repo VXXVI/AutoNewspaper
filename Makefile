@@ -70,12 +70,14 @@ plist:  ## 打印将要安装的 launchd plist
 papers-check:  ## 校验 papers.custom.json 并打印合并后的生效报社清单
 	@$(PY) -c "from pathlib import Path; from newspaper_auto import config, papers; \
 root = Path('.').resolve(); \
-custom = papers.load_custom_for_update(root); \
-merged = papers.merge_papers(config.PAPERS, custom); \
+settings = papers.load_settings_for_update(root); \
+custom = list(settings.custom); \
+merged = papers.merge_papers(config.PAPERS, custom, settings.disabled); \
 builtin = {p['name'] for p in config.PAPERS}; \
 custom_names = {p['name'] for p in custom}; \
 print('生效报社清单（共 %d 家）：' % len(merged)); \
-[print('  - %-6s [%s]' % (p['name'], '覆盖' if p['name'] in builtin else '自定义') if p['name'] in custom_names else '  - %-6s [内置]' % p['name']) for p in merged]"
+[print('  - %-6s [%s]' % (p['name'], '覆盖' if p['name'] in builtin else '自定义') if p['name'] in custom_names else '  - %-6s [内置]' % p['name']) for p in merged]; \
+print('已停用：%s' % ('、'.join(settings.disabled) if settings.disabled else '无'))"
 
 unlock:  ## 删除 agent 沙箱可能残留的 .git/index.lock（git 的 unlink 被沙箱拒绝时会留下）
 	@if [ -e .git/index.lock ]; then \

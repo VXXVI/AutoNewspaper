@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from newspaper_auto import cli, config, exporter, report
+from newspaper_auto import cli, config, exporter, papers, report
 
 ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "广东海洋大学"]
 ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "广东海洋大学"]
@@ -15,6 +15,58 @@ HIT_FILES = {"content_101.html", "content_102.html", "content_104.html"}
 
 def _hit_files(records) -> set[str]:
     return {record["url"].rsplit("/", 1)[-1] for record in records}
+
+
+def test_default_keywords_are_artificial_intelligence():
+    assert config.DEFAULT_KEYWORDS == ("人工智能",)
+
+
+def test_cli_help_uses_configured_default_keywords(monkeypatch):
+    monkeypatch.setattr(config, "DEFAULT_KEYWORDS", ("甲关键词", "乙关键词"))
+
+    help_text = cli.build_parser().format_help()
+
+    assert "默认：甲关键词、乙关键词" in help_text
+
+
+def test_all_papers_disabled_exits_before_network(tmp_path, monkeypatch):
+    papers.save_settings(tmp_path, [], [paper["name"] for paper in config.PAPERS])
+    monkeypatch.setattr(cli.paths, "find_project_root", lambda: tmp_path)
+    calls: list[str] = []
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            ["--days", "1", "--no-state", "--data-dir", str(tmp_path / "data")],
+            fetcher=lambda url: calls.append(url) or (200, "x" * 400),
+        )
+
+    assert exc.value.code == 2
+    assert calls == []
+
+
+def test_default_scan_excludes_disabled_papers(tmp_path, monkeypatch, capsys, site_fetcher, today):
+    enabled_name = "湛江日报"
+    disabled = [paper["name"] for paper in config.PAPERS if paper["name"] != enabled_name]
+    papers.save_settings(tmp_path, [], disabled)
+    monkeypatch.setattr(cli.paths, "find_project_root", lambda: tmp_path)
+    upstream = site_fetcher(today)
+    calls: list[str] = []
+
+    def fetch(url: str):
+        calls.append(url)
+        return upstream(url)
+
+    code = cli.main(
+        ["--days", "1", "--no-state", "--data-dir", str(tmp_path / "data")],
+        fetcher=fetch,
+    )
+
+    out, _err = capsys.readouterr()
+    assert code == 0
+    assert "关键词：人工智能" in out
+    assert "报社：湛江日报" in out
+    assert calls
+    assert all("gdzjdaily.com.cn" in url for url in calls)
 
 
 def test_json_stdout_is_pure_and_stateless(tmp_path, capsys, site_fetcher, today):
@@ -315,7 +367,18 @@ def test_partial_failure_article_does_not_block_hits(tmp_path, capsys, site_fetc
         return site_fetcher(today)(url)
 
     code = cli.main(
-        ["--only", "湛江日报", "--days", "1", "--no-state", "--json", "--data-dir", str(tmp_path)],
+        [
+            "--only",
+            "湛江日报",
+            "--days",
+            "1",
+            "--kw",
+            "广东海洋大学",
+            "--no-state",
+            "--json",
+            "--data-dir",
+            str(tmp_path),
+        ],
         fetcher=fetcher,
     )
     out, _err = capsys.readouterr()

@@ -5,9 +5,9 @@
 #       默认以「无状态」方式运行（daily_scan.py --no-state），不读写 state\ 与 hits\。
 #
 # 关键词来源（任选其一）：
-#   位置参数：  .\scripts\run_scan.ps1 广东海洋大学 广海 海大
-#   显式选项：  .\scripts\run_scan.ps1 --kw 广东海洋大学 --kw 广海
-#   环境变量：  $env:NEWSPAPER_KW = "广东海洋大学,广海"; .\scripts\run_scan.ps1
+#   位置参数：  .\scripts\run_scan.ps1 人工智能 生成式人工智能
+#   显式选项：  .\scripts\run_scan.ps1 --kw 人工智能 --kw 生成式人工智能
+#   环境变量：  $env:NEWSPAPER_KW = "人工智能,生成式人工智能"; .\scripts\run_scan.ps1
 #
 # 其余选项原样透传给 daily_scan.py，例如：
 #   .\scripts\run_scan.ps1 --days 3 --workers 4 --only 湛江日报,南方日报

@@ -117,6 +117,15 @@ def test_render_html_escapes_untrusted_content():
     assert "&lt;b&gt;bold&lt;/b&gt;" in html
 
 
+def test_render_html_labels_archive_as_history_and_shows_matched_keywords():
+    html = report.render_html("人工智能", HITS)
+
+    assert "数字报历史命中汇总" in html
+    assert "本次更新关键词：人工智能" in html
+    assert "命中关键词" in html
+    assert "广东海洋大学" in html
+
+
 def test_write_md_and_html_roundtrip(tmp_path):
     md_path = tmp_path / "hits" / "r.md"
     html_path = tmp_path / "hits" / "index.html"

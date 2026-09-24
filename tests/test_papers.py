@@ -122,9 +122,50 @@ def test_merge_papers_does_not_mutate_inputs():
     assert builtin[0]["tpl"] == "https://a/{a}"  # 原列表未被改动
 
 
+def test_merge_papers_excludes_disabled_builtin_override_and_custom():
+    builtin = [
+        {"name": "甲", "style": "ymd", "tpl": "https://a/{a}"},
+        {"name": "乙", "style": "ymd", "tpl": "https://b/{a}"},
+    ]
+    custom = [
+        {"name": "甲", "style": "dash", "tpl": "https://new-a/{a}"},
+        {"name": "丙", "style": "dash", "tpl": "https://c/{a}"},
+    ]
+
+    merged = papers.merge_papers(builtin, custom, disabled=["甲", "丙"])
+
+    assert merged == [{"name": "乙", "style": "ymd", "tpl": "https://b/{a}"}]
+
+
 # ---------------------------------------------------------------- load_custom
 def test_load_custom_missing_file_returns_empty(tmp_path):
     assert papers.load_custom(tmp_path) == []
+
+
+def test_load_settings_legacy_file_without_disabled_is_compatible(tmp_path):
+    """旧版 version=1 文件没有 disabled，宽松/严格读取都视为未停用。"""
+    entry = _valid(name="旧配置报")
+    (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
+        json.dumps({"version": 1, "papers": [entry]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    expected = papers.PaperSettings(custom=(entry,), disabled=())
+    assert papers.load_settings(tmp_path) == expected
+    assert papers.load_settings_for_update(tmp_path) == expected
+
+
+def test_version_one_file_ignores_unknown_paper_fields_but_api_validation_is_strict(tmp_path):
+    entry = _valid(name="旧扩展报")
+    extended = {**entry, "note": "历史版本自定义备注"}
+    (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
+        json.dumps({"version": 1, "papers": [extended]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert papers.load_settings(tmp_path).custom == (entry,)
+    assert papers.load_settings_for_update(tmp_path).custom == (entry,)
+    assert papers.validate_paper(extended)[1] == "不支持的字段：note"
 
 
 def test_load_custom_corrupt_json_returns_empty(tmp_path, capsys):
@@ -185,6 +226,25 @@ def test_load_custom_for_update_rejects_ambiguous_files(tmp_path, payload, messa
         papers.load_custom_for_update(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "disabled",
+    [
+        "甲报",
+        [1],
+        [""],
+        ["甲报", " 甲报 "],
+    ],
+)
+def test_load_settings_for_update_strictly_validates_disabled(tmp_path, disabled):
+    (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
+        json.dumps({"version": 1, "papers": [], "disabled": disabled}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(papers.CustomPapersError, match="disabled"):
+        papers.load_settings_for_update(tmp_path)
+
+
 def test_custom_names(tmp_path):
     papers.save_custom(tmp_path, [_valid(name="甲"), _valid(name="乙")])
     assert papers.custom_names(tmp_path) == {"甲", "乙"}
@@ -200,6 +260,30 @@ def test_save_custom_roundtrip(tmp_path):
     assert raw["version"] == 1
     assert raw["papers"] == entries
     assert papers.load_custom(tmp_path) == entries
+
+
+def test_save_settings_roundtrip_and_save_custom_preserves_disabled(tmp_path):
+    entries = [_valid(name="甲报", timeout=20)]
+    papers.save_settings(tmp_path, entries, [" 光明日报 ", "甲报", "光明日报"])
+
+    settings = papers.load_settings_for_update(tmp_path)
+    assert settings == papers.PaperSettings(
+        custom=tuple(entries),
+        disabled=("光明日报", "甲报"),
+    )
+    raw = json.loads((tmp_path / config.CUSTOM_PAPERS_FILENAME).read_text(encoding="utf-8"))
+    assert raw == {
+        "version": 1,
+        "papers": entries,
+        "disabled": ["光明日报", "甲报"],
+    }
+
+    replacement = [_valid(name="乙报")]
+    papers.save_custom(tmp_path, replacement)
+    assert papers.load_settings_for_update(tmp_path) == papers.PaperSettings(
+        custom=tuple(replacement),
+        disabled=("光明日报", "甲报"),
+    )
 
 
 def test_save_custom_creates_parent_dirs(tmp_path):
