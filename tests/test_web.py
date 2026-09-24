@@ -297,9 +297,15 @@ def test_serves_index_and_static(base_url):
 
     status, api_body, ctype = _get(base_url + "/static/api.js")
     assert status == 200 and "javascript" in ctype
+
+    status, fmt_body, ctype = _get(base_url + "/static/format.js")
+    assert status == 200 and "javascript" in ctype
+    assert "export function" in fmt_body.decode("utf-8")
+
     html = body.decode("utf-8") if body else ""
     assert api_body and "/static/api.js" in html
     assert html.index("/static/api.js") < html.index("/static/app.js")
+    assert 'type="module"' in html  # app.js 是 ES Module 入口
 
 
 def test_security_headers_on_success_and_error(base_url):

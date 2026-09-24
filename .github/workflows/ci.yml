@@ -43,7 +43,9 @@ jobs:
       - name: 前端脚本语法检查
         if: matrix.python-version == '3.12'
         run: |
+          # static/ 下的 .js 是 ES Module（static/package.json 声明 type=module）
           node --check src/newspaper_auto/static/api.js
+          node --check src/newspaper_auto/static/format.js
           node --check src/newspaper_auto/static/app.js
 
       - name: 单元测试

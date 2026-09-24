@@ -55,6 +55,7 @@ STATIC_TYPES = {
     "index.html": "text/html; charset=utf-8",
     "api.js": "application/javascript; charset=utf-8",
     "app.js": "application/javascript; charset=utf-8",
+    "format.js": "application/javascript; charset=utf-8",
     "style.css": "text/css; charset=utf-8",
 }
 # 小于该体积的静态资源不压缩（gzip 头开销不划算）

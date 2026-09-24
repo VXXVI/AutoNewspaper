@@ -1,0 +1,5 @@
+{
+  "//": "仅用于让 Node 把同目录 .js 视作 ES Module（node --check / 编辑器）；不参与打包与服务。",
+  "private": true,
+  "type": "module"
+}

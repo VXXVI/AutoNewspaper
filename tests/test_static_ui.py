@@ -44,3 +44,12 @@ def test_trend_layout_and_rows_use_the_same_linked_result_set():
     assert "renderLayouts(list);" in script
     assert "renderRows(list);" in script
     assert "ignoreLinked" not in script
+
+
+def test_frontend_entry_is_es_module_importing_format():
+    script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    module = (STATIC_DIR / "format.js").read_text(encoding="utf-8")
+
+    assert 'from "./format.js"' in script
+    for name in ("csvCell", "shiftDate", "todayIso", "spanDays", "splitKeywords", "parseInt10", "geomText"):
+        assert f"export function {name}" in module
