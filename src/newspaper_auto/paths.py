@@ -51,6 +51,11 @@ def web_config_file(data_dir: Path) -> Path:
     return data_dir / config.STATE_DIRNAME / config.WEB_CONFIG_FILENAME
 
 
+def task_history_file(data_dir: Path) -> Path:
+    """看板扫描任务历史：``state/tasks.json``（最近 N 条摘要）。"""
+    return data_dir / config.STATE_DIRNAME / config.TASK_HISTORY_FILENAME
+
+
 def hits_dir(data_dir: Path) -> Path:
     return data_dir / config.HITS_DIRNAME
 

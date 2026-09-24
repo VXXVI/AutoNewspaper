@@ -258,11 +258,14 @@ def main(
     default_data_dir: str | os.PathLike[str] | None = None,
     fetcher: Callable[[str], tuple[int, str]] | None = None,
     logger: Callable[[str], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> int:
     """程序入口。
 
     ``default_data_dir`` 供兼容入口传入仓库根目录，``fetcher`` 供测试注入；``logger``
-    供看板线程接收逐行进度，避免在多线程服务里全局替换 ``sys.stdout`` / ``sys.stderr``。
+    供看板线程接收逐行进度，避免在多线程服务里全局替换 ``sys.stdout`` / ``sys.stderr``；
+    ``cancel`` 是协作式取消回调，在每个「报社 × 日期」单元开始前检查，返回真则停止扫描
+    并以退出码 130 结束（看板据此把任务标为 ``cancelled``），且**不写入** state/ 与 hits/。
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -318,8 +321,14 @@ def main(
     all_hits: list[dict[str, Any]] = []
     all_articles: list[dict[str, Any]] = []
     started = time.time()
+    cancelled = False
     for paper in selected:
+        if cancelled:
+            break
         for day in dates:
+            if cancel is not None and cancel():
+                cancelled = True
+                break
             hits, articles, stats = scanner.scan_paper(
                 paper, day, kw_res, args.workers, dry=args.dry, fetcher=fetcher
             )
@@ -331,6 +340,12 @@ def main(
                 f"  {flag} {paper['name']:<5} {day:%m-%d}  版面{stats['sections']:>3}  "
                 f"文章{stats['scanned']:>4}  命中{len(hits):>2}  {stats['note']}"
             )
+
+    if cancelled:
+        log("-" * 72)
+        log("扫描已取消（未写入 state/ 与 hits/）")
+        _emit_structured(args, [])
+        return 130
 
     if args.dry:
         log("-" * 72)

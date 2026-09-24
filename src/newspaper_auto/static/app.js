@@ -14,6 +14,7 @@
   var api = window.NewspaperApi;
 
   var scanTimer = null;
+  var scanStream = null;
   var scanPollInFlight = false;
   var scanLogCursor = 0;
   var scanLogLines = [];
@@ -479,6 +480,11 @@
   function setScanRunning(running) {
     scanRunning = running;
     $("scan-card").setAttribute("aria-busy", running ? "true" : "false");
+    var cancelBtn = $("scan-cancel");
+    if (cancelBtn) {
+      cancelBtn.hidden = !running;
+      cancelBtn.disabled = false;
+    }
     updateScanButton();
   }
 
@@ -648,6 +654,8 @@
     // 保存配置：失败只提示，不阻断扫描
     api.post("/api/config", body).catch(function () { /* 保存失败不影响本次扫描 */ });
 
+    stopStreaming();
+    stopPolling();
     setScanRunning(true);
     setScanStatus("正在提交扫描…");
     scanLogCursor = 0;
@@ -659,7 +667,7 @@
       .then(function (task) {
         consumeScanTask(task, true);
         setScanStatus("扫描已启动");
-        beginPolling();
+        beginStreaming();
       })
       .catch(function (err) {
         if (err.status === 409) {
@@ -670,6 +678,38 @@
         setScanRunning(false);
         setScanStatus("启动失败：" + err.message);
       });
+  }
+
+  // 优先用 SSE 接收进度（低延迟、少请求）；不可用或断开时回退到轮询。
+  function beginStreaming() {
+    if (scanStream) return;
+    if (typeof window.EventSource !== "function") { beginPolling(); return; }
+    var source;
+    try {
+      source = new window.EventSource("/api/scan/events?after=" + encodeURIComponent(scanLogCursor));
+    } catch (err) {
+      beginPolling();
+      return;
+    }
+    scanStream = source;
+    source.onmessage = function (event) {
+      var task;
+      try { task = JSON.parse(event.data); } catch (err) { return; }
+      consumeScanTask(task, false);
+      if (applyTaskOutcome(task)) return;
+      var progress = task.progress || {};
+      setScanStatus(progress.total
+        ? "扫描中：" + progress.completed + " / " + progress.total
+        : "扫描中…");
+    };
+    source.onerror = function () {
+      stopStreaming();
+      if (scanRunning) beginPolling();  // 流异常断开：回退轮询兜底收尾
+    };
+  }
+
+  function stopStreaming() {
+    if (scanStream) { scanStream.close(); scanStream = null; }
   }
 
   function beginPolling() {
@@ -714,6 +754,8 @@
       text.textContent = progress.completed + " / " + progress.total + "（" + percent + "%）";
     } else if (task.status === "running") {
       text.textContent = "正在扫描…";
+    } else if (task.status === "cancelled") {
+      text.textContent = "已取消";
     } else {
       text.textContent = task.status === "done" ? "扫描完成" : "扫描未完整完成";
     }
@@ -734,33 +776,46 @@
     updateScanProgress(task);
   }
 
+  // 回到终态：停掉所有推送、更新状态行、刷新结果。返回是否已是终态。
+  function applyTaskOutcome(task) {
+    if (task.status === "done") {
+      stopPolling(); stopStreaming(); setScanRunning(false);
+      var summary = task.summary;
+      setScanStatus(summary && typeof summary.hits === "number"
+        ? "扫描完成：命中 " + summary.hits + " 篇，新增 " + Number(summary.new_hits || 0) + " 篇"
+        : "扫描完成");
+      load({ preserve: true, focusKeywords: task.params && task.params.keywords });
+      return true;
+    }
+    if (task.status === "error") {
+      stopPolling(); stopStreaming(); setScanRunning(false);
+      setScanStatus("扫描未完整完成：" + (task.error || "请查看运行日志"));
+      $("scan-log-details").open = true;
+      load({ preserve: true, focusKeywords: task.params && task.params.keywords });
+      return true;
+    }
+    if (task.status === "cancelled") {
+      stopPolling(); stopStreaming(); setScanRunning(false);
+      setScanStatus("扫描已取消");
+      $("scan-log-details").open = true;
+      load({ preserve: true, focusKeywords: task.params && task.params.keywords });
+      return true;
+    }
+    return false;
+  }
+
   function pollScan() {
     if (scanPollInFlight) return;
     scanPollInFlight = true;
     api.get("/api/scan?after=" + encodeURIComponent(scanLogCursor))
       .then(function (task) {
         consumeScanTask(task, false);
-        if (task.status === "done") {
-          stopPolling();
-          setScanRunning(false);
-          var summary = task.summary;
-          setScanStatus(summary && typeof summary.hits === "number"
-            ? "扫描完成：命中 " + summary.hits + " 篇，新增 " + Number(summary.new_hits || 0) + " 篇"
-            : "扫描完成");
-          load({ preserve: true, focusKeywords: task.params && task.params.keywords });
-        } else if (task.status === "error") {
-          stopPolling();
-          setScanRunning(false);
-          setScanStatus("扫描未完整完成：" + (task.error || "请查看运行日志"));
-          $("scan-log-details").open = true;
-          load({ preserve: true, focusKeywords: task.params && task.params.keywords });
-        } else {
-          var progress = task.progress || {};
-          setScanStatus(progress.total
-            ? "扫描中：" + progress.completed + " / " + progress.total
-            : "扫描中…");
-          schedulePoll(SCAN_POLL_MS);
-        }
+        if (applyTaskOutcome(task)) return;
+        var progress = task.progress || {};
+        setScanStatus(progress.total
+          ? "扫描中：" + progress.completed + " / " + progress.total
+          : "扫描中…");
+        schedulePoll(SCAN_POLL_MS);
       })
       .catch(function (err) {
         stopPolling();
@@ -772,6 +827,16 @@
       });
   }
 
+  function cancelScan() {
+    var btn = $("scan-cancel");
+    if (btn) btn.disabled = true;
+    setScanStatus("正在取消…");
+    api.post("/api/scan/cancel", {}).catch(function (err) {
+      if (btn) btn.disabled = false;
+      setScanStatus("取消失败：" + err.message);
+    });
+  }
+
   function resumeScan() {
     api.get("/api/scan")
       .then(function (task) {
@@ -781,9 +846,11 @@
         if (task.status === "running") {
           setScanRunning(true);
           setScanStatus("自动扫描进行中…");
-          beginPolling();
+          beginStreaming();
         } else if (task.status === "done") {
           setScanStatus("最近一次扫描已完成");
+        } else if (task.status === "cancelled") {
+          setScanStatus("最近一次扫描已取消");
         } else if (task.status === "error") {
           setScanStatus("最近一次扫描未完整完成：" + (task.error || "请查看日志"));
         }
@@ -1421,6 +1488,7 @@
       if ($("scan-mode").value === "range") ensureRangeDefaults();
       updateScanModeUI();
     });
+    if ($("scan-cancel")) $("scan-cancel").addEventListener("click", cancelScan);
     $("paper-add").addEventListener("click", addPaper);
     $("paper-create").addEventListener("click", function () {
       clearPaperForm();

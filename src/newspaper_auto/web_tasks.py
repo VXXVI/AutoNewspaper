@@ -27,8 +27,9 @@ def _now_stamp() -> str:
 class ScanTask:
     """一次扫描任务的状态。
 
-    ``status`` 只使用 ``idle`` / ``running`` / ``done`` / ``error``。命令返回非零退出码
-    时标记为 ``error``，避免前端把“部分报社抓取失败”误报成成功。
+    ``status`` 使用 ``idle`` / ``running`` / ``done`` / ``error`` / ``cancelled``。
+    命令返回非零退出码时标记为 ``error``，避免前端把“部分报社抓取失败”误报成成功；
+    用户取消（协作式，在下一个「报社 × 日期」单元边界退出）则标记为 ``cancelled``。
     """
 
     max_log_lines: int = 300
@@ -43,11 +44,13 @@ class ScanTask:
     completed_units: int = 0
     total_units: int = 0
     current_unit: str = ""
+    cancel_requested: bool = False
     _log: list[str] = field(default_factory=list, repr=False)
     _log_start: int = field(default=0, repr=False)
     _log_cursor: int = field(default=0, repr=False)
     _started_monotonic: float | None = field(default=None, repr=False)
     _duration_seconds: float | None = field(default=None, repr=False)
+    _cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     @classmethod
@@ -81,6 +84,21 @@ class ScanTask:
                     self.completed_units = min(self.completed_units, self.total_units)
                 self.current_unit = text.strip()
 
+    def request_cancel(self) -> bool:
+        """请求取消：置位标志，扫描线程在下一个工作单元边界协作式退出。
+
+        只有 ``running`` 状态才会置位；返回是否真的发起了取消。
+        """
+        with self._lock:
+            if self.status != "running":
+                return False
+            self.cancel_requested = True
+            self._cancel_event.set()
+            return True
+
+    def is_cancelled(self) -> bool:
+        return self._cancel_event.is_set()
+
     def finish(self, result: dict[str, Any]) -> None:
         with self._lock:
             if self.status != "running":
@@ -91,18 +109,31 @@ class ScanTask:
                 self.exit_code = 1
             summary = result.get("summary")
             self.summary = deepcopy(summary) if isinstance(summary, dict) else None
-            self.status = "done" if self.exit_code == 0 else "error"
-            if self.exit_code == 0 and self.total_units:
-                # 成功返回代表所有工作单元已经结束。自定义 runner 未输出标准进度行时，
-                # 也不应让已经完成的任务停在 0%。
-                self.completed_units = self.total_units
-            if self.exit_code != 0 and not self.error:
-                self.error = f"扫描未完整完成（退出码 {self.exit_code}），请查看日志。"
+            if self._cancel_event.is_set():
+                self.status = "cancelled"
+                if self.exit_code == 0:
+                    self.exit_code = 130
+                if not self.error:
+                    self.error = "扫描已按请求取消"
+            else:
+                self.status = "done" if self.exit_code == 0 else "error"
+                if self.exit_code == 0 and self.total_units:
+                    # 成功返回代表所有工作单元已经结束。自定义 runner 未输出标准进度行时，
+                    # 也不应让已经完成的任务停在 0%。
+                    self.completed_units = self.total_units
+                if self.exit_code != 0 and not self.error:
+                    self.error = f"扫描未完整完成（退出码 {self.exit_code}），请查看日志。"
             self._finish_clock()
 
     def fail(self, error: BaseException | str, *, exit_code: int = 1) -> None:
         with self._lock:
-            if self.status in ("done", "error"):
+            if self.status in ("done", "error", "cancelled"):
+                return
+            if self._cancel_event.is_set():
+                self.status = "cancelled"
+                self.exit_code = 130
+                self.error = "扫描已取消"
+                self._finish_clock()
                 return
             message = str(error).strip()
             self.error = message or error.__class__.__name__
@@ -154,6 +185,7 @@ class ScanTask:
                 "summary": deepcopy(self.summary) if self.summary is not None else None,
                 "exit_code": self.exit_code,
                 "error": self.error,
+                "cancel_requested": self.cancel_requested,
             }
 
     def to_dict(self) -> dict[str, Any]:

@@ -29,13 +29,17 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gzip
+import inspect
 import json
 import re
 import sys
 import threading
+import time
 import webbrowser
 from collections.abc import Callable, Sequence
+from contextvars import ContextVar
 from copy import deepcopy
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -94,6 +98,15 @@ EXPORT_SORTS = ("date-desc", "date-asc", "paper", "title")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # 扫描范围模式：按天数 / 按日期范围（互斥，缺省按天数以兼容旧配置）
 SCAN_MODES = ("days", "range")
+# SSE 进度推送的轮询间隔（秒）：只有真正变化时才写事件
+SCAN_EVENT_INTERVAL = 0.4
+# 看板保留的最近任务摘要条数
+MAX_TASK_HISTORY = 20
+# 协作式取消：scan_runner 在本线程内调用 cli.main，通过 ContextVar 传出取消回调，
+# 避免改动可注入的 runner 签名（测试里的假 runner 无需感知）。
+_SCAN_CANCEL: ContextVar[Callable[[], bool] | None] = ContextVar("npa_scan_cancel", default=None)
+# 任务历史是 read-modify-write，多个扫描线程间需串行（同一进程内用锁即可）
+_HISTORY_LOCK = threading.Lock()
 
 
 class ScanRequestError(ValueError):
@@ -758,6 +771,53 @@ def build_scan_argv(data_dir: Path | str, params: dict[str, Any]) -> list[str]:
     return argv
 
 
+def load_task_history(data_dir: Path | str) -> list[dict[str, Any]]:
+    """读取 ``state/tasks.json`` 里的任务摘要；缺失/损坏返回空列表。"""
+    try:
+        with open(paths.task_history_file(Path(data_dir)), encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+
+
+def record_task_history(data_dir: Path | str, task: Any) -> None:
+    """把一次任务摘要追加进 ``state/tasks.json``（只保留最近 ``MAX_TASK_HISTORY`` 条）。"""
+    snapshot = task.snapshot()
+    params = snapshot.get("params") or {}
+    entry = {
+        "task_id": snapshot.get("task_id"),
+        "status": snapshot.get("status"),
+        "started_at": snapshot.get("started_at"),
+        "finished_at": snapshot.get("finished_at"),
+        "duration_seconds": snapshot.get("duration_seconds"),
+        "exit_code": snapshot.get("exit_code"),
+        "keywords": list(params.get("keywords") or []),
+        "only": str(params.get("only") or ""),
+        "summary": snapshot.get("summary"),
+        "error": snapshot.get("error"),
+    }
+    with _HISTORY_LOCK:
+        history = load_task_history(data_dir)
+        history.append(entry)
+        with contextlib.suppress(OSError):  # 历史写入失败不应影响任务状态
+            report.write_text(
+                paths.task_history_file(Path(data_dir)),
+                json.dumps(history[-MAX_TASK_HISTORY:], ensure_ascii=False, indent=1),
+            )
+
+
+def _main_accepts_cancel(main: Callable[..., Any]) -> bool:
+    """判断（可能是被测试替换的）``cli.main`` 是否接受 ``cancel`` 关键字。"""
+    try:
+        parameters = inspect.signature(main).parameters
+    except (TypeError, ValueError):
+        return False
+    return "cancel" in parameters or any(
+        param.kind is inspect.Parameter.VAR_KEYWORD for param in parameters.values()
+    )
+
+
 def default_scan_runner(
     data_dir: Path | str, params: dict[str, Any], log: Callable[[str], None]
 ) -> dict[str, Any]:
@@ -769,6 +829,7 @@ def default_scan_runner(
     argv = build_scan_argv(data_dir, params)
     lines: list[str] = []
     exit_code = 0
+    cancel = _SCAN_CANCEL.get()
 
     def capture(message: str = "") -> None:
         line = str(message)
@@ -776,7 +837,10 @@ def default_scan_runner(
         log(line)
 
     try:
-        exit_code = cli.main(argv, logger=capture)
+        if cancel is not None and _main_accepts_cancel(cli.main):
+            exit_code = cli.main(argv, logger=capture, cancel=cancel)
+        else:
+            exit_code = cli.main(argv, logger=capture)
     except SystemExit as exc:
         exit_code = _system_exit_code(exc.code)
     output = "\n".join(lines)
@@ -910,6 +974,7 @@ class DashboardServer(ThreadingHTTPServer):
             task.append_log(line)
             sys.stderr.write(f"[扫描] {line}\n")
 
+        token = _SCAN_CANCEL.set(task.is_cancelled)
         try:
             result = self.scan_runner(self.data_dir, deepcopy(params), log)
             task.finish(result)
@@ -922,7 +987,12 @@ class DashboardServer(ThreadingHTTPServer):
         except Exception as exc:  # 兜底：runner 抛错也必须释放任务锁
             task.fail(exc)
         finally:
+            _SCAN_CANCEL.reset(token)
+            # 先释放锁再落历史：任务一旦进入终态，下一次扫描就应能立即开始，
+            # 不能让一次磁盘写入把「能不能再扫」的窗口拉长。
             self.scan_lock.release()
+            with contextlib.suppress(Exception):
+                record_task_history(self.data_dir, task)
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -941,6 +1011,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_json(build_dashboard(self.server.data_dir))
         elif route == "/api/health":
             self._serve_json({"ok": True, "version": __version__})
+        elif route == "/api/scan/events":
+            self._serve_scan_events()
+        elif route == "/api/scan/history":
+            self._serve_json({"tasks": load_task_history(self.server.data_dir)})
         elif route == "/api/scan":
             query = parse_qs(parsed.query)
             raw_after = query.get("after", [None])[0]
@@ -974,6 +1048,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         route = urlsplit(self.path).path
         if route not in (
             "/api/scan",
+            "/api/scan/cancel",
             "/api/config",
             "/api/papers",
             "/api/papers/delete",
@@ -999,6 +1074,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_config_save(payload)
         elif route == "/api/scan":
             self._handle_scan_start(payload)
+        elif route == "/api/scan/cancel":
+            self._handle_scan_cancel(payload)
         elif route == "/api/papers":
             self._handle_paper_add(payload)
         elif route == "/api/papers/delete":
@@ -1084,6 +1161,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._error_json(409, "已有扫描在运行，请稍候")
             return
         self._send_json(202, task.snapshot(after=0))
+
+    def _handle_scan_cancel(self, payload: Any) -> None:
+        """请求取消当前扫描（协作式，在下一个工作单元边界生效）。"""
+        del payload
+        task = self.server.scan_task
+        if not task.request_cancel():
+            snapshot = task.snapshot()
+            if snapshot["status"] == "idle":
+                self._error_json(409, "没有正在运行的扫描")
+            else:
+                self._error_json(409, f"扫描已结束（{snapshot['status']}），无需取消")
+            return
+        self._send_json(202, task.snapshot())
 
     def _handle_config_save(self, payload: Any) -> None:
         cfg, error = validate_web_config(payload)
@@ -1389,6 +1479,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("ETag", etag)
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
+
+    def _serve_scan_events(self) -> None:
+        """SSE：把扫描任务的快照（含日志增量）持续推给前端，替代高频轮询。
+
+        任务到达终态（或客户端断开）即关闭连接；首个快照若已是终态则立即关闭。
+        """
+        parsed = urlsplit(self.path)
+        query = parse_qs(parsed.query)
+        try:
+            after = int(query.get("after", ["0"])[0])
+        except (TypeError, ValueError):
+            after = 0
+        after = max(0, after)
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        self.close_connection = True
+        if self.command == "HEAD":
+            return
+        try:
+            while True:
+                snapshot = self.server.scan_task.snapshot(after=after)
+                after = snapshot["log_cursor"]
+                payload = json.dumps(snapshot, ensure_ascii=False)
+                self.wfile.write(f"data: {payload}\n\n".encode())
+                self.wfile.flush()
+                if snapshot["status"] in ("idle", "done", "error", "cancelled"):
+                    break
+                time.sleep(SCAN_EVENT_INTERVAL)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+            # 客户端断开：正常结束，不写访问日志错误
+            pass
 
     def log_message(self, fmt: str, *args: Any) -> None:  # 精简访问日志
         sys.stderr.write(f"[看板] {self.address_string()} {fmt % args}\n")

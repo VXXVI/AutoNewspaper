@@ -446,7 +446,7 @@ def _wait_done(url, attempts=100, interval=0.05):
         status, body = _request("GET", url + "/api/scan")
         assert status == 200
         last = json.loads(body)
-        if last["status"] in ("done", "error"):
+        if last["status"] in ("done", "error", "cancelled"):
             return last
         time.sleep(interval)
     return last
@@ -1383,3 +1383,95 @@ def test_accepts_gzip_parsing():
     assert web._accepts_gzip("deflate, gzip;q=0.8") is True
     assert web._accepts_gzip("gzip;q=0") is False
     assert web._accepts_gzip("identity") is False
+
+
+# ---------------------------------------------------------------- 取消 / 历史 / SSE
+def test_scan_cancel_marks_task_cancelled(tmp_path):
+    release = threading.Event()
+
+    def runner(data_dir, params, log):
+        log("扫描中")
+        release.wait(timeout=5)
+        return {"exit_code": 130, "summary": None}
+
+    with _serve(tmp_path, runner) as url:
+        assert _request("POST", url + "/api/scan", {"keywords": ["x"]})[0] == 202
+        status, body = _request("POST", url + "/api/scan/cancel", {})
+        assert status == 202
+        assert json.loads(body)["cancel_requested"] is True
+        release.set()
+        task = _wait_done(url)
+        assert task["status"] == "cancelled"
+        assert task["exit_code"] == 130
+
+
+def test_scan_cancel_when_idle_returns_409(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/scan/cancel", {})
+        assert status == 409
+        assert json.loads(body)["error"]
+
+
+def test_scan_cancel_after_done_returns_409(tmp_path):
+    with _serve(tmp_path) as url:
+        assert _request("POST", url + "/api/scan", {"keywords": ["x"]})[0] == 202
+        assert _wait_done(url)["status"] == "done"
+        status, _body = _request("POST", url + "/api/scan/cancel", {})
+        assert status == 409
+
+
+def test_scan_history_persisted_and_listed(tmp_path):
+    with _serve(tmp_path) as url:
+        assert _request("POST", url + "/api/scan", {"keywords": ["x"]})[0] == 202
+        _wait_done(url)
+        # 历史落盘在任务锁释放之后（不阻塞下一次扫描），属最终一致：轮询等待即可
+        tasks: list[dict] = []
+        for _ in range(40):
+            status, body = _request("GET", url + "/api/scan/history")
+            assert status == 200
+            tasks = json.loads(body)["tasks"]
+            if tasks:
+                break
+            time.sleep(0.05)
+        assert len(tasks) == 1
+        assert tasks[0]["status"] == "done"
+        assert tasks[0]["keywords"] == ["x"]
+        assert (tmp_path / "state" / "tasks.json").exists()
+
+
+def test_scan_events_streams_idle_and_closes(tmp_path):
+    with _serve(tmp_path) as url, _open(url + "/api/scan/events") as resp:
+        assert "text/event-stream" in (resp.headers.get("Content-Type") or "")
+        raw = resp.read().decode()
+    assert raw.startswith("data: ")
+    event = json.loads(raw[len("data: ") :].strip())
+    assert event["status"] == "idle"
+
+
+def test_scan_events_streams_running_until_terminal(tmp_path):
+    release = threading.Event()
+
+    def runner(data_dir, params, log):
+        log("  ✓ 湛江日报 09-24")
+        release.wait(timeout=5)
+        return {"exit_code": 0, "summary": {"hits": 1}}
+
+    with _serve(tmp_path, runner) as url:
+        assert _request("POST", url + "/api/scan", {"keywords": ["x"]})[0] == 202
+        statuses: list[str] = []
+        logs: list[str] = []
+        with _open(url + "/api/scan/events?after=0") as resp:
+            for _ in range(50):
+                line = resp.readline().decode()
+                if not line.startswith("data: "):
+                    continue
+                event = json.loads(line[len("data: ") :].strip())
+                statuses.append(event["status"])
+                logs.extend(event.get("log") or [])
+                if event["status"] == "running":
+                    release.set()
+                if event["status"] in ("done", "error", "cancelled"):
+                    break
+        assert statuses[0] == "running"
+        assert statuses[-1] == "done"
+        assert any("湛江日报" in entry for entry in logs)

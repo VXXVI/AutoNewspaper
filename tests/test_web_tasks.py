@@ -94,3 +94,30 @@ def test_success_forces_complete_progress_and_terminal_state_ignores_late_update
     assert stable["status"] == "done"
     assert stable["log"] == ["准备中"]
     assert stable["error"] is None
+
+
+def test_request_cancel_only_affects_running_task():
+    task = ScanTask.running({"keywords": ["x"]}, total_units=4, max_log_lines=10)
+    assert task.request_cancel() is True
+    assert task.is_cancelled() is True
+    assert task.snapshot()["cancel_requested"] is True
+    task.finish({"exit_code": 130, "summary": None})
+    assert task.snapshot()["status"] == "cancelled"
+    assert task.request_cancel() is False  # 终态不可再取消
+
+
+def test_cancel_maps_finish_to_cancelled():
+    task = ScanTask.running({"keywords": ["x"]}, total_units=4, max_log_lines=10)
+    task.request_cancel()
+    task.finish({"exit_code": 0, "summary": None})
+    snapshot = task.snapshot()
+    assert snapshot["status"] == "cancelled"
+    assert snapshot["exit_code"] == 130
+    assert snapshot["error"]
+
+
+def test_fail_after_cancel_is_cancelled_not_error():
+    task = ScanTask.running({"keywords": ["x"]}, total_units=1, max_log_lines=10)
+    task.request_cancel()
+    task.fail("boom")
+    assert task.snapshot()["status"] == "cancelled"

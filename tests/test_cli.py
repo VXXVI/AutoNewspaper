@@ -582,3 +582,43 @@ def test_since_until_scans_requested_day(tmp_path, capsys, site_fetcher, today):
     assert code == 0
     assert f"日期范围：{day} ~ {day}（1 天）" in out
     assert "新增 3 篇" in out
+
+
+# ---------------------------------------------------------------- 任务 B：协作式取消
+def test_cancel_stops_before_first_unit_and_writes_nothing(tmp_path, capsys, site_fetcher, today):
+    """取消回调返回真时：不扫任何单元、退出码 130、不写 state/ 与 hits/。"""
+    code = cli.main(
+        [*ZJ_ARGS_NO_DAYS, "--data-dir", str(tmp_path)],
+        fetcher=site_fetcher(today),
+        cancel=lambda: True,
+    )
+    out, _err = capsys.readouterr()
+    assert code == 130
+    assert "已取消" in out
+    assert not (tmp_path / "state").exists()
+    assert not (tmp_path / "hits").exists()
+
+
+def test_cancel_after_first_unit_keeps_partial_without_persisting(tmp_path, capsys, site_fetcher, today):
+    calls = {"n": 0}
+
+    def cancel() -> bool:
+        calls["n"] += 1
+        return calls["n"] > 1  # 第一个单元正常跑，第二个单元前取消
+
+    code = cli.main(
+        [
+            "--only",
+            "湛江日报,南方日报",
+            "--days",
+            "1",
+            "--data-dir",
+            str(tmp_path),
+        ],
+        fetcher=site_fetcher(today),
+        cancel=cancel,
+    )
+    out, _err = capsys.readouterr()
+    assert code == 130
+    assert "湛江日报" in out
+    assert not (tmp_path / "hits").exists()
