@@ -10,10 +10,14 @@
 - **读取 + 写入**：读取 ``hits/archive.json`` 与 ``state/seen.json`` 展示看板；
   并新增「扫描设置」卡片，可通过 ``POST /api/scan`` 在看板进程内**直接触发一次真实抓取**，
   抓取结果（``hits/``、``state/``）会写回看板正在读的那个数据目录；
-  ``POST /api/config`` 把关键词/天数/并发持久化到 ``state/web_config.json``。
+  ``POST /api/config`` 把关键词/天数或日期范围/并发持久化到 ``state/web_config.json``。
+- **自定义报社**：``GET /api/papers`` 列出「内置 / 自定义 / 覆盖」；``POST /api/papers``
+  新增或同名覆盖；``POST /api/papers/delete`` 删除自定义条目；``POST /api/papers/test``
+  试抓探测。写回的是**项目根**的 ``papers.custom.json``（配置层，与 ``--data-dir`` 无关）。
 - **默认只监听 127.0.0.1**，不对外网暴露；并对所有请求做 Host / Origin 校验，
   只接受环回来源，避免浏览器里的任意网页跨站触发抓取。
-- 前端为原生 HTML/CSS/JS，无构建、无 npm、无 CDN。
+- 前端为原生 HTML/CSS/JS，无构建、无 npm、无 CDN，且**零 ``innerHTML``**（数据一律
+  ``textContent`` + ``createElement`` 渲染，报社名/链接均为用户输入，绝不拼 HTML）。
 """
 
 from __future__ import annotations
@@ -33,7 +37,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import __version__, cli, config, paths, report, state
+from . import __version__, cli, config, papers, parse, paths, report, scanner, state
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
@@ -55,6 +59,8 @@ MAX_KEYWORDS = 10
 MAX_KEYWORD_LEN = 50
 MAX_WORKERS = 16
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# 扫描范围模式：按天数 / 按日期范围（互斥，缺省按天数以兼容旧配置）
+SCAN_MODES = ("days", "range")
 
 
 # ---------------------------------------------------------------- 数据装配
@@ -254,27 +260,79 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
 
 
 def validate_web_config(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
-    """校验 ``POST /api/config`` 的请求体（关键词 / 天数 / 并发）。"""
+    """校验 ``POST /api/config`` 的请求体（关键词 / 范围模式 / 并发）。
+
+    ``mode`` 缺省视作 ``"days"``（保证旧配置文件仍可读）。``mode="days"`` 时
+    ``since``/``until`` 必须为空（给了直接 400，而不是静默丢弃）；``mode="range"`` 时
+    两者都必须合法、``since <= until``、跨度 ≤ ``config.MAX_RANGE_DAYS``。
+    """
     if not isinstance(payload, dict):
         return None, "请求体必须是 JSON 对象"
     keywords, error = _clean_keywords(payload.get("keywords"))
     if error:
         return None, error
-    days = payload.get("days", config.DEFAULT_DAYS)
-    if not _is_int(days) or not 1 <= days <= config.MAX_RANGE_DAYS:
-        return None, f"days 必须是 1~{config.MAX_RANGE_DAYS} 之间的整数"
     workers = payload.get("workers", config.DEFAULT_WORKERS)
     if not _is_int(workers) or not 1 <= workers <= MAX_WORKERS:
         return None, f"workers 必须是 1~{MAX_WORKERS} 之间的整数"
-    return {"keywords": keywords, "days": days, "workers": workers}, None
+
+    mode = payload.get("mode", "days")
+    if mode not in SCAN_MODES:
+        return None, "mode 必须是 days 或 range"
+
+    days = payload.get("days", config.DEFAULT_DAYS)
+    since = payload.get("since")
+    until = payload.get("until")
+
+    if mode == "days":
+        if since is not None or until is not None:
+            return None, "mode=days 时不能提供 since/until"
+        if not _is_int(days) or not 1 <= days <= config.MAX_RANGE_DAYS:
+            return None, f"days 必须是 1~{config.MAX_RANGE_DAYS} 之间的整数"
+        return {
+            "keywords": keywords,
+            "days": days,
+            "workers": workers,
+            "mode": "days",
+            "since": None,
+            "until": None,
+        }, None
+
+    # mode == "range"
+    since_dt = _parse_iso_date(since) if since is not None else None
+    until_dt = _parse_iso_date(until) if until is not None else None
+    if since_dt is None:
+        return None, "mode=range 时 since 必须是合法的 YYYY-MM-DD 日期"
+    if until_dt is None:
+        return None, "mode=range 时 until 必须是合法的 YYYY-MM-DD 日期"
+    if since_dt > until_dt:
+        return None, "since 不能晚于 until"
+    if (until_dt - since_dt).days + 1 > config.MAX_RANGE_DAYS:
+        return None, f"日期跨度不能超过 {config.MAX_RANGE_DAYS} 天"
+    if not _is_int(days) or not 1 <= days <= config.MAX_RANGE_DAYS:
+        days = config.DEFAULT_DAYS
+    return {
+        "keywords": keywords,
+        "days": days,
+        "workers": workers,
+        "mode": "range",
+        "since": since_dt.strftime("%Y-%m-%d"),
+        "until": until_dt.strftime("%Y-%m-%d"),
+    }, None
 
 
 def load_web_config(data_dir: Path | str) -> dict[str, Any]:
-    """读取看板配置；文件缺失或内容非法时回落到默认值。"""
+    """读取看板配置；文件缺失或内容非法时回落到默认值。
+
+    ``mode`` / ``since`` / ``until`` 缺省填 ``"days"`` / ``None`` / ``None``，
+    因此**旧版本写出的只有 keywords/days/workers 的配置文件仍可读**。
+    """
     defaults = {
         "keywords": list(config.DEFAULT_KEYWORDS),
         "days": config.DEFAULT_DAYS,
         "workers": config.DEFAULT_WORKERS,
+        "mode": "days",
+        "since": None,
+        "until": None,
     }
     try:
         with open(paths.web_config_file(Path(data_dir)), encoding="utf-8") as handle:
@@ -298,7 +356,34 @@ def load_web_config(data_dir: Path | str) -> dict[str, Any]:
     if not _is_int(workers) or not 1 <= workers <= MAX_WORKERS:
         workers = defaults["workers"]
 
-    return {"keywords": keywords, "days": days, "workers": workers}
+    mode = data.get("mode", "days")
+    since_text: str | None = None
+    until_text: str | None = None
+    if mode == "range":
+        since_dt = _parse_iso_date(data.get("since"))
+        until_dt = _parse_iso_date(data.get("until"))
+        if (
+            since_dt is not None
+            and until_dt is not None
+            and since_dt <= until_dt
+            and (until_dt - since_dt).days + 1 <= config.MAX_RANGE_DAYS
+        ):
+            since_text = since_dt.strftime("%Y-%m-%d")
+            until_text = until_dt.strftime("%Y-%m-%d")
+        else:
+            # 旧的/损坏的 range 配置 → 安全回落到按天数
+            mode = "days"
+    else:
+        mode = "days"
+
+    return {
+        "keywords": keywords,
+        "days": days,
+        "workers": workers,
+        "mode": mode,
+        "since": since_text,
+        "until": until_text,
+    }
 
 
 def save_web_config(data_dir: Path | str, cfg: dict[str, Any]) -> None:
@@ -307,6 +392,30 @@ def save_web_config(data_dir: Path | str, cfg: dict[str, Any]) -> None:
         paths.web_config_file(Path(data_dir)),
         json.dumps(cfg, ensure_ascii=False, indent=1),
     )
+
+
+# ---------------------------------------------------------------- 自定义报社
+def build_papers_view(root: Path | str) -> dict[str, Any]:
+    """组装 ``GET /api/papers`` 的返回：内置名单 + 自定义对象 + 合并后的生效名单。"""
+    root = Path(root)
+    custom = papers.load_custom(root)
+    effective = papers.merge_papers(config.PAPERS, custom)
+    return {
+        "builtin": [paper["name"] for paper in config.PAPERS],
+        "custom": custom,
+        "effective": [paper["name"] for paper in effective],
+    }
+
+
+def _resolve_paper_by_name(root: Path | str, name: Any) -> dict[str, Any] | None:
+    """按名称从「内置 + 自定义」合并结果里取出完整报社对象（供仅给 name 的试抓）。"""
+    if not isinstance(name, str) or not name.strip():
+        return None
+    wanted = name.strip()
+    for paper in papers.merge_papers(config.PAPERS, papers.load_custom(Path(root))):
+        if paper["name"] == wanted:
+            return dict(paper)
+    return None
 
 
 # ---------------------------------------------------------------- 扫描执行器
@@ -373,6 +482,29 @@ def default_scan_runner(
     return {"exit_code": exit_code, "summary": _extract_summary(output)}
 
 
+# 试抓只用少量并发，避免为一条探测把站点打爆
+PROBE_WORKERS = max(1, min(config.DEFAULT_WORKERS, 4))
+
+
+def default_paper_probe(paper: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
+    """默认试抓探测：把这条 paper 作为**唯一目标**跑一次 dry-run。
+
+    直接复用 ``scanner.scan_paper(dry=True)``（只探测入口与版面，不抓文章），
+    因此**不写任何文件、不改仓库配置、不需要临时数据目录**。返回
+    ``{"entry_code": int, "sections": int, "note": str}``；拿不到 HTTP 码时
+    ``entry_code`` 为 0，并在 ``note`` 里说明原因（网络层失败等）。
+    """
+    day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    kw_res = {kw: parse.make_kw_re(kw) for kw in config.DEFAULT_KEYWORDS}
+    log(f"试抓「{paper['name']}」（dry-run，仅探测入口与版面）…")
+    _hits, _articles, stats = scanner.scan_paper(paper, day, kw_res, PROBE_WORKERS, dry=True, fetcher=None)
+    entry_code = int(stats.get("entry_code", 0))
+    sections = int(stats.get("sections", 0))
+    note = str(stats.get("note") or "")
+    log(f"试抓结果：入口 {entry_code} · 版面 {sections}" + (f" · {note}" if note else ""))
+    return {"entry_code": entry_code, "sections": sections, "note": note}
+
+
 # ---------------------------------------------------------------- 扫描任务
 class ScanTask:
     """一次扫描任务的运行状态（同一时刻最多一个，由 server.scan_lock 守护）。"""
@@ -416,11 +548,17 @@ class DashboardServer(ThreadingHTTPServer):
         address: tuple[str, int],
         data_dir: Path | str,
         scan_runner: Callable[[Path, dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
+        paper_probe: Callable[[dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
+        papers_root: Path | str | None = None,
     ):
         super().__init__(address, DashboardHandler)
         self.data_dir = Path(data_dir)
-        # 执行器可注入：测试用假 runner，绝不碰网络
+        # 执行器 / 探测可注入：测试用假实现，绝不碰网络
         self.scan_runner = scan_runner or default_scan_runner
+        self.paper_probe = paper_probe or default_paper_probe
+        # 自定义报社跟随**项目根**（配置层），与 data_dir（数据层）无关；
+        # 显式传入 papers_root 仅用于测试隔离，避免污染真实项目根。
+        self.papers_root = Path(papers_root) if papers_root is not None else paths.find_project_root()
         self.scan_lock = threading.Lock()
         self.scan_task = ScanTask()
 
@@ -479,6 +617,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_json(self.server.scan_task.to_dict())
         elif route == "/api/config":
             self._serve_json(load_web_config(self.server.data_dir))
+        elif route == "/api/papers":
+            self._serve_json(build_papers_view(self.server.papers_root))
         elif route.startswith("/static/"):
             self._serve_static(route[len("/static/") :])
         else:
@@ -494,7 +634,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not self._check_origin():
             return
         route = urlsplit(self.path).path
-        if route not in ("/api/scan", "/api/config"):
+        if route not in (
+            "/api/scan",
+            "/api/config",
+            "/api/papers",
+            "/api/papers/delete",
+            "/api/papers/test",
+        ):
             self._send(404, b"Not Found", "text/plain; charset=utf-8")
             return
         if not self._check_content_type():
@@ -509,8 +655,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/config":
             self._handle_config_save(payload)
-        else:
+        elif route == "/api/scan":
             self._handle_scan_start(payload)
+        elif route == "/api/papers":
+            self._handle_paper_add(payload)
+        elif route == "/api/papers/delete":
+            self._handle_paper_delete(payload)
+        else:
+            self._handle_paper_test(payload)
 
     # -- 安全校验 ----------------------------------------------------
     def _check_host(self) -> bool:
@@ -578,6 +730,81 @@ class DashboardHandler(BaseHTTPRequestHandler):
         save_web_config(self.server.data_dir, cfg)
         self._send_json(200, cfg)
 
+    def _handle_paper_add(self, payload: Any) -> None:
+        """新增或**同名覆盖**一条自定义报社，写回后返回最新列表。"""
+        paper, error = papers.validate_paper(payload)
+        if error:
+            self._error_json(400, error)
+            return
+        assert paper is not None
+        root = self.server.papers_root
+        current = papers.load_custom(root)
+        updated: list[dict[str, Any]] = []
+        replaced = False
+        for existing in current:
+            if existing["name"] == paper["name"]:
+                updated.append(paper)  # 原地替换，保持文件内顺序
+                replaced = True
+            else:
+                updated.append(existing)
+        if not replaced:
+            updated.append(paper)
+        papers.save_custom(root, updated)
+        self._send_json(200, build_papers_view(root))
+
+    def _handle_paper_delete(self, payload: Any) -> None:
+        """删除一条自定义报社；内置且未被覆盖的不可删（400），不存在的报 404。"""
+        if not isinstance(payload, dict):
+            self._error_json(400, "请求体必须是 JSON 对象")
+            return
+        name = payload.get("name")
+        if not isinstance(name, str) or not name.strip():
+            self._error_json(400, "name 必须是非空字符串")
+            return
+        name = name.strip()
+        root = self.server.papers_root
+        current = papers.load_custom(root)
+        if all(existing["name"] != name for existing in current):
+            builtin_names = {paper["name"] for paper in config.PAPERS}
+            if name in builtin_names:
+                self._error_json(400, "内置报社不可删除（可在自定义中同名覆盖其配置）")
+            else:
+                self._error_json(404, f"未找到报社「{name}」")
+            return
+        papers.save_custom(root, [p for p in current if p["name"] != name])
+        self._send_json(200, build_papers_view(root))
+
+    def _handle_paper_test(self, payload: Any) -> None:
+        """试抓探测：body 为完整 paper 对象；只给 ``name`` 时按名称解析内置/自定义。"""
+        paper, error = papers.validate_paper(payload)
+        if error:
+            name = payload.get("name") if isinstance(payload, dict) else None
+            paper = _resolve_paper_by_name(self.server.papers_root, name)
+            if paper is None:
+                self._error_json(400, error)
+                return
+        assert paper is not None
+        try:
+            result = self.server.paper_probe(paper, lambda line: sys.stderr.write(f"[试抓] {line}\n"))
+        except Exception as exc:  # 兜底：探测异常不该让看板工作线程炸掉
+            self._error_json(500, f"试抓失败：{exc}")
+            return
+        try:
+            entry_code = int(result.get("entry_code") or 0)
+            sections = int(result.get("sections") or 0)
+        except (TypeError, ValueError):
+            entry_code, sections = 0, 0
+        note = str(result.get("note") or "")
+        self._send_json(
+            200,
+            {
+                "entry_code": entry_code,
+                "sections": sections,
+                "ok": entry_code == 200,
+                "note": note,
+            },
+        )
+
     # -- 输出 --------------------------------------------------------
     def _send(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
         self.send_response(status)
@@ -634,19 +861,29 @@ def create_server(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     scan_runner: Callable[[Path, dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
+    paper_probe: Callable[[dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
+    papers_root: Path | str | None = None,
 ) -> DashboardServer:
     """创建（但不启动）看板服务器；``port=0`` 可让系统分配空闲端口（便于测试）。
 
-    ``scan_runner`` 可注入假实现，供测试离线驱动扫描（默认走 ``default_scan_runner``）。
+    ``scan_runner`` / ``paper_probe`` 可注入假实现，供测试离线驱动扫描与试抓
+    （默认分别走 ``default_scan_runner`` / ``default_paper_probe``）；
+    ``papers_root`` 可注入自定义报社的文件根，供测试避免污染真实项目根。
     """
-    return DashboardServer((host, port), data_dir, scan_runner=scan_runner)
+    return DashboardServer(
+        (host, port),
+        data_dir,
+        scan_runner=scan_runner,
+        paper_probe=paper_probe,
+        papers_root=papers_root,
+    )
 
 
 # ---------------------------------------------------------------- CLI
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m newspaper_auto.web",
-        description="六家报社数字报监测 · 本地看板（可配置关键词/天数并一键触发扫描，零依赖）",
+        description="六家报社数字报监测 · 本地看板（可配置关键词/日期范围、管理自定义报社、一键触发扫描）",
     )
     parser.add_argument("--data-dir", default=None, help="数据目录（含 hits/ 与 state/），默认自动探测项目根")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"监听地址（默认 {DEFAULT_HOST}，仅本机可访问）")

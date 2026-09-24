@@ -32,8 +32,23 @@
         <input id="scan-kw" type="text" placeholder="如 广东海洋大学, 海大" autocomplete="off">
       </label>
       <label class="field">
+        <span>扫描范围</span>
+        <select id="scan-mode">
+          <option value="days">按天数</option>
+          <option value="range">按日期范围</option>
+        </select>
+      </label>
+      <label class="field" id="scan-days-field">
         <span>天数（1 ~ 62）</span>
         <input id="scan-days" type="number" min="1" max="62" step="1" value="2">
+      </label>
+      <label class="field" id="scan-since-field" hidden>
+        <span>起始日期（含）</span>
+        <input id="scan-since" type="date">
+      </label>
+      <label class="field" id="scan-until-field" hidden>
+        <span>结束日期（含）</span>
+        <input id="scan-until" type="date">
       </label>
       <label class="field">
         <span>并发（1 ~ 16）</span>
@@ -45,6 +60,48 @@
       <span class="hint">扫描结果会写回当前数据目录，完成后自动刷新命中列表。</span>
     </div>
     <pre id="scan-log" class="scan-log"></pre>
+  </section>
+
+  <section class="card" id="papers-card">
+    <div class="card-head">
+      <h2>报社</h2>
+      <div class="hint" id="papers-status">—</div>
+    </div>
+    <div class="papers-list" id="papers-list"></div>
+    <div class="filters">
+      <label class="field">
+        <span>名称（≤ 30 字符）</span>
+        <input id="paper-name" type="text" maxlength="30" placeholder="如 某某日报" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>日期路径格式</span>
+        <select id="paper-style">
+          <option value="ymd">ymd（202609/22）</option>
+          <option value="dash">dash（2026-09/22）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>版面页链接模板（须含 {a} 占位符）</span>
+        <input id="paper-tpl" type="text" placeholder="https://example.com/html/layout/{a}/node_01.html" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>超时（可选，5 ~ 120 秒）</span>
+        <input id="paper-timeout" type="number" min="5" max="120" step="1">
+      </label>
+      <label class="field">
+        <span>重试（可选，0 ~ 6）</span>
+        <input id="paper-retries" type="number" min="0" max="6" step="1">
+      </label>
+      <label class="field">
+        <span>排除正则（可选，排除重复链接）</span>
+        <input id="paper-exclude" type="text" placeholder="如 /pad/">
+      </label>
+    </div>
+    <div class="scan-actions">
+      <button id="paper-add" class="btn" type="button">添加</button>
+      <button id="paper-test" class="btn ghost" type="button">试抓当前表单</button>
+      <span class="hint" id="papers-hint">「试抓」会真实联网抓取入口页，仅探测、不写任何文件。</span>
+    </div>
   </section>
 
   <section class="card">
@@ -70,11 +127,11 @@
         <input id="q" type="search" placeholder="如 广东海洋大学" autocomplete="off">
       </label>
       <label class="field">
-        <span>起始日期</span>
+        <span>起始日期（仅筛选已抓到列表）</span>
         <input id="from" type="date">
       </label>
       <label class="field">
-        <span>结束日期</span>
+        <span>结束日期（仅筛选已抓到列表）</span>
         <input id="to" type="date">
       </label>
       <label class="field">

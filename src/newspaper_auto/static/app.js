@@ -11,6 +11,7 @@
   var SCAN_POLL_MS = 1200;
 
   var scanTimer = null;
+  var papersView = null;
 
   var state = {
     data: null,
@@ -165,13 +166,30 @@
     return ds.length ? [ds[0], ds[ds.length - 1]] : ["", ""];
   }
 
+  function two(n) { return n < 10 ? "0" + n : "" + n; }
+
   function shiftDate(iso, days) {
     var p = iso.split("-");
     var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
     d.setDate(d.getDate() + days);
-    function two(n) { return n < 10 ? "0" + n : "" + n; }
     return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate());
   }
+
+  function todayIso() {
+    var d = new Date();
+    return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate());
+  }
+
+  // 两个 ISO 日期之间的「含端点」天数差（用于与后端的 62 天上限对齐）
+  function spanDays(since, until) {
+    var a = since.split("-").map(Number);
+    var b = until.split("-").map(Number);
+    var da = Date.UTC(a[0], a[1] - 1, a[2]);
+    var db = Date.UTC(b[0], b[1] - 1, b[2]);
+    return Math.floor((db - da) / 86400000) + 1;
+  }
+
+  var ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
   function updatePresetUI() {
     var box = $("preset-chips");
@@ -246,6 +264,25 @@
     btn.textContent = running ? "扫描中…" : "立即扫描";
   }
 
+  // 切换「按天数 / 按日期范围」时显示/隐藏对应输入
+  function updateScanModeUI() {
+    var range = $("scan-mode").value === "range";
+    $("scan-days-field").hidden = range;
+    $("scan-since-field").hidden = !range;
+    $("scan-until-field").hidden = !range;
+  }
+
+  // 日期范围默认值：until = 今天，since = 今天减 1 天（对齐 DEFAULT_DAYS=2）
+  function ensureRangeDefaults() {
+    var today = todayIso();
+    if (!$("scan-since").value && ISO_DATE_RE.test($("scan-until").value)) {
+      $("scan-since").value = shiftDate($("scan-until").value, -1);
+    } else if (!$("scan-since").value) {
+      $("scan-since").value = shiftDate(today, -1);
+    }
+    if (!$("scan-until").value) $("scan-until").value = today;
+  }
+
   // 启动时回填上次配置；失败就用默认值，不阻塞页面
   function loadScanConfig() {
     fetch("/api/config", { cache: "no-store" })
@@ -259,25 +296,58 @@
         }
         if (typeof cfg.days === "number") $("scan-days").value = cfg.days;
         if (typeof cfg.workers === "number") $("scan-workers").value = cfg.workers;
+        $("scan-mode").value = cfg.mode === "range" ? "range" : "days";
+        if (typeof cfg.since === "string" && ISO_DATE_RE.test(cfg.since)) {
+          $("scan-since").value = cfg.since;
+        }
+        if (typeof cfg.until === "string" && ISO_DATE_RE.test(cfg.until)) {
+          $("scan-until").value = cfg.until;
+        }
+        ensureRangeDefaults();
+        updateScanModeUI();
       })
-      .catch(function () { /* 忽略：保持 HTML 里的默认值 */ });
+      .catch(function () {
+        ensureRangeDefaults();
+        updateScanModeUI();
+      });
   }
 
-  function startScan() {
+  function buildScanBody() {
     var keywords = splitKeywords($("scan-kw").value);
-    var days = parseInt10($("scan-days").value);
     var workers = parseInt10($("scan-workers").value);
 
     // 与后端一致的基础校验：不合法就地提示，不发请求
-    if (!keywords.length) { setScanStatus("请至少填写一个关键词"); return; }
-    if (keywords.length > 10) { setScanStatus("关键词最多 10 个"); return; }
+    if (!keywords.length) return { error: "请至少填写一个关键词" };
+    if (keywords.length > 10) return { error: "关键词最多 10 个" };
     if (keywords.some(function (k) { return k.length > 50; })) {
-      setScanStatus("单个关键词不能超过 50 个字符"); return;
+      return { error: "单个关键词不能超过 50 个字符" };
     }
-    if (isNaN(days) || days < 1 || days > 62) { setScanStatus("天数需为 1 ~ 62 之间的整数"); return; }
-    if (isNaN(workers) || workers < 1 || workers > 16) { setScanStatus("并发需为 1 ~ 16 之间的整数"); return; }
+    if (isNaN(workers) || workers < 1 || workers > 16) {
+      return { error: "并发需为 1 ~ 16 之间的整数" };
+    }
 
-    var body = { keywords: keywords, days: days, workers: workers };
+    if ($("scan-mode").value === "range") {
+      var since = $("scan-since").value;
+      var until = $("scan-until").value;
+      if (!ISO_DATE_RE.test(since) || !ISO_DATE_RE.test(until)) {
+        return { error: "请选择合法的起始与结束日期" };
+      }
+      if (since > until) return { error: "起始日期不能晚于结束日期" };
+      if (spanDays(since, until) > 62) return { error: "日期跨度不能超过 62 天" };
+      return { body: { keywords: keywords, workers: workers, mode: "range", since: since, until: until } };
+    }
+
+    var days = parseInt10($("scan-days").value);
+    if (isNaN(days) || days < 1 || days > 62) {
+      return { error: "天数需为 1 ~ 62 之间的整数" };
+    }
+    return { body: { keywords: keywords, workers: workers, mode: "days", days: days } };
+  }
+
+  function startScan() {
+    var built = buildScanBody();
+    if (built.error) { setScanStatus(built.error); return; }
+    var body = built.body;
 
     // 保存配置：失败只提示，不阻断扫描
     fetch("/api/config", {
@@ -357,6 +427,172 @@
         setScanRunning(false);
         setScanStatus("轮询失败：" + err.message);
       });
+  }
+
+  /* -------------------------------------------------------------- 报社管理 */
+  function setPapersStatus(text) { $("papers-status").textContent = text; }
+
+  function setPapersHint(text) { $("papers-hint").textContent = text; }
+
+  function renderPapers(view) {
+    var box = $("papers-list");
+    if (!box) return;
+    box.textContent = "";
+
+    var builtin = {};
+    var customMap = {};
+    (view.builtin || []).forEach(function (name) { builtin[name] = true; });
+    (view.custom || []).forEach(function (paper) { customMap[paper.name] = paper; });
+    var names = (view.effective || []).slice();
+
+    if (!names.length) {
+      box.appendChild(el("span", "hint", "暂无报社"));
+      return;
+    }
+
+    names.forEach(function (name) {
+      var row = el("div", "papers-row");
+      row.appendChild(el("span", "paper-name", name));
+
+      var source = customMap[name] ? (builtin[name] ? "覆盖" : "自定义") : "内置";
+      row.appendChild(el("span", "paper-src " + (source === "内置" ? "src-builtin" : "src-custom"), source));
+
+      var actions = el("span", "paper-actions");
+      var testBtn = el("button", "chip", "试抓");
+      testBtn.type = "button";
+      testBtn.addEventListener("click", function () {
+        // 内置且未覆盖：前端拿不到完整对象，只传 name 由后端解析
+        runPaperTest(customMap[name] || { name: name });
+      });
+      actions.appendChild(testBtn);
+
+      if (customMap[name]) {
+        var delBtn = el("button", "chip", "删除");
+        delBtn.type = "button";
+        delBtn.addEventListener("click", function () { deletePaper(name); });
+        actions.appendChild(delBtn);
+      }
+
+      row.appendChild(actions);
+      box.appendChild(row);
+    });
+  }
+
+  function loadPapers() {
+    fetch("/api/papers", { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (view) { papersView = view; renderPapers(view); })
+      .catch(function () { setPapersStatus("报社列表加载失败"); });
+  }
+
+  function collectPaperForm() {
+    var name = $("paper-name").value.trim();
+    var style = $("paper-style").value;
+    var tpl = $("paper-tpl").value.trim();
+    if (!name) return { error: "请填写报社名称" };
+    if (name.length > 30) return { error: "名称不能超过 30 个字符" };
+    if (!/^https?:\/\//.test(tpl)) return { error: "版面页链接必须以 http:// 或 https:// 开头" };
+    if (tpl.indexOf("{a}") === -1) return { error: "版面页链接必须包含 {a} 占位符" };
+
+    var paper = { name: name, style: style, tpl: tpl };
+    var timeout = $("paper-timeout").value.trim();
+    if (timeout !== "") {
+      var t = parseInt10(timeout);
+      if (isNaN(t) || t < 5 || t > 120) return { error: "超时需为 5 ~ 120 之间的整数" };
+      paper.timeout = t;
+    }
+    var retries = $("paper-retries").value.trim();
+    if (retries !== "") {
+      var r = parseInt10(retries);
+      if (isNaN(r) || r < 0 || r > 6) return { error: "重试需为 0 ~ 6 之间的整数" };
+      paper.retries = r;
+    }
+    var exclude = $("paper-exclude").value.trim();
+    if (exclude !== "") paper.node_exclude = exclude;
+    return { paper: paper };
+  }
+
+  function clearPaperForm() {
+    ["paper-name", "paper-tpl", "paper-timeout", "paper-retries", "paper-exclude"].forEach(function (id) {
+      $(id).value = "";
+    });
+    $("paper-style").value = "ymd";
+  }
+
+  function addPaper() {
+    var got = collectPaperForm();
+    if (got.error) { setPapersStatus(got.error); return; }
+    setPapersStatus("正在添加…");
+    fetch("/api/papers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(got.paper)
+    })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) {
+            setPapersStatus("添加失败：" + ((data && data.error) || ("HTTP " + res.status)));
+            return;
+          }
+          papersView = data;
+          renderPapers(data);
+          clearPaperForm();
+          setPapersStatus("已添加「" + got.paper.name + "」。已写入 papers.custom.json。" +
+            "要让每日 CI 扫描也包含这家，需要把它提交并推送。");
+        });
+      })
+      .catch(function (err) { setPapersStatus("请求失败：" + err.message); });
+  }
+
+  function deletePaper(name) {
+    setPapersStatus("正在删除…");
+    fetch("/api/papers/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name })
+    })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) {
+            setPapersStatus("删除失败：" + ((data && data.error) || ("HTTP " + res.status)));
+            return;
+          }
+          papersView = data;
+          renderPapers(data);
+          setPapersStatus("已删除「" + name + "」。");
+        });
+      })
+      .catch(function (err) { setPapersStatus("请求失败：" + err.message); });
+  }
+
+  function runPaperTest(paper) {
+    setPapersHint("试抓中…（会真实联网抓取入口页）");
+    fetch("/api/papers/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(paper)
+    })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) {
+            setPapersHint("试抓失败：" + ((data && data.error) || ("HTTP " + res.status)));
+            return;
+          }
+          var text = (data.ok ? "✓" : "✗") + " 入口 " + data.entry_code + " · 版面 " + data.sections;
+          if (data.note) text += " · " + data.note;
+          setPapersHint(text);
+        });
+      })
+      .catch(function (err) { setPapersHint("试抓请求失败：" + err.message); });
+  }
+
+  function testPaperForm() {
+    var got = collectPaperForm();
+    if (got.error) { setPapersStatus(got.error); return; }
+    runPaperTest(got.paper);
   }
 
   /* -------------------------------------------------------------- 渲染 */
@@ -495,7 +731,14 @@
   function init() {
     $("reload").addEventListener("click", load);
     $("scan-run").addEventListener("click", startScan);
+    $("scan-mode").addEventListener("change", function () {
+      if ($("scan-mode").value === "range") ensureRangeDefaults();
+      updateScanModeUI();
+    });
+    $("paper-add").addEventListener("click", addPaper);
+    $("paper-test").addEventListener("click", testPaperForm);
     loadScanConfig();
+    loadPapers();
     $("q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
     $("from").addEventListener("change", function (e) {
       state.from = e.target.value; state.preset = "custom"; updatePresetUI(); render();

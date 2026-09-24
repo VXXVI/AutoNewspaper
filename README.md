@@ -60,7 +60,8 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 ├── pyproject.toml                # 打包/依赖/测试/ruff 配置
 ├── Makefile                      # 常用任务（make help）
 ├── src/newspaper_auto/           # 实现
-│   ├── config.py                 #   报社入口、清洗规则、默认值
+│   ├── config.py                 #   报社入口、清洗规则、默认值（不含 I/O）
+│   ├── papers.py                 #   自定义报社：papers.custom.json 读写/校验/合并
 │   ├── paths.py                  #   数据目录解析
 │   ├── http.py                   #   curl 抓取（含 HTTP/1.1 强制与重试）
 │   ├── parse.py                  #   HTML 解析与关键词匹配（纯函数）
@@ -70,8 +71,9 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   ├── web.py                    #   本地看板 + 一键触发扫描（stdlib http.server）
 │   ├── static/                   #   看板前端（原生 HTML/CSS/JS，无构建）
 │   └── cli.py                    #   参数解析与主流程
+├── papers.custom.json            # 自定义报社配置（项目根，有意入库，见「自定义报社」）
 ├── .github/workflows/            # CI 与每日扫描 workflow（生产调度入口）
-├── tests/                        # 161 个离线单元测试 + HTML fixture
+├── tests/                        # 214 个离线单元测试 + HTML fixture
 ├── scripts/                      # 定时任务
 │   ├── run_scan.sh               #   macOS/Linux 启动脚本（无状态运行，写日志）
 │   ├── com.quark.newspaperauto.plist.template  # launchd 模板
@@ -395,22 +397,91 @@ make web                                    # 等价（自动打开浏览器）
   命中列表展示**版面**（报纸中的相对位置）与**版内位置**（`版内 k/m`，无 `<area>` 的报社
   按版面页链接顺序给出；`上版 xx%` 仅有 `<area>` 映射时提供）并可点击标题跳原文；
   支持**按当前筛选导出 CSV**。
-- **扫描设置（会写数据）**：页面新增「扫描设置」卡片，可填**关键词 / 天数 / 并发**并点
+- **扫描设置（会写数据）**：页面新增「扫描设置」卡片，可填**关键词 / 扫描范围 / 并发**并点
   「立即扫描」，由看板进程**直接触发一次真实抓取**，日志实时回显，完成后自动刷新命中列表。
-  抓取结果（`hits/`、`state/`）写回**看板正在读取的那个数据目录**；上次用的配置持久化在
-  `state/web_config.json`。ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`。
-- **四条新增路由**（`src/newspaper_auto/web.py`）：
+  **扫描范围**为二选一：
+  - `按天数`：1 ~ 62 天（默认 2 = 今天 + 昨天）；
+  - `按日期范围`：两个 `<input type="date">`（默认 `until` = 今天、`since` = 今天减 1 天），
+    两端都含、跨度 ≤ 62 天，与后端 `--since/--until` 完全一致。
+  抓取结果（`hits/`、`state/`）写回**看板正在读取的那个数据目录**；上次用的配置
+  （含 `mode` / `since` / `until`）持久化在 `state/web_config.json`。
+  ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`。
+- **筛选卡片里的两个日期框**（`#from` / `#to`）**只筛选已抓到的命中列表，不影响扫描范围**，
+  这一点最容易误解，故界面上已标注「仅筛选已抓到列表」。
+- **报社管理**：「报社」卡片列出内置 / 自定义 / 覆盖三类来源，可新增、试抓、删除，
+  详见下方「自定义报社」。
+- **新增路由**（`src/newspaper_auto/web.py`）：
   - `POST /api/scan`：启动扫描。`202` 已启动 / `409` 已有任务在跑 / `400` 参数非法 /
     `403` 来源校验失败 / `413` body 过大；同一时刻最多一个任务。
   - `GET /api/scan`：读当前/最近一次任务状态，无任务时返回 `{"status":"idle"}`。
   - `POST /api/config` / `GET /api/config`：保存 / 读取配置；文件不存在时回落到
-    `config.DEFAULT_KEYWORDS` / `DEFAULT_DAYS` / `DEFAULT_WORKERS`。
+    `config.DEFAULT_KEYWORDS` / `DEFAULT_DAYS` / `DEFAULT_WORKERS`，并补 `mode="days"` /
+    `since=null` / `until=null`。
+  - `GET /api/papers`：返回 `{"builtin":[名称…], "custom":[完整对象…], "effective":[名称…]}`。
+  - `POST /api/papers`：新增或**同名覆盖**一条自定义报社，返回新的列表；非法 → `400`。
+  - `POST /api/papers/delete`：body `{"name":"…"}`；自定义/覆盖可删，**内置且未被覆盖 → `400`**，
+    不存在 → `404`，成功 → `200` + 新列表。
+  - `POST /api/papers/test`：body 为一条 paper（或只给内置/已有报社的 `{"name":"…"}`）→
+    试抓探测，返回 `{"entry_code":int,"sections":int,"ok":bool,"note":str}`。
 - **安全**：默认只监听 `127.0.0.1`；所有请求校验 `Host` 必须是环回主机（防 DNS
   rebinding），带 `Origin` 时必须为环回 origin（防跨站触发抓取），`POST` 必须声明
   `application/json` 且 body ≤ 16 KiB。关键词只作为 argv 元素传给 `cli.main`，
   **绝不拼 shell 字符串**；不返回任何 CORS 头。页面上的数据与扫描日志全部用
   `textContent` 渲染，不会执行内容里的 HTML/脚本。
 - 端口被占用时会给出提示（可用 `--port 0` 让系统自动分配）。
+
+### 自定义报社
+
+除内置六家外，可**在看板「报社」卡片里新增自定义报社**，也可直接手编配置文件。
+
+**文件位置**：`<项目根>/papers.custom.json`（**进 git**）。⚠️ 它跟随**项目根**
+（`paths.find_project_root()`），**不跟 `--data-dir` 走**——`--data-dir` 只是数据落点
+（`state/` / `hits/`），自定义报社属于**配置层**。所以用 `--data-dir /tmp/x` 跑看板时，
+新增的报社仍写回项目根。
+
+```json
+{
+  "version": 1,
+  "papers": [
+    {
+      "name": "某某日报",
+      "style": "ymd",
+      "tpl": "https://example.com/epaper/html/layout/{a}/node_01.html",
+      "timeout": 30,
+      "retries": 2,
+      "node_exclude": "/pad/"
+    }
+  ]
+}
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `name` | ✅ | 报社名，非空、≤ 30 字符，中文即可 |
+| `style` | ✅ | `ymd` → 日期目录形如 `202609/22`；`dash` → `2026-09/22` |
+| `tpl` | ✅ | 第 1 版链接模板，**必须含 `{a}`**，且以 `http://` / `https://` 开头 |
+| `timeout` | ❌ | 单次抓取超时秒数，5 ~ 120（缺省用全局默认） |
+| `retries` | ❌ | 重试次数，0 ~ 6 |
+| `node_exclude` | ❌ | 正则，用于排除手机版镜像等重复版面链接（须能编译通过） |
+
+**同名覆盖语义**：`name` 与内置重复时**覆盖内置那条**（可用来改内置报社的 URL / 超时）；
+不重复则**追加**。合并后**内置原有顺序在前**，纯新增按文件顺序追加在后。
+看板里对应标注：`内置` / `覆盖` / `自定义`。
+
+**⚠️ 关键提醒**：新增后写的是本机的 `papers.custom.json`。**要让每日 CI（GitHub Actions）
+扫描也包含这家，必须把它 `git add` 后提交并推送**——本机加完并不等于 CI 会抓。
+看板新增成功后的状态行也会显式提示这一点。
+
+**容错**：文件缺失 / JSON 非法 / 单条非法 → **忽略该条并向 stderr 打一行警告**，
+绝不让整个扫描崩掉。
+
+**解析兜底是按现有六家站点结构写的**（方正系 / 人民网系的三段式 `node_* → content_*`，
+正文取 `<founder-content>` 或 `<!--enpcontent-->`）。换到结构不同的站点，
+可能抓不到版面名 / 标题，甚至 `entry_code=200` 但 `sections=0`——**先用「试抓」探测**。
+
+**SSRF 能力边界（如实说明，不封）**：`tpl` 是用户自己填的 URL，扫描器会用系统 `curl`
+去抓。这里**只允许 `http` / `https` 前缀**，**不封私网 IP 段**——因为用户很可能就是想扫
+内网报社。这是本机单人工具，风险可接受；但请勿在多用户/公网暴露的场景使用。
 
 ### 点击即用启动器（零命令行）
 

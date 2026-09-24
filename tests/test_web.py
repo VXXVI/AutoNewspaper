@@ -236,10 +236,21 @@ def test_main_reports_busy_port_instead_of_traceback(tmp_path, capsys, monkeypat
 
 # ---------------------------------------------------------------- 扫描：POST/GET /api/scan
 @contextmanager
-def _serve(tmp_path, scan_runner):
-    """起一个注入了假 scan_runner 的回环看板（绝不碰网络），退出时确保关闭。"""
+def _serve(tmp_path, scan_runner=None, paper_probe=None, papers_root=None):
+    """起一个注入了假 scan_runner / paper_probe 的回环看板（绝不碰网络）。
+
+    ``papers_root`` 默认指向 ``tmp_path``，确保自定义报社的读写落在测试目录，
+    **绝不污染真实项目根的 papers.custom.json**。
+    """
     _write_archive(tmp_path, ARCHIVE)
-    server = web.create_server(tmp_path, host="127.0.0.1", port=0, scan_runner=scan_runner)
+    server = web.create_server(
+        tmp_path,
+        host="127.0.0.1",
+        port=0,
+        scan_runner=scan_runner or _noop_runner,
+        paper_probe=paper_probe,
+        papers_root=papers_root or tmp_path,
+    )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -394,12 +405,238 @@ def test_config_defaults_then_roundtrip(tmp_path):
         assert cfg["keywords"] == list(config.DEFAULT_KEYWORDS)
         assert cfg["days"] == config.DEFAULT_DAYS
         assert cfg["workers"] == config.DEFAULT_WORKERS
+        # 新增字段：旧配置缺省时回落「按天数」，保证向后兼容
+        assert cfg["mode"] == "days"
+        assert cfg["since"] is None and cfg["until"] is None
 
         payload = {"keywords": ["甲", "乙"], "days": 5, "workers": 3}
+        expected = {**payload, "mode": "days", "since": None, "until": None}
         status, body = _request("POST", url + "/api/config", payload)
         assert status == 200
-        assert json.loads(body) == payload
+        assert json.loads(body) == expected
 
         status, body = _request("GET", url + "/api/config")
-        assert json.loads(body) == payload
+        assert json.loads(body) == expected
         assert (tmp_path / "state" / "web_config.json").exists()
+
+
+def test_load_web_config_legacy_file_defaults_to_days(tmp_path):
+    """旧配置（只有 keywords/days/workers）仍可读，mode 回落 days。"""
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "web_config.json").write_text(
+        json.dumps({"keywords": ["海大"], "days": 4, "workers": 2}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    assert web.load_web_config(tmp_path) == {
+        "keywords": ["海大"],
+        "days": 4,
+        "workers": 2,
+        "mode": "days",
+        "since": None,
+        "until": None,
+    }
+
+
+def test_config_range_mode_roundtrip(tmp_path):
+    with _serve(tmp_path) as url:
+        payload = {
+            "keywords": ["广东海洋大学"],
+            "workers": 8,
+            "mode": "range",
+            "since": "2026-09-23",
+            "until": "2026-09-24",
+        }
+        status, body = _request("POST", url + "/api/config", payload)
+        assert status == 200
+        saved = json.loads(body)
+        assert saved["mode"] == "range"
+        assert saved["since"] == "2026-09-23"
+        assert saved["until"] == "2026-09-24"
+
+        status, body = _request("GET", url + "/api/config")
+        assert json.loads(body) == saved
+
+
+def test_config_invalid_mode_returns_400(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/config", {"keywords": ["x"], "mode": "weekly"})
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
+def test_config_days_mode_rejects_since_until(tmp_path):
+    """mode=days 时提供 since/until 直接 400（不静默丢弃）。"""
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/config",
+            {"keywords": ["x"], "mode": "days", "days": 3, "since": "2026-09-01"},
+        )
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"keywords": ["x"], "mode": "range", "until": "2026-09-24"},  # 缺 since
+        {"keywords": ["x"], "mode": "range", "since": "2026-09-24", "until": "2026-09-23"},
+        {"keywords": ["x"], "mode": "range", "since": "2026-01-01", "until": "2026-09-23"},
+    ],
+)
+def test_config_range_invalid_dates_return_400(tmp_path, payload):
+    with _serve(tmp_path) as url:
+        status, _body = _request("POST", url + "/api/config", payload)
+        assert status == 400
+
+
+# ---------------------------------------------------------------- 自定义报社：GET/POST /api/papers
+BUILTIN_FIRST = config.PAPERS[0]["name"]
+
+
+def _paper_entry(name="测试报", **overrides):
+    entry = {"name": name, "style": "ymd", "tpl": "https://example.com/html/layout/{a}/node_01.html"}
+    entry.update(overrides)
+    return entry
+
+
+def test_papers_list_structure(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request("GET", url + "/api/papers")
+        assert status == 200
+        view = json.loads(body)
+        assert view["builtin"] == [p["name"] for p in config.PAPERS]
+        assert view["custom"] == []
+        assert view["effective"] == view["builtin"]
+
+
+def test_papers_add_then_list(tmp_path):
+    entry = _paper_entry(timeout=30, retries=2)
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers", entry)
+        assert status == 200
+        view = json.loads(body)
+        assert view["custom"] == [entry]
+        assert view["effective"][-1] == "测试报"  # 追加在内置之后
+        assert (tmp_path / "papers.custom.json").exists()
+
+        status, body = _request("GET", url + "/api/papers")
+        assert json.loads(body) == view
+
+
+def test_papers_add_same_name_overrides_builtin(tmp_path):
+    override = _paper_entry(name=BUILTIN_FIRST, tpl="https://example.com/override/{a}/node_01.html")
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers", override)
+        assert status == 200
+        view = json.loads(body)
+        assert view["custom"] == [override]
+        # 覆盖不改变内置顺序，也不新增重复项
+        assert view["effective"] == [p["name"] for p in config.PAPERS]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"name": "", "style": "ymd", "tpl": "https://x/{a}"},
+        {"name": "x", "style": "weekly", "tpl": "https://x/{a}"},
+        {"name": "x", "style": "ymd", "tpl": "https://x/static"},
+        {"name": "x", "style": "ymd", "tpl": "ftp://x/{a}"},
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "timeout": 1},
+        {"name": "x", "style": "ymd", "tpl": "https://x/{a}", "node_exclude": "("},
+    ],
+)
+def test_papers_add_invalid_returns_400(tmp_path, bad):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers", bad)
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
+def test_papers_delete_custom_success(tmp_path):
+    with _serve(tmp_path) as url:
+        _request("POST", url + "/api/papers", _paper_entry())
+        status, body = _request("POST", url + "/api/papers/delete", {"name": "测试报"})
+        assert status == 200
+        assert json.loads(body)["custom"] == []
+
+
+def test_papers_delete_builtin_returns_400(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers/delete", {"name": BUILTIN_FIRST})
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
+def test_papers_delete_unknown_returns_404(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers/delete", {"name": "不存在的报社"})
+        assert status == 404
+        assert json.loads(body)["error"]
+
+
+def test_papers_delete_override_reverts_to_builtin(tmp_path):
+    """覆盖内置后再删除，等于回退到内置配置（允许）。"""
+    with _serve(tmp_path) as url:
+        _request("POST", url + "/api/papers", _paper_entry(name=BUILTIN_FIRST))
+        status, body = _request("POST", url + "/api/papers/delete", {"name": BUILTIN_FIRST})
+        assert status == 200
+        assert json.loads(body)["custom"] == []
+
+
+def test_papers_test_uses_injected_probe(tmp_path):
+    seen = {}
+
+    def probe(paper, log):
+        seen["paper"] = paper
+        log("探测 " + paper["name"])
+        return {"entry_code": 200, "sections": 12, "note": "dry-run"}
+
+    with _serve(tmp_path, paper_probe=probe) as url:
+        status, body = _request("POST", url + "/api/papers/test", _paper_entry())
+        assert status == 200
+        assert json.loads(body) == {"entry_code": 200, "sections": 12, "ok": True, "note": "dry-run"}
+        assert seen["paper"]["name"] == "测试报"
+
+
+def test_papers_test_by_name_resolves_builtin(tmp_path):
+    def probe(paper, log):
+        return {"entry_code": 200, "sections": 3, "note": ""}
+
+    with _serve(tmp_path, paper_probe=probe) as url:
+        status, body = _request("POST", url + "/api/papers/test", {"name": BUILTIN_FIRST})
+        assert status == 200
+        assert json.loads(body)["ok"] is True
+
+
+def test_papers_test_invalid_returns_400(tmp_path):
+    def probe(paper, log):  # pragma: no cover - 非法 body 不应触发探测
+        raise AssertionError("非法 body 不应触发探测")
+
+    with _serve(tmp_path, paper_probe=probe) as url:
+        status, body = _request("POST", url + "/api/papers/test", {"name": "不存在的报社"})
+        assert status == 400
+        assert json.loads(body)["error"]
+
+
+def test_papers_post_rejects_foreign_origin(tmp_path):
+    with _serve(tmp_path) as url:
+        status, _body = _request(
+            "POST",
+            url + "/api/papers",
+            _paper_entry(),
+            headers={"Origin": "http://evil.example"},
+        )
+        assert status == 403
+
+
+def test_papers_post_requires_json_content_type(tmp_path):
+    with _serve(tmp_path) as url:
+        status, _body = _request(
+            "POST",
+            url + "/api/papers",
+            _paper_entry(),
+            headers={"Content-Type": "text/plain"},
+        )
+        assert status == 415

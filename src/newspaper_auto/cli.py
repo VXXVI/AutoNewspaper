@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
-from . import __version__, config, parse, paths, report, scanner, state
+from . import __version__, config, papers, parse, paths, report, scanner, state
 
 
 def _parse_date(text: str) -> datetime:
@@ -107,12 +107,17 @@ def resolve_dates(args: argparse.Namespace, parser: argparse.ArgumentParser | No
     return [until - timedelta(days=i) for i in range(span)]
 
 
-def select_papers(only: str) -> list[dict[str, str]]:
-    """按 ``--only`` 过滤报社；未匹配到任何报社时原样返回（不静默清空）。"""
+def select_papers(only: str, all_papers: Sequence[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """按 ``--only`` 过滤报社；未匹配到任何报社时原样返回（不静默清空）。
+
+    ``all_papers`` 缺省时退回内置 ``config.PAPERS``（兼容既有调用与测试）；传入
+    「内置 + 自定义」合并后的列表时，自定义报社也能被 ``--only`` 选中。
+    """
+    source = list(all_papers) if all_papers is not None else list(config.PAPERS)
     if not only:
-        return list(config.PAPERS)
+        return source
     wanted = {name.strip() for name in only.split(",") if name.strip()}
-    return [p for p in config.PAPERS if p["name"] in wanted] or list(config.PAPERS)
+    return [p for p in source if p["name"] in wanted] or source
 
 
 def update_archive(data_dir: os.PathLike[str] | str, all_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -150,14 +155,16 @@ def main(
     kw_res = {k: parse.make_kw_re(k) for k in keywords}
     kw_label = " / ".join(keywords)
 
-    papers = select_papers(args.only)
+    # 自定义报社跟随**项目根**（配置层），与 --data-dir（数据层）无关
+    all_papers = papers.merge_papers(config.PAPERS, papers.load_custom(paths.find_project_root()))
+    selected = select_papers(args.only, all_papers)
     data_dir = paths.resolve_data_dir(args.data_dir, default_data_dir)
 
     dates = resolve_dates(args, parser)
 
     log(f"关键词：{kw_label}")
     log(f"日期范围：{dates[-1]:%Y-%m-%d} ~ {dates[0]:%Y-%m-%d}（{len(dates)} 天）")
-    log(f"报社：{'、'.join(p['name'] for p in papers)}")
+    log(f"报社：{'、'.join(p['name'] for p in selected)}")
     log("-" * 72)
 
     seen = {} if args.no_state else state.load_seen(paths.state_file(data_dir))
@@ -166,7 +173,7 @@ def main(
     all_hits: list[dict[str, Any]] = []
     all_articles: list[dict[str, Any]] = []
     started = time.time()
-    for paper in papers:
+    for paper in selected:
         for day in dates:
             hits, articles, stats = scanner.scan_paper(
                 paper, day, kw_res, args.workers, dry=args.dry, fetcher=fetcher

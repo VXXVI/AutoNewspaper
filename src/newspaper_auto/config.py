@@ -71,6 +71,8 @@ HITS_DIRNAME = "hits"
 SEEN_FILENAME = "seen.json"
 # 看板「扫描设置」的持久化文件名（与 seen.json 同目录）
 WEB_CONFIG_FILENAME = "web_config.json"
+# 自定义报社配置文件名：位于**项目根**（非数据目录），随代码一起提交才进 CI
+CUSTOM_PAPERS_FILENAME = "papers.custom.json"
 ARCHIVE_FILENAME = "archive.json"
 INDEX_FILENAME = "index.html"
 # 增量记录保留天数，防止 seen.json 无限膨胀

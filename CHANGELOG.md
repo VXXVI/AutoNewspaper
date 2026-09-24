@@ -7,6 +7,22 @@
 
 ### 新增
 
+- **看板扫描支持「按日期范围」**：`/api/config` 新增可选字段 `mode`（`days` | `range`，缺省
+  `days`）、`since` / `until`（`YYYY-MM-DD` 或 `null`）；`mode=days` 时给 `since/until`
+  直接 400，`mode=range` 时校验两端合法、`since <= until`、跨度 ≤ `MAX_RANGE_DAYS`。
+  `load_web_config` 对缺 `mode` 的旧配置文件回落 `days`，**向后兼容**。看板「扫描设置」
+  改为「按天数 / 按日期范围」二选一 + 条件显示（日期默认 `until`=今天、`since`=今天减 1 天），
+  前端就地校验且与后端一致（`web.py`、`static/*`）。
+- **自定义报社**：新增 `src/newspaper_auto/papers.py`，读写项目根 `papers.custom.json`
+  （`load_custom` / `merge_papers` / `validate_paper` / `save_custom` / `custom_names`），
+  支持 `name` / `style` / `tpl` / `timeout` / `retries` / `node_exclude` 六字段校验，
+  **同名覆盖内置、不重复则追加**，文件缺失/损坏/单条非法只警告不崩。`cli.select_papers`
+  接受合并后的报社列表（未匹配仍回退全部）；`cli.main` 用
+  `merge_papers(config.PAPERS, load_custom(find_project_root()))`。看板新增
+  `GET /api/papers`、`POST /api/papers`、`POST /api/papers/delete`、`POST /api/papers/test`
+  四条路由与「报社」卡片（列表 + 来源标注 + 新增/试抓/删除，零 `innerHTML`）；
+  试抓探测 `paper_probe` 可注入，默认实现直接 `scanner.scan_paper(dry=True)`，不写文件。
+  `create_server` 增加 `paper_probe` / `papers_root` 供测试隔离。
 - **本地看板支持配置与一键触发扫描**：`python3 -m newspaper_auto.web` 新增「扫描设置」卡片
   （关键词 / 天数 / 并发 + 「立即扫描」），由看板进程**进程内调用 `cli.main`** 触发一次真实扫描，
   日志实时回显、完成后自动刷新命中列表；扫描结果写回看板正在读的数据目录，配置持久化到
@@ -115,6 +131,9 @@
 
 ### 文档
 
+- `README.md` 新增「自定义报社」章节（文件位置、字段表、同名覆盖语义、**必须提交推送才进
+  CI**、解析兜底对换站点的诚实提醒、SSRF 能力边界），并更新看板「扫描设置」（日期范围模式、
+  筛选日期框只筛列表）与路由表（+4 条 papers 路由）。
 - `README.md`：launchd 章节明确「本机与 Actions 可并存 + 本机无状态运行」，并给出
   不再需要本机任务时的 `./scripts/install_launchd.sh uninstall` 卸载命令，新增
   「外部定时（VPS crontab）」章节（完整 crontab 行、时区换算、PAT 最小权限、
