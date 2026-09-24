@@ -44,6 +44,10 @@ DATE_FORMATS = {
 _DATE_FORMAT_RE = re.compile(r"^(?:%[Yymd]|[-_./])+$")
 
 
+class CustomPapersError(ValueError):
+    """自定义报社文件无法安全读改写。"""
+
+
 def _custom_path(root: Path) -> Path:
     return Path(root) / config.CUSTOM_PAPERS_FILENAME
 
@@ -201,6 +205,41 @@ def load_custom(root: Path) -> list[dict[str, Any]]:
         if error:
             _warn(f"第 {index} 条无效（{error}），已跳过")
             continue
+        assert paper is not None
+        result.append(paper)
+    return result
+
+
+def load_custom_for_update(root: Path) -> list[dict[str, Any]]:
+    """严格读取自定义报社，供 Web 写接口执行“读—改—写”。
+
+    与容错读取 :func:`load_custom` 不同，已有文件只要损坏或含非法条目就抛出
+    :class:`CustomPapersError`。这样用户手工编辑出错时，界面保存不会把原文件静默覆盖。
+    文件不存在仍表示尚无自定义报社，返回空列表。
+    """
+    path = _custom_path(root)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        raise CustomPapersError(f"无法读取 {path.name}：{exc}") from exc
+
+    try:
+        data = json.loads(text)
+    except ValueError as exc:
+        raise CustomPapersError(f"{path.name} JSON 解析失败：{exc}") from exc
+    if not isinstance(data, dict):
+        raise CustomPapersError(f'{path.name} 顶层必须是对象（形如 {{"version": 1, "papers": [...]}}）')
+    raw_papers = data.get("papers")
+    if not isinstance(raw_papers, list):
+        raise CustomPapersError(f"{path.name} 的 papers 字段必须是数组")
+
+    result: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_papers, 1):
+        paper, error = validate_paper(item)
+        if error:
+            raise CustomPapersError(f"{path.name} 第 {index} 条无效：{error}")
         assert paper is not None
         result.append(paper)
     return result

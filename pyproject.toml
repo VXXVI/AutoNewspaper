@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "newspaper-auto"
-description = "六家报社数字报关键词每日监测（官网直采，零第三方运行时依赖）"
+description = "可扩展的数字报关键词每日监测（内置六家官网，零第三方运行时依赖）"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "7Quark" }]
@@ -14,6 +14,7 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",

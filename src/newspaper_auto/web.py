@@ -8,17 +8,17 @@
     python3 -m newspaper_auto.web --data-dir /path/to/data
 
 端口优先取 ``--port``（默认 8788）；8788 被占用时命令行会给出提示，可用 ``--port 0``
-让系统自动分配空闲端口。看板也可在页面「扫描设置」里只扫选中的报社（``only``）。
+让系统自动分配空闲端口。看板也可在页面「高级扫描设置」里只扫选中的报社（``only``）。
 
 特点：
 - **读取 + 写入**：读取 ``hits/archive.json`` 与 ``state/seen.json`` 展示看板；
-  并新增「扫描设置」卡片，可通过 ``POST /api/scan`` 在看板进程内**直接触发一次真实抓取**，
+  页面顶部可通过 ``POST /api/scan`` 在看板进程内**直接触发一次真实抓取**，
   抓取结果（``hits/``、``state/``）会写回看板正在读的那个数据目录；
   ``POST /api/config`` 把关键词/天数或日期范围/并发持久化到 ``state/web_config.json``。
 - **自定义报社**：``GET /api/papers`` 列出「内置 / 自定义 / 覆盖」；``POST /api/papers``
   新增或同名覆盖；``POST /api/papers/delete`` 删除自定义条目；``POST /api/papers/test``
   试抓探测。写回的是**项目根**的 ``papers.custom.json``（配置层，与 ``--data-dir`` 无关）。
-- **默认只监听 127.0.0.1**，不对外网暴露；并对所有请求做 Host / Origin 校验，
+- **只允许监听环回地址**，不对外网暴露；并对所有请求做 Host / Origin 校验，
   只接受环回来源，避免浏览器里的任意网页跨站触发抓取。
 - 前端为原生 HTML/CSS/JS，无构建、无 npm、无 CDN，且**零 ``innerHTML``**（数据一律
   ``textContent`` + ``createElement`` 渲染，报社名/链接均为用户输入，绝不拼 HTML）。
@@ -37,13 +37,15 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from . import __version__, cli, config, papers, paths, report, scanner, state
+from .web_tasks import ScanTask
 
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
     "index.html": "text/html; charset=utf-8",
+    "api.js": "application/javascript; charset=utf-8",
     "app.js": "application/javascript; charset=utf-8",
     "style.css": "text/css; charset=utf-8",
 }
@@ -292,23 +294,24 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
     since_text: str | None = None
     until_text: str | None = None
     if use_range:
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         since_dt = None
-        until_dt = None
+        until_dt = today
         if since is not None:
             since_dt = _parse_iso_date(since)
             if since_dt is None:
                 return None, "since 必须是合法的 YYYY-MM-DD 日期"
-            since_text = since_dt.strftime("%Y-%m-%d")
         if until is not None:
             until_dt = _parse_iso_date(until)
             if until_dt is None:
                 return None, "until 必须是合法的 YYYY-MM-DD 日期"
-            until_text = until_dt.strftime("%Y-%m-%d")
-        if since_dt is not None and until_dt is not None:
-            if since_dt > until_dt:
-                return None, "since 不能晚于 until"
-            if (until_dt - since_dt).days + 1 > config.MAX_RANGE_DAYS:
-                return None, f"日期跨度不能超过 {config.MAX_RANGE_DAYS} 天"
+        since_dt = since_dt or until_dt
+        if since_dt > until_dt:
+            return None, "since 不能晚于 until"
+        if (until_dt - since_dt).days + 1 > config.MAX_RANGE_DAYS:
+            return None, f"日期跨度不能超过 {config.MAX_RANGE_DAYS} 天"
+        since_text = since_dt.strftime("%Y-%m-%d")
+        until_text = until_dt.strftime("%Y-%m-%d")
 
     workers = payload.get("workers")
     if workers is None:
@@ -599,37 +602,6 @@ def default_paper_probe(paper: dict[str, Any], log: Callable[[str], None]) -> di
     }
 
 
-# ---------------------------------------------------------------- 扫描任务
-class ScanTask:
-    """一次扫描任务的运行状态（同一时刻最多一个，由 server.scan_lock 守护）。"""
-
-    def __init__(self) -> None:
-        self.status = "idle"
-        self.params: dict[str, Any] = {}
-        self.started_at: str | None = None
-        self.finished_at: str | None = None
-        self.log: list[str] = []
-        self.summary: dict[str, Any] | None = None
-        self.exit_code: int | None = None
-        self.error: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "status": self.status,
-            "params": dict(self.params),
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "log": list(self.log),
-            "summary": self.summary,
-            "exit_code": self.exit_code,
-            "error": self.error,
-        }
-
-
-def _now_stamp() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
 # ---------------------------------------------------------------- HTTP
 class DashboardServer(ThreadingHTTPServer):
     """把数据目录、扫描执行器与任务状态挂在 server 上。"""
@@ -654,41 +626,74 @@ class DashboardServer(ThreadingHTTPServer):
         # 显式传入 papers_root 仅用于测试隔离，避免污染真实项目根。
         self.papers_root = Path(papers_root) if papers_root is not None else paths.find_project_root()
         self.scan_lock = threading.Lock()
-        self.scan_task = ScanTask()
+        self.config_lock = threading.Lock()
+        self.papers_lock = threading.Lock()
+        self.scan_task = ScanTask(max_log_lines=MAX_LOG_LINES)
+
+    def scan_units(self, params: dict[str, Any]) -> int:
+        """计算预计的“报社 × 日期”工作单元数，供前端显示真实总体进度。"""
+        with self.papers_lock:
+            effective = papers.merge_papers(config.PAPERS, papers.load_custom(self.papers_root))
+        selected = {name.strip() for name in str(params.get("only") or "").split(",") if name.strip()}
+        paper_count = sum(1 for paper in effective if not selected or paper["name"] in selected)
+        if params.get("since") and params.get("until"):
+            since = _parse_iso_date(params["since"])
+            until = _parse_iso_date(params["until"])
+            day_count = (until - since).days + 1 if since is not None and until is not None else 0
+        else:
+            day_count = int(params.get("days") or config.DEFAULT_DAYS)
+        return paper_count * day_count
+
+    def paper_selection_error(self, only: str) -> str | None:
+        """在启动线程前验证报社名，避免 CLI 启动后才以退出码 2 失败。"""
+        wanted = [name.strip() for name in only.split(",") if name.strip()]
+        if not wanted:
+            return None
+        with self.papers_lock:
+            known = {
+                paper["name"]
+                for paper in papers.merge_papers(config.PAPERS, papers.load_custom(self.papers_root))
+            }
+        unknown = [name for name in wanted if name not in known]
+        if unknown:
+            return f"未找到报社：{'、'.join(unknown)}，请刷新报社列表后重试"
+        return None
 
     def start_scan(self, params: dict[str, Any]) -> ScanTask | None:
         """尝试占用任务锁；成功则起后台线程，失败（已有任务）返回 None，绝不排队等待。"""
         if not self.scan_lock.acquire(blocking=False):
             return None
-        task = ScanTask()
-        task.status = "running"
-        task.params = dict(params)
-        task.started_at = _now_stamp()
-        self.scan_task = task
-        threading.Thread(target=self._run_scan, args=(task, params), daemon=True).start()
-        return task
+        task: ScanTask | None = None
+        try:
+            task = ScanTask.running(
+                params,
+                total_units=self.scan_units(params),
+                max_log_lines=MAX_LOG_LINES,
+            )
+            self.scan_task = task
+            threading.Thread(target=self._run_scan, args=(task, params), daemon=True).start()
+            return task
+        except Exception as exc:
+            if task is not None:
+                task.fail(f"扫描线程启动失败：{exc}")
+            self.scan_lock.release()
+            raise
 
     def _run_scan(self, task: ScanTask, params: dict[str, Any]) -> None:
         def log(line: str) -> None:
-            task.log.append(line)
-            if len(task.log) > MAX_LOG_LINES:
-                del task.log[: len(task.log) - MAX_LOG_LINES]
+            task.append_log(line)
             sys.stderr.write(f"[扫描] {line}\n")
 
         try:
             result = self.scan_runner(self.data_dir, dict(params), log)
-            task.exit_code = int(result.get("exit_code", 0))
-            task.summary = result.get("summary")
-            task.status = "done"
+            task.finish(result)
         except SystemExit as exc:  # 注入的 runner 也可能抛 SystemExit
             code = exc.code
-            task.exit_code = code if isinstance(code, int) else 1
-            task.status = "done"
+            exit_code = code if isinstance(code, int) else 1
+            task.fail(f"扫描进程提前退出（退出码 {exit_code}）", exit_code=exit_code)
         except Exception as exc:  # 兜底：runner 抛错也必须释放任务锁
-            task.error = str(exc) or exc.__class__.__name__
-            task.status = "error"
+            task.fail(exc)
         finally:
-            task.finished_at = _now_stamp()
             self.scan_lock.release()
 
 
@@ -700,7 +705,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self._check_host():
             return
-        route = urlsplit(self.path).path
+        parsed = urlsplit(self.path)
+        route = parsed.path
         if route in ("/", "/index.html"):
             self._serve_static("index.html")
         elif route == "/api/hits":
@@ -708,7 +714,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
         elif route == "/api/health":
             self._serve_json({"ok": True, "version": __version__})
         elif route == "/api/scan":
-            self._serve_json(self.server.scan_task.to_dict())
+            query = parse_qs(parsed.query)
+            raw_after = query.get("after", [None])[0]
+            try:
+                after = int(raw_after) if raw_after is not None else None
+            except (TypeError, ValueError):
+                self._error_json(400, "after 必须是非负整数")
+                return
+            if after is not None and after < 0:
+                self._error_json(400, "after 必须是非负整数")
+                return
+            self._serve_json(self.server.scan_task.snapshot(after=after))
         elif route == "/api/config":
             self._serve_json(load_web_config(self.server.data_dir))
         elif route == "/api/papers":
@@ -809,11 +825,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._error_json(400, error)
             return
         assert params is not None
-        task = self.server.start_scan(params)
+        selection_error = self.server.paper_selection_error(params["only"])
+        if selection_error:
+            self._error_json(400, selection_error)
+            return
+        try:
+            task = self.server.start_scan(params)
+        except Exception as exc:
+            self._error_json(503, f"扫描任务启动失败：{exc}")
+            return
         if task is None:
             self._error_json(409, "已有扫描在运行，请稍候")
             return
-        self._send_json(202, {"status": task.status, "params": task.params})
+        self._send_json(202, task.snapshot(after=0))
 
     def _handle_config_save(self, payload: Any) -> None:
         cfg, error = validate_web_config(payload)
@@ -821,7 +845,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._error_json(400, error)
             return
         assert cfg is not None
-        save_web_config(self.server.data_dir, cfg)
+        selection_error = self.server.paper_selection_error(cfg["only"])
+        if selection_error:
+            self._error_json(400, selection_error)
+            return
+        try:
+            with self.server.config_lock:
+                save_web_config(self.server.data_dir, cfg)
+        except OSError as exc:
+            self._error_json(500, f"配置保存失败：{exc}")
+            return
         self._send_json(200, cfg)
 
     def _handle_paper_add(self, payload: Any) -> None:
@@ -832,18 +865,32 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         assert paper is not None
         root = self.server.papers_root
-        current = papers.load_custom(root)
-        updated: list[dict[str, Any]] = []
-        replaced = False
-        for existing in current:
-            if existing["name"] == paper["name"]:
-                updated.append(paper)  # 原地替换，保持文件内顺序
-                replaced = True
-            else:
-                updated.append(existing)
-        if not replaced:
-            updated.append(paper)
-        papers.save_custom(root, updated)
+        if self.server.scan_lock.locked():
+            self._error_json(409, "扫描进行中，完成后才能修改报社配置")
+            return
+        try:
+            with self.server.papers_lock:
+                if self.server.scan_lock.locked():
+                    self._error_json(409, "扫描进行中，完成后才能修改报社配置")
+                    return
+                current = papers.load_custom_for_update(root)
+                updated: list[dict[str, Any]] = []
+                replaced = False
+                for existing in current:
+                    if existing["name"] == paper["name"]:
+                        updated.append(paper)  # 原地替换，保持文件内顺序
+                        replaced = True
+                    else:
+                        updated.append(existing)
+                if not replaced:
+                    updated.append(paper)
+                papers.save_custom(root, updated)
+        except papers.CustomPapersError as exc:
+            self._error_json(409, f"报社配置未保存：{exc}。请先修复原文件")
+            return
+        except OSError as exc:
+            self._error_json(500, f"报社配置保存失败：{exc}")
+            return
         self._send_json(200, build_papers_view(root))
 
     def _handle_paper_delete(self, payload: Any) -> None:
@@ -857,15 +904,29 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         name = name.strip()
         root = self.server.papers_root
-        current = papers.load_custom(root)
-        if all(existing["name"] != name for existing in current):
-            builtin_names = {paper["name"] for paper in config.PAPERS}
-            if name in builtin_names:
-                self._error_json(400, "内置报社不可删除（可在自定义中同名覆盖其配置）")
-            else:
-                self._error_json(404, f"未找到报社「{name}」")
+        if self.server.scan_lock.locked():
+            self._error_json(409, "扫描进行中，完成后才能修改报社配置")
             return
-        papers.save_custom(root, [p for p in current if p["name"] != name])
+        try:
+            with self.server.papers_lock:
+                if self.server.scan_lock.locked():
+                    self._error_json(409, "扫描进行中，完成后才能修改报社配置")
+                    return
+                current = papers.load_custom_for_update(root)
+                if all(existing["name"] != name for existing in current):
+                    builtin_names = {paper["name"] for paper in config.PAPERS}
+                    if name in builtin_names:
+                        self._error_json(400, "内置报社不可删除（可在自定义中同名覆盖其配置）")
+                    else:
+                        self._error_json(404, f"未找到报社「{name}」")
+                    return
+                papers.save_custom(root, [p for p in current if p["name"] != name])
+        except papers.CustomPapersError as exc:
+            self._error_json(409, f"报社配置未删除：{exc}。请先修复原文件")
+            return
+        except OSError as exc:
+            self._error_json(500, f"报社配置删除失败：{exc}")
+            return
         self._send_json(200, build_papers_view(root))
 
     def _handle_paper_test(self, payload: Any) -> None:
@@ -910,6 +971,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
+        )
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
         self.send_header("Cache-Control", "no-store")
         for key, value in (extra or {}).items():
             self.send_header(key, value)
@@ -969,6 +1037,8 @@ def create_server(
     （默认分别走 ``default_scan_runner`` / ``default_paper_probe``）；
     ``papers_root`` 可注入自定义报社的文件根，供测试避免污染真实项目根。
     """
+    if host not in LOOPBACK_HOSTS:
+        raise ValueError("看板没有登录鉴权，只允许监听 127.0.0.1 或 localhost")
     return DashboardServer(
         (host, port),
         data_dir,
@@ -1005,6 +1075,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         server = create_server(data_dir, args.host, args.port)
+    except ValueError as exc:
+        print(f"启动失败：{exc}。", file=sys.stderr)
+        print("如需从 VPS 外访问，请使用 SSH 端口转发，不要直接暴露看板端口。", file=sys.stderr)
+        return 1
     except OSError as exc:
         print(f"启动失败：{args.host}:{args.port} 不可用（{exc}）。", file=sys.stderr)
         print("可换端口重试，例如 --port 8789，或用 --port 0 让系统自动分配。", file=sys.stderr)
@@ -1018,13 +1092,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"数据源：{paths.archive_file(data_dir)}")
     if args.scan:
         params = load_web_config(data_dir)
-        task = server.start_scan(params)
-        if task is None:  # 理论上首次启动不会发生，保留明确失败信息
-            print("自动扫描未启动：已有扫描任务。", file=sys.stderr)
+        selection_error = server.paper_selection_error(params["only"])
+        if selection_error:
+            print(f"自动扫描未启动：{selection_error}。", file=sys.stderr)
         else:
-            print("自动扫描已启动：页面会显示实时进度。")
+            task = server.start_scan(params)
+            if task is None:  # 理论上首次启动不会发生，保留明确失败信息
+                print("自动扫描未启动：已有扫描任务。", file=sys.stderr)
+            else:
+                print("自动扫描已启动：页面会显示实时进度。")
     else:
-        print("可在页面「扫描设置」中触发抓取；按 Ctrl+C 停止")
+        print("可在页面顶部填写关键词并开始扫描；按 Ctrl+C 停止")
 
     if args.open:
         webbrowser.open(url)

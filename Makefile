@@ -1,4 +1,4 @@
-# 六家报社数字报关键词监测 —— 常用任务
+# 可扩展数字报关键词监测 —— 常用任务
 #
 # 优先使用项目虚拟环境 .venv 中的 Python，未创建时退回系统 python3。
 
@@ -38,7 +38,7 @@ fmt:  ## 自动格式化并修复可自动修复的问题
 
 check: lint test  ## 提交前自检（lint + test）
 
-dry:  ## 只探测六家入口与版面，不抓文章
+dry:  ## 只探测已启用报社的入口与版面，不抓文章
 	$(PY) daily_scan.py --dry
 
 scan:  ## 无状态扫描（今天，不产生历史文件）
@@ -70,7 +70,7 @@ plist:  ## 打印将要安装的 launchd plist
 papers-check:  ## 校验 papers.custom.json 并打印合并后的生效报社清单
 	@$(PY) -c "from pathlib import Path; from newspaper_auto import config, papers; \
 root = Path('.').resolve(); \
-custom = papers.load_custom(root); \
+custom = papers.load_custom_for_update(root); \
 merged = papers.merge_papers(config.PAPERS, custom); \
 builtin = {p['name'] for p in config.PAPERS}; \
 custom_names = {p['name'] for p in custom}; \

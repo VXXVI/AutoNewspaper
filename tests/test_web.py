@@ -1,4 +1,4 @@
-"""本地只读看板的单元测试（含 127.0.0.1 回环集成测试，不访问外网）。"""
+"""本地看板的单元测试（含 127.0.0.1 回环集成测试，不访问外网）。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -187,6 +187,28 @@ def test_web_parser_accepts_scan_on_start():
     assert args.scan is True
 
 
+def test_scan_single_until_is_normalized_to_one_day():
+    params, error = web.validate_scan_params({"keywords": ["x"], "until": "2026-09-20"})
+    assert error is None
+    assert params["days"] is None
+    assert params["since"] == "2026-09-20"
+    assert params["until"] == "2026-09-20"
+
+
+def test_scan_single_since_enforces_range_limit():
+    too_old = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+        days=config.MAX_RANGE_DAYS
+    )
+    params, error = web.validate_scan_params({"keywords": ["x"], "since": too_old.strftime("%Y-%m-%d")})
+    assert params is None
+    assert "跨度" in error
+
+
+def test_server_rejects_non_loopback_binding_before_listen(tmp_path):
+    with pytest.raises(ValueError, match="只允许监听"):
+        web.create_server(tmp_path, host="0.0.0.0", port=0)
+
+
 # ---------------------------------------------------------------- HTTP 集成
 @pytest.fixture
 def base_url(tmp_path):
@@ -217,6 +239,28 @@ def test_serves_index_and_static(base_url):
 
     status, _body, ctype = _get(base_url + "/static/style.css")
     assert status == 200 and "text/css" in ctype
+
+    status, api_body, ctype = _get(base_url + "/static/api.js")
+    assert status == 200 and "javascript" in ctype
+    html = body.decode("utf-8") if body else ""
+    assert api_body and "/static/api.js" in html
+    assert html.index("/static/api.js") < html.index("/static/app.js")
+
+
+def test_security_headers_on_success_and_error(base_url):
+    for path in ("/api/health", "/nope"):
+        request = urllib.request.Request(base_url + path)
+        try:
+            response = urllib.request.urlopen(request, timeout=5)
+        except urllib.error.HTTPError as exc:
+            response = exc
+        with response:
+            headers = response.headers
+            assert "style-src 'self' 'unsafe-inline'" in headers["Content-Security-Policy"]
+            assert headers["X-Content-Type-Options"] == "nosniff"
+            assert headers["Referrer-Policy"] == "no-referrer"
+            assert headers["X-Frame-Options"] == "DENY"
+            assert headers["Cache-Control"] == "no-store"
 
 
 def test_api_hits(base_url):
@@ -267,6 +311,26 @@ def test_main_reports_busy_port_instead_of_traceback(tmp_path, capsys, monkeypat
     assert code == 1
     err = capsys.readouterr().err
     assert "启动失败" in err and "换端口" in err
+
+
+def test_scan_thread_start_failure_releases_lock(tmp_path, monkeypatch):
+    server = web.create_server(tmp_path, host="127.0.0.1", port=0, papers_root=tmp_path)
+
+    class BrokenThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("no thread")
+
+    monkeypatch.setattr(web.threading, "Thread", BrokenThread)
+    try:
+        with pytest.raises(RuntimeError, match="no thread"):
+            server.start_scan({"keywords": ["x"], "days": 1, "only": ""})
+        assert server.scan_lock.locked() is False
+        assert server.scan_task.snapshot()["status"] == "error"
+    finally:
+        server.server_close()
 
 
 # ---------------------------------------------------------------- 扫描：POST/GET /api/scan
@@ -460,6 +524,38 @@ def test_scan_accepts_only_param(tmp_path):
     assert seen["only"] == "湛江日报,南方日报"
 
 
+def test_scan_rejects_unknown_paper_before_runner(tmp_path):
+    called = False
+
+    def runner(data_dir, params, log):  # pragma: no cover - 不应执行
+        nonlocal called
+        called = True
+        return {"exit_code": 0, "summary": None}
+
+    with _serve(tmp_path, runner) as url:
+        status, body = _request("POST", url + "/api/scan", {"keywords": ["x"], "only": "湛江日报,不存在报"})
+        assert status == 400
+        assert "不存在报" in json.loads(body)["error"]
+    assert called is False
+
+
+def test_scan_nonzero_exit_is_error_and_lock_is_released(tmp_path):
+    def runner(data_dir, params, log):
+        log("部分失败")
+        return {"exit_code": 1, "summary": {"hits": 2}}
+
+    with _serve(tmp_path, runner) as url:
+        status, _ = _request("POST", url + "/api/scan", {"keywords": ["x"]})
+        assert status == 202
+        task = _wait_done(url)
+        assert task["status"] == "error"
+        assert task["exit_code"] == 1
+        assert task["summary"] == {"hits": 2}
+
+        status, _ = _request("POST", url + "/api/scan", {"keywords": ["x"]})
+        assert status == 202
+
+
 def test_scan_only_invalid_element_returns_400(tmp_path):
     with _serve(tmp_path, _noop_runner) as url:
         status, body = _request("POST", url + "/api/scan", {"keywords": ["x"], "only": ["湛江日报", 5]})
@@ -550,6 +646,18 @@ def test_config_only_invalid_type_returns_400(tmp_path):
         )
         assert status == 400
         assert json.loads(body)["error"]
+
+
+def test_config_unknown_paper_does_not_write_file(tmp_path):
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/config",
+            {"keywords": ["x"], "days": 2, "workers": 8, "only": "不存在报"},
+        )
+        assert status == 400
+        assert "不存在报" in json.loads(body)["error"]
+        assert not (tmp_path / "state" / "web_config.json").exists()
 
 
 def test_load_web_config_legacy_without_only_falls_back_to_empty(tmp_path):
@@ -648,6 +756,34 @@ def test_papers_add_then_list(tmp_path):
 
         status, body = _request("GET", url + "/api/papers")
         assert json.loads(body) == view
+
+
+def test_papers_cannot_change_while_scan_is_running(tmp_path):
+    release = threading.Event()
+
+    def runner(data_dir, params, log):
+        release.wait(timeout=5)
+        return {"exit_code": 0, "summary": None}
+
+    with _serve(tmp_path, runner) as url:
+        status, _ = _request("POST", url + "/api/scan", {"keywords": ["x"]})
+        assert status == 202
+        status, body = _request("POST", url + "/api/papers", _paper_entry())
+        assert status == 409
+        assert "扫描进行中" in json.loads(body)["error"]
+        release.set()
+        assert _wait_done(url)["status"] == "done"
+
+
+def test_papers_add_preserves_corrupt_custom_file(tmp_path):
+    custom_path = tmp_path / "papers.custom.json"
+    original = "{ broken"
+    custom_path.write_text(original, encoding="utf-8")
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers", _paper_entry())
+        assert status == 409
+        assert "请先修复原文件" in json.loads(body)["error"]
+    assert custom_path.read_text(encoding="utf-8") == original
 
 
 def test_papers_add_same_name_overrides_builtin(tmp_path):

@@ -8,10 +8,16 @@
   "use strict";
 
   var MAX_ROWS = 500;
+  var MAX_LAYOUTS = 48;
   var SCAN_POLL_MS = 1200;
+  var api = window.NewspaperApi;
 
   var scanTimer = null;
-  var papersView = null;
+  var scanPollInFlight = false;
+  var scanLogCursor = 0;
+  var scanLogLines = [];
+  var currentScanTaskId = null;
+  var renderTimer = null;
 
   // 「只扫选中报社」：scanPaperNames = 可选报社（GET /api/papers 的 effective）；
   // scanPaperSelected = null 表示尚未筛选（全选），否则为选中名字集合。
@@ -65,26 +71,35 @@
   }
 
   /* -------------------------------------------------------------- 数据 */
-  function load() {
+  function load(options) {
+    options = options || {};
     $("meta").textContent = "加载中…";
-    fetch("/api/hits", { cache: "no-store" })
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json();
-      })
+    var hadData = Boolean(state.data);
+    var allPapersSelected = hadData && state.papers.size === state.data.papers.length;
+    var allKeywordsSelected = hadData && state.keywords.size === state.data.keywords.length;
+    api.get("/api/hits")
       .then(function (data) {
         state.data = data;
-        state.papers = new Set(data.papers);
-        state.keywords = new Set(data.keywords);
-        state.q = "";
-        state.from = "";
-        state.to = "";
-        state.sort = "date-desc";
-        state.preset = "all";
-        $("q").value = "";
-        $("from").value = "";
-        $("to").value = "";
-        $("sort").value = "date-desc";
+        if (!hadData || !options.preserve) {
+          state.papers = new Set(data.papers);
+          state.keywords = new Set(data.keywords);
+          state.q = "";
+          state.from = "";
+          state.to = "";
+          state.sort = "date-desc";
+          state.preset = "all";
+          $("q").value = "";
+          $("from").value = "";
+          $("to").value = "";
+          $("sort").value = "date-desc";
+        } else {
+          state.papers = allPapersSelected
+            ? new Set(data.papers)
+            : new Set(data.papers.filter(function (name) { return state.papers.has(name); }));
+          state.keywords = allKeywordsSelected
+            ? new Set(data.keywords)
+            : new Set(data.keywords.filter(function (name) { return state.keywords.has(name); }));
+        }
         $("version").textContent = "v" + data.version;
         buildControls();
         updatePresetUI();
@@ -101,7 +116,7 @@
     var paperBox = $("paper-chips");
     paperBox.textContent = "";
     data.papers.forEach(function (name) {
-      paperBox.appendChild(makeChip(name, function (on) {
+      paperBox.appendChild(makeChip(name, state.papers.has(name), function (on) {
         if (on) state.papers.add(name); else state.papers.delete(name);
       }));
     });
@@ -109,7 +124,7 @@
     var kwBox = $("keyword-chips");
     kwBox.textContent = "";
     data.keywords.forEach(function (kw) {
-      kwBox.appendChild(makeChip(kw, function (on) {
+      kwBox.appendChild(makeChip(kw, state.keywords.has(kw), function (on) {
         if (on) state.keywords.add(kw); else state.keywords.delete(kw);
       }));
     });
@@ -122,10 +137,10 @@
     });
   }
 
-  function makeChip(label, toggle) {
-    var chip = el("button", "chip on", label);
+  function makeChip(label, initialOn, toggle) {
+    var chip = el("button", initialOn ? "chip on" : "chip", label);
     chip.type = "button";
-    chip.setAttribute("aria-pressed", "true");
+    chip.setAttribute("aria-pressed", initialOn ? "true" : "false");
     chip.addEventListener("click", function () {
       var on = !chip.classList.contains("on");
       chip.classList.toggle("on", on);
@@ -142,7 +157,7 @@
     var q = state.q.trim().toLowerCase();
     return state.data.records.filter(function (r) {
       if (!state.papers.has(r.paper)) return false;
-      if (state.keywords.size && !r.matched.some(function (k) { return state.keywords.has(k); })) return false;
+      if (!state.keywords.size || !r.matched.some(function (k) { return state.keywords.has(k); })) return false;
       if (state.from && r.date && r.date < state.from) return false;
       if (state.to && r.date && r.date > state.to) return false;
       if (q) {
@@ -205,7 +220,9 @@
     var box = $("preset-chips");
     if (!box) return;
     Array.prototype.forEach.call(box.querySelectorAll("[data-preset]"), function (btn) {
-      btn.classList.toggle("on", btn.getAttribute("data-preset") === state.preset);
+      var active = btn.getAttribute("data-preset") === state.preset;
+      btn.classList.toggle("on", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
     });
   }
 
@@ -262,8 +279,9 @@
   }
 
   function parseInt10(value) {
-    var n = parseInt(value, 10);
-    return isNaN(n) ? NaN : n;
+    if (typeof value === "string" && value.trim() === "") return NaN;
+    var n = Number(value);
+    return isFinite(n) && Math.floor(n) === n ? n : NaN;
   }
 
   function setScanStatus(text) { $("scan-status").textContent = text; }
@@ -294,7 +312,7 @@
     if (!btn) return;
     var zero = scanPaperNames.length > 0 && scanSelectedNames().length === 0;
     btn.disabled = scanRunning || zero;
-    btn.textContent = scanRunning ? "扫描中…" : "立即扫描";
+    btn.textContent = scanRunning ? "扫描中…" : "开始扫描";
   }
 
   // 渲染扫描用的报社多选 chips（默认全选；全部用 createElement/textContent）
@@ -355,11 +373,7 @@
 
   // 启动时回填上次配置；失败就用默认值，不阻塞页面
   function loadScanConfig() {
-    fetch("/api/config", { cache: "no-store" })
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json();
-      })
+    api.get("/api/config")
       .then(function (cfg) {
         if (Array.isArray(cfg.keywords) && cfg.keywords.length) {
           $("scan-kw").value = cfg.keywords.join(", ");
@@ -437,101 +451,145 @@
     var body = built.body;
 
     // 保存配置：失败只提示，不阻断扫描
-    fetch("/api/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).catch(function () { /* 忽略：保存失败不影响本次扫描 */ });
+    api.post("/api/config", body).catch(function () { /* 保存失败不影响本次扫描 */ });
 
     setScanRunning(true);
     setScanStatus("正在提交扫描…");
+    scanLogCursor = 0;
+    scanLogLines = [];
     $("scan-log").textContent = "";
+    updateScanProgress(null);
 
-    fetch("/api/scan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          if (res.status === 202) { setScanStatus("扫描已启动（不可中断，强制停止请关闭看板进程）…"); beginPolling(); return; }
-          if (res.status === 409) { setScanStatus("已有扫描在运行，继续查看进度…"); beginPolling(); return; }
-          setScanRunning(false);
-          setScanStatus("启动失败：" + ((data && data.error) || ("HTTP " + res.status)));
-        });
+    api.post("/api/scan", body)
+      .then(function (task) {
+        consumeScanTask(task, true);
+        setScanStatus("扫描已启动");
+        beginPolling();
       })
       .catch(function (err) {
+        if (err.status === 409) {
+          setScanStatus("已有扫描在运行，正在接入进度…");
+          resumeScan();
+          return;
+        }
         setScanRunning(false);
-        setScanStatus("请求失败：" + err.message);
+        setScanStatus("启动失败：" + err.message);
       });
   }
 
   function beginPolling() {
+    schedulePoll(0);
+  }
+
+  function schedulePoll(delay) {
     if (scanTimer) return;
-    pollScan();
-    scanTimer = window.setInterval(pollScan, SCAN_POLL_MS);
+    scanTimer = window.setTimeout(function () {
+      scanTimer = null;
+      pollScan();
+    }, delay);
   }
 
   function stopPolling() {
-    if (scanTimer) { window.clearInterval(scanTimer); scanTimer = null; }
+    if (scanTimer) { window.clearTimeout(scanTimer); scanTimer = null; }
   }
 
-  function renderScanLog(lines) {
+  function renderScanLog() {
     var box = $("scan-log");
-    box.textContent = lines.join("\n");   // textContent：日志里可能带回抓取到的网页文本
+    box.textContent = scanLogLines.join("\n");
     box.scrollTop = box.scrollHeight;
   }
 
+  function updateScanProgress(task) {
+    var wrap = $("scan-progress");
+    var bar = $("scan-progress-bar");
+    var text = $("scan-progress-text");
+    if (!task || task.status === "idle") {
+      wrap.hidden = true;
+      bar.style.width = "0%";
+      text.textContent = "正在准备…";
+      return;
+    }
+    var progress = task.progress || {};
+    var percent = typeof progress.percent === "number" ? progress.percent : 0;
+    wrap.hidden = false;
+    bar.style.width = Math.max(0, Math.min(100, percent)) + "%";
+    wrap.setAttribute("aria-valuenow", String(percent));
+    if (progress.total) {
+      text.textContent = progress.completed + " / " + progress.total + "（" + percent + "%）";
+    } else if (task.status === "running") {
+      text.textContent = "正在扫描…";
+    } else {
+      text.textContent = task.status === "done" ? "扫描完成" : "扫描未完整完成";
+    }
+  }
+
+  function consumeScanTask(task, replace) {
+    if (task.task_id && currentScanTaskId && task.task_id !== currentScanTaskId) {
+      replace = true;
+      scanLogCursor = 0;
+    }
+    if (task.task_id) currentScanTaskId = task.task_id;
+    if (replace || task.logs_truncated) scanLogLines = [];
+    if (Array.isArray(task.log) && task.log.length) {
+      scanLogLines = scanLogLines.concat(task.log).slice(-300);
+      renderScanLog();
+    }
+    if (typeof task.log_cursor === "number") scanLogCursor = task.log_cursor;
+    updateScanProgress(task);
+  }
+
   function pollScan() {
-    fetch("/api/scan", { cache: "no-store" })
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json();
-      })
+    if (scanPollInFlight) return;
+    scanPollInFlight = true;
+    api.get("/api/scan?after=" + encodeURIComponent(scanLogCursor))
       .then(function (task) {
-        if (Array.isArray(task.log)) renderScanLog(task.log);
+        consumeScanTask(task, false);
         if (task.status === "done") {
           stopPolling();
           setScanRunning(false);
-          var code = (task.exit_code === null || task.exit_code === undefined) ? 0 : task.exit_code;
-          if (task.error) {
-            setScanStatus("扫描完成（退出码 " + code + "）：" + task.error);
-          } else {
-            setScanStatus("扫描完成（退出码 " + code + "）");
-          }
-          load();
+          var summary = task.summary;
+          setScanStatus(summary && typeof summary.hits === "number"
+            ? "扫描完成：命中 " + summary.hits + " 篇，新增 " + Number(summary.new_hits || 0) + " 篇"
+            : "扫描完成");
+          load({ preserve: true });
         } else if (task.status === "error") {
           stopPolling();
           setScanRunning(false);
-          setScanStatus("扫描失败：" + (task.error || "未知错误"));
-          load();
+          setScanStatus("扫描未完整完成：" + (task.error || "请查看运行日志"));
+          $("scan-log-details").open = true;
+          load({ preserve: true });
         } else {
-          setScanStatus("扫描中…（不可中断，强制停止请关闭看板进程）");
+          var progress = task.progress || {};
+          setScanStatus(progress.total
+            ? "扫描中：" + progress.completed + " / " + progress.total
+            : "扫描中…");
+          schedulePoll(SCAN_POLL_MS);
         }
       })
       .catch(function (err) {
         stopPolling();
         setScanRunning(false);
         setScanStatus("轮询失败：" + err.message);
+      })
+      .finally(function () {
+        scanPollInFlight = false;
       });
   }
 
   function resumeScan() {
-    fetch("/api/scan", { cache: "no-store" })
-      .then(function (res) { return res.ok ? res.json() : null; })
+    api.get("/api/scan")
       .then(function (task) {
         if (!task) return;
-        if (Array.isArray(task.log) && task.log.length) renderScanLog(task.log);
+        scanLogLines = [];
+        consumeScanTask(task, true);
         if (task.status === "running") {
           setScanRunning(true);
           setScanStatus("自动扫描进行中…");
           beginPolling();
         } else if (task.status === "done") {
-          var code = task.exit_code === null || task.exit_code === undefined ? 0 : task.exit_code;
-          setScanStatus("自动扫描已完成（退出码 " + code + "）");
-          load();
+          setScanStatus("最近一次扫描已完成");
         } else if (task.status === "error") {
-          setScanStatus("自动扫描失败：" + (task.error || "未知错误"));
+          setScanStatus("最近一次扫描未完整完成：" + (task.error || "请查看日志"));
         }
       })
       .catch(function () { /* 首屏恢复失败不阻塞其他功能 */ });
@@ -596,9 +654,9 @@
   }
 
   function applyPapersView(view) {
-    papersView = view;
     renderPapers(view);
     scanPaperNames = (view.effective || []).slice();
+    setPapersStatus(scanPaperNames.length + " 家已启用");
     if (pendingOnly !== null) {
       applyConfigOnly(pendingOnly);
       pendingOnly = null;
@@ -612,11 +670,7 @@
   }
 
   function loadPapers() {
-    fetch("/api/papers", { cache: "no-store" })
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json();
-      })
+    api.get("/api/papers")
       .then(function (view) {
         applyPapersView(view);
       })
@@ -679,6 +733,8 @@
   }
 
   function fillPaperForm(paper) {
+    $("papers-card").open = true;
+    $("paper-form-details").open = true;
     $("paper-name").value = paper.name || "";
     $("paper-style").value = paper.style || "ymd";
     $("paper-date-format").value = paper.date_format || "";
@@ -690,75 +746,45 @@
     $("paper-exclude").value = paper.node_exclude || "";
     updatePaperStyleUI();
     setPapersStatus("正在编辑「" + paper.name + "」，保存后会同名覆盖。");
-    $("paper-name").focus();
+    window.setTimeout(function () { $("paper-name").focus(); }, 0);
   }
 
   function addPaper() {
     var got = collectPaperForm();
     if (got.error) { setPapersStatus(got.error); return; }
-    setPapersStatus("正在添加…");
-    fetch("/api/papers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(got.paper)
-    })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          if (!res.ok) {
-            setPapersStatus("添加失败：" + ((data && data.error) || ("HTTP " + res.status)));
-            return;
-          }
-          applyPapersView(data);
-          clearPaperForm();
-          setPapersStatus("已添加「" + got.paper.name + "」。已写入 papers.custom.json。" +
-            "要让每日 CI 扫描也包含这家，需要把它提交并推送。");
-        });
+    setPapersStatus("正在保存…");
+    api.post("/api/papers", got.paper)
+      .then(function (data) {
+        applyPapersView(data);
+        clearPaperForm();
+        $("paper-form-details").open = false;
+        setPapersStatus("已保存「" + got.paper.name + "」");
       })
-      .catch(function (err) { setPapersStatus("请求失败：" + err.message); });
+      .catch(function (err) { setPapersStatus("保存失败：" + err.message); });
   }
 
   function deletePaper(name) {
     if (!window.confirm("删除自定义报社「" + name + "」？内置报社的同名覆盖会恢复为默认配置。")) return;
     setPapersStatus("正在删除…");
-    fetch("/api/papers/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name })
-    })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          if (!res.ok) {
-            setPapersStatus("删除失败：" + ((data && data.error) || ("HTTP " + res.status)));
-            return;
-          }
-          applyPapersView(data);
-          setPapersStatus("已删除「" + name + "」。");
-        });
+    api.post("/api/papers/delete", { name: name })
+      .then(function (data) {
+        applyPapersView(data);
+        setPapersStatus("已删除「" + name + "」");
       })
-      .catch(function (err) { setPapersStatus("请求失败：" + err.message); });
+      .catch(function (err) { setPapersStatus("删除失败：" + err.message); });
   }
 
   function runPaperTest(paper) {
     setPapersHint("试抓中…（会真实联网抓取入口页）");
-    fetch("/api/papers/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(paper)
-    })
-      .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          if (!res.ok) {
-            setPapersHint("试抓失败：" + ((data && data.error) || ("HTTP " + res.status)));
-            return;
-          }
-          var text = (data.ok ? "✓" : "✗") + " 入口 " + data.entry_code + " · 版面 " + data.sections;
-          if (typeof data.sample_articles === "number") text += " · 样例文章 " + data.sample_articles;
-          if (data.note) text += " · " + data.note;
-          if (data.entry) text += " · " + data.entry;
-          setPapersHint(text);
-        });
+    api.post("/api/papers/test", paper, { timeout: 150000 })
+      .then(function (data) {
+        var text = (data.ok ? "✓" : "✗") + " 入口 " + data.entry_code + " · 版面 " + data.sections;
+        if (typeof data.sample_articles === "number") text += " · 样例文章 " + data.sample_articles;
+        if (data.note) text += " · " + data.note;
+        if (data.entry) text += " · " + data.entry;
+        setPapersHint(text);
       })
-      .catch(function (err) { setPapersHint("试抓请求失败：" + err.message); });
+      .catch(function (err) { setPapersHint("试抓失败：" + err.message); });
   }
 
   function testPaperForm() {
@@ -801,9 +827,15 @@
     renderLayouts(list);
     renderRows(list);
 
-    $("shown").textContent = list.length === all.length
-      ? "共 " + all.length + " 条"
-      : "显示 " + Math.min(list.length, MAX_ROWS) + " / " + list.length + " 条（已筛选）";
+    var visibleCount = Math.min(list.length, MAX_ROWS);
+    if (list.length > MAX_ROWS) {
+      $("shown").textContent = "显示 " + visibleCount + " / " + list.length + " 条" +
+        (list.length === all.length ? "" : "（已筛选）");
+    } else {
+      $("shown").textContent = list.length === all.length
+        ? "共 " + all.length + " 条"
+        : "显示 " + list.length + " / " + all.length + " 条（已筛选）";
+    }
     if (all.length === 0) {
       renderEmptyState(data);
     } else {
@@ -828,7 +860,7 @@
     foot.appendChild(el("code", null, data.data_dir));
     foot.appendChild(document.createTextNode(" · 归档："));
     foot.appendChild(el("code", null, data.archive_file));
-    foot.appendChild(document.createTextNode(" · 可在上方「扫描设置」中一键触发抓取（结果写入该数据目录）。"));
+    foot.appendChild(document.createTextNode(" · 页面顶部可直接开始扫描，结果写入该数据目录。"));
   }
 
   // 命中列表空状态：说明当前数据目录，并引导一键扫描；全新环境额外提示默认关键词
@@ -843,7 +875,7 @@
     box.appendChild(where);
 
     box.appendChild(el("p", null,
-      "点上方「扫描设置」里的「立即扫描」，即可触发一次真实抓取；完成后本列表会自动刷新。"));
+      "在页面顶部填写关键词并点「开始扫描」，完成后本列表会自动刷新。"));
 
     if (!data.has_web_config) {
       var kws = (data.default_keywords || []).join("、") || "（默认关键词）";
@@ -864,7 +896,7 @@
       ["当前筛选", list.length, list.length === all.length ? "全部" : "共 " + all.length + " 条中筛选"],
       ["覆盖报社", papers.length, papers.join("、") || "—"],
       ["覆盖日期", dates.length, dates.length ? dates[0] + " ~ " + dates[dates.length - 1] : "—"],
-      ["已判定文章", seenTotal, "来自 state/seen.json"]
+      ["增量索引", seenTotal, "用于识别新增报道"]
     ];
 
     var box = $("stats");
@@ -888,6 +920,7 @@
       box.appendChild(el("div", "hint", "暂无数据"));
       return;
     }
+    if (dates.length > 90) dates = dates.slice(dates.length - 90);
     var max = dates.reduce(function (m, d) { return Math.max(m, counts[d]); }, 1);
     var full = 96;
 
@@ -950,7 +983,11 @@
       if (a.date !== b.date) return a.date < b.date ? 1 : -1;
       return a.paper.localeCompare(b.paper, "zh") || a.section.localeCompare(b.section, "zh");
     });
-    $("layouts-summary").textContent = list.length ? list.length + " 个可绘制版面" : "暂无坐标";
+    var layoutCount = list.length;
+    var visibleLayouts = list.slice(0, MAX_LAYOUTS);
+    $("layouts-summary").textContent = layoutCount
+      ? (layoutCount > MAX_LAYOUTS ? "显示 " + MAX_LAYOUTS + " / " + layoutCount + " 个版面" : layoutCount + " 个可绘制版面")
+      : "暂无坐标";
     empty.hidden = list.length > 0;
     if (!list.length) {
       empty.textContent = records.length
@@ -959,11 +996,12 @@
       return;
     }
 
-    list.forEach(function (group) {
+    visibleLayouts.forEach(function (group) {
       var card = el("article", "layout-item");
       var page = el("div", "layout-page");
       var ratio = Number(group.layout.aspect_ratio) || 0.72;
       page.style.aspectRatio = String(Math.max(0.35, Math.min(1.5, ratio)));
+      page.setAttribute("role", "img");
       page.setAttribute("aria-label", group.paper + " " + group.date + " " + group.section + "版面位置图");
 
       group.layout.items.forEach(function (item) {
@@ -1041,8 +1079,16 @@
   }
 
   /* -------------------------------------------------------------- 启动 */
+  function scheduleRender() {
+    if (renderTimer) window.clearTimeout(renderTimer);
+    renderTimer = window.setTimeout(function () {
+      renderTimer = null;
+      render();
+    }, 140);
+  }
+
   function init() {
-    $("reload").addEventListener("click", load);
+    $("reload").addEventListener("click", function () { load({ preserve: true }); });
     $("scan-run").addEventListener("click", startScan);
     $("scan-mode").addEventListener("change", function () {
       if ($("scan-mode").value === "range") ensureRangeDefaults();
@@ -1057,7 +1103,10 @@
     loadScanConfig();
     loadPapers();
     resumeScan();
-    $("q").addEventListener("input", function (e) { state.q = e.target.value; render(); });
+    $("q").addEventListener("input", function (e) { state.q = e.target.value; scheduleRender(); });
+    $("scan-kw").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); startScan(); }
+    });
     $("from").addEventListener("change", function (e) {
       state.from = e.target.value; state.preset = "custom"; updatePresetUI(); render();
     });

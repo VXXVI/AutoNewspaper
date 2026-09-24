@@ -7,6 +7,12 @@
 
 ### 新增
 
+- **看板信息架构与任务状态重构**：常用的关键词、日期和「开始扫描」置顶，结果列表成为
+  页面主体，并发/报社选择、筛选细项、运行日志和报社正则配置改为渐进展开；提升文字
+  对比度、键盘焦点与进度条语义。新增统一前端 JSON 请求层。后台扫描任务改为线程安全
+  快照，提供任务 ID、真实「报社 × 日期」进度、耗时和增量日志游标（`web_tasks.py`、
+  `web.py`、`static/*`、`tests/test_web_tasks.py`）。
+
 - **可复用报社适配 + 可视化版面图 + 一键启动抓取**：自定义报社配置新增 `custom`
   日期格式以及 `node_pattern` / `article_pattern` 链接规则；“试抓”同时验证入口、版面和
   样例文章。扫描器将 `<area>` / `mappingOriginal` 归一化为二维 `layout`，看板按版面
@@ -48,9 +54,9 @@
   日志实时回显、完成后自动刷新命中列表；扫描结果写回看板正在读的数据目录，配置持久化到
   `state/web_config.json`。新增四条路由：`POST /api/scan`（`202` / `409` / `400` / `403` / `413`）、
   `GET /api/scan`、`POST /api/config`、`GET /api/config`（缺失回落 `config.DEFAULT_*`）。
-  扫描执行器 `scan_runner` 可注入（测试离线驱动），默认实现用
-  `contextlib.redirect_stdout/stderr` 捕获日志并兜住 argparse 的 `SystemExit(2)`，绝不走
-  `subprocess`。安全上落实 Host / Origin / Content-Type / body 大小四道校验，关键词只作 argv
+  扫描执行器 `scan_runner` 可注入（测试离线驱动），默认实现通过显式日志回调逐行推送并
+  兜住 argparse 的 `SystemExit(2)`，不修改进程全局 stdout/stderr，也不走 `subprocess`。
+  安全上落实 Host / Origin / Content-Type / body 大小四道校验，关键词只作 argv
   传递、绝不拼 shell，且不返回任何 CORS 头（`web.py`、`static/*`、`config.py`、`paths.py`、
   `tests/test_web.py`）。
 - **南方日报 layoutData.mappingOriginal 多边形坐标解析与三级几何兜底**：
@@ -109,6 +115,14 @@
   字符串保持不变（向后兼容），供排序/统计使用。
 
 ### 修复
+
+- **看板后端与配置写入加固**：非零扫描退出不再显示为成功；单边日期范围先归一化再计算
+  进度；拒绝未知报社后再启动；扫描启动异常会释放任务锁。自定义报社写接口改用严格读取，
+  原 JSON 损坏时返回冲突并保留文件；扫描期间禁止修改规则。看板拒绝非环回监听，并新增
+  CSP / 防 iframe / MIME 与 Referrer 安全头；远程查看应使用 SSH 隧道。
+- **看板筛选与轮询一致性**：修复刷新后 chip 外观与实际筛选状态不一致、取消全部关键词
+  反而显示全部结果、轮询重叠导致日志重复/游标倒退，以及跨任务沿用旧游标的问题；搜索
+  增加轻量防抖，大结果明确标注 500 条展示上限并限制一次渲染的版面/趋势数量。
 
 - **防止 HTTP 200 静默漏报**：入口页未解析到 `node_*` / `content_*`、
   所有版面均无文章，或所有文章抓取/解析失败时，现会记录结构异常并
