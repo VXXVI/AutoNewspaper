@@ -5,8 +5,8 @@
 
 一个**本地单机监测工具**：既可用 CLI，也可在浏览器看板中一键抓取。项目会扫描当日
 全部版面文章，按关键词做**标题 + 正文全文匹配**，正文里提一句也能命中。运行时
-**零第三方依赖**（仅 Python 标准库 + 系统 `curl`）。默认关键词是「人工智能」，可在
-命令行或看板中随时修改；改词不会清空已有的历史归档。
+**零第三方依赖**（仅 Python 标准库；系统 `curl` 为**可选兜底**，抓取默认走标准库
+HTTP/1.1）。默认关键词是「人工智能」，可在命令行或看板中随时修改；改词不会清空已有的历史归档。
 
 ---
 
@@ -15,10 +15,10 @@
 | 项 | 实现 | 是否需额外服务器 |
 |---|---|---|
 | 数据存储 | 本地文件 `state/seen.json`、`hits/*` | 否（无需数据库） |
-| 抓取 | `curl` 直连六家报社官网 | 否，仅需外网出站 |
+| 抓取 | 标准库 HTTP 直连六家报社官网（`curl` 兜底） | 否，仅需外网出站 |
 | 运行 | **GitHub Actions**（免费 runner，生产路径）或本机 Python | 否 |
 | 调度 | 生产 = **GitHub Actions + 外部触发**；本机 = macOS `launchd` / Windows 任务计划程序 | 否 |
-| 依赖 | Python 3 + 系统 `curl`，**0 个第三方运行时包** | 否 |
+| 依赖 | Python 3，**0 个第三方运行时包**（`curl` 可选） | 否 |
 
 **调度说明**：生产路径是 **GitHub Actions + 外部 cron 触发**（见下方「调度方案对照表」）。
 macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Actions **可以并存**——
@@ -29,7 +29,7 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 
 **是否需要打包 exe：不需要。** 两条理由：
 
-1. 项目**零第三方运行时依赖**（仅 Python 标准库 + 系统 `curl`），exe 想解决的
+1. 项目**零第三方运行时依赖**（仅 Python 标准库；`curl` 可选），exe 想解决的
    「用户装不上依赖」问题在本项目根本不存在；
 2. 真正的问题是**「谁每天来触发」**——exe 自己不会定时启动，打包并不能解决调度；
    反而会引入体积、杀软误报、升级需重新分发等新麻烦。
@@ -52,6 +52,21 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 
 **日级精度下四种都可接受**——默认扫「今天 + 昨天」，漏掉一天第二天会自动补回来。
 
+### 分发给别人用（推荐的三种方式）
+
+不需要 exe。按目标用户从易到难：
+
+1. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
+   换机即用；目标机只需装 Python 3.9+。
+2. **从 Release 安装**：打 `v*` tag 会触发 `.github/workflows/release.yml` 构建
+   sdist/wheel 并发布到 GitHub Release，目标机 `pip install <release 里的 .whl>`
+   或 `uv tool install <whl>`（`uv` 会自动准备 Python）。
+3. **便携 Python（无 Python 环境时）**：Windows 用官方 *embeddable* Python 解压到项目内
+   + 一个 `start.cmd`；macOS 用 python.org 安装包。比 PyInstaller 单文件更稳、更少被杀软误报。
+
+只有当目标用户既没有 Python、又不能安装时，才考虑 PyInstaller（`--onedir`、按平台分别构建、
+需代码签名/公证），且必须先解决跨平台签名与升级问题。
+
 ---
 
 ## 二、项目结构
@@ -66,14 +81,18 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   ├── config.py                 #   报社入口、清洗规则、默认值（不含 I/O）
 │   ├── papers.py                 #   自定义报社：papers.custom.json 读写/校验/合并
 │   ├── paths.py                  #   数据目录解析
-│   ├── http.py                   #   curl 抓取（含 HTTP/1.1 强制与重试）
+│   ├── http.py                   #   抓取层：标准库优先（HTTP/1.1）+ curl 兜底
 │   ├── parse.py                  #   HTML 解析与关键词匹配（纯函数）
 │   ├── scanner.py                #   扫描编排（入口→版面→文章）
 │   ├── state.py                  #   增量状态读写与「新增」判定
 │   ├── report.py                 #   Markdown / HTML / JSON / CSV 渲染
 │   ├── exporter.py               #   指定目录导出（CSV / JSON）
 │   ├── web.py                    #   本地看板 + 一键触发扫描（stdlib http.server）
-│   ├── static/                   #   看板前端（原生 HTML/CSS/JS，无构建）
+│   ├── web_tasks.py              #   看板后台任务状态（线程安全快照 / 取消 / 日志游标）
+│   ├── static/                   #   看板前端（原生 HTML/CSS/JS ES Module，无构建）
+│   │   ├── app.js                #     ES Module 入口（渲染 / 事件 / 扫描编排）
+│   │   ├── api.js                #     统一 JSON 请求层
+│   │   └── format.js             #     纯函数工具（日期 / CSV / 关键词 / 位置文本）
 │   └── cli.py                    #   参数解析与主流程
 ├── papers.custom.json            # 自定义报社配置（项目根，有意入库，见「自定义报社」）
 ├── .github/workflows/            # CI 与每日扫描 workflow（生产调度入口）
@@ -95,9 +114,9 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 ## 三、安装
 
 项目支持 **macOS / Linux / Windows 10 1803+**。从 GitHub 获取项目需要 **Git**；
-程序运行时只需要 **Python 3.9+** 和 **curl**，不需要 `pip install`，也不需要先创建
-虚拟环境。macOS 与 Windows 10 1803+
-通常已带 curl；Linux 若 `curl --version` 失败，请先用系统包管理器安装 curl。
+程序运行时只需要 **Python 3.9+**，不需要 `pip install`，也不需要先创建虚拟环境。
+抓取默认走标准库，**系统 `curl` 只是可选兜底**：macOS / Windows 10 1803+ / 多数 Linux
+通常自带；即使没有，抓取仍可工作（个别站点若需走 curl 才会用到）。
 
 ### 全新克隆后直接运行
 
@@ -506,7 +525,9 @@ make start                         # 打开看板 + 按上次页面设置自动�
   会使用同一结果集同步刷新，再点一次或点击清除即可恢复完整结果。
 - **开始一次监测（会写数据）**：页面顶部保留最常用的**关键词 / 扫描范围 / 开始扫描**；
   并发数与报社选择收进「高级扫描设置」，日常使用不再被技术字段干扰。扫描由看板进程
-  **直接触发**，页面显示真实的「报社 × 日期」总体进度，日志按游标增量加载，完成后自动刷新命中列表。
+  **直接触发**，进度经 **SSE**（`GET /api/scan/events`）实时推送，页面显示真实的
+  「报社 × 日期」总体进度与增量日志（SSE 不可用时自动回退轮询），完成后自动刷新命中列表。
+  扫描进行中会出现**「取消扫描」**按钮，点击后为**协作式取消**（见「已知边界」）。
   **扫描范围**为二选一：
   - `按天数`：1 ~ 62 天（默认 2 = 今天 + 昨天）；
   - `按日期范围`：两个 `<input type="date">`（默认 `until` = 今天、`since` = 今天减 1 天），
@@ -519,8 +540,8 @@ make start                         # 打开看板 + 按上次页面设置自动�
   （含 `mode` / `since` / `until` / `only`）持久化在 `state/web_config.json`。
   页面首次加载会聚焦**当前保存的关键词**；每轮扫描完成后自动切换为该次扫描关键词并刷新报道，
   避免新结果混在旧关键词历史里难以发现。
-  ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`；**扫描进行中不可中断**，
-  如需强制停止请关闭看板进程（Ctrl+C / 关窗口）。
+  ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`；扫描中可点「取消扫描」
+  （协作式，下一个工作单元边界生效，不写 `state/` 与 `hits/`），也可直接关闭看板进程。
   当命中为 0（空归档）时，命中列表区会给出**空状态引导**：显示当前数据目录并提示点
   「开始扫描」；若是**全新环境**（该目录下还没有 `state/web_config.json`），还会提示
   默认关键词与默认扫「今天 + 昨天」。
@@ -539,6 +560,11 @@ make start                         # 打开看板 + 按上次页面设置自动�
     （逗号分隔字符串或字符串数组）只扫指定报社。
   - `GET /api/scan`：读当前/最近一次任务状态，无任务时返回 `{"status":"idle"}`；可传
     `?after=<日志游标>` 只取新增日志，响应含任务 ID、总体进度和下一游标。
+  - `GET /api/scan/events`：SSE（`text/event-stream`）持续推送任务快照与日志增量，到达终态自动
+    关闭；前端优先用它接收进度，不可用或断开时回退到 `GET /api/scan` 轮询。
+  - `POST /api/scan/cancel`：请求取消当前扫描（**协作式**，在下一个「报社 × 日期」单元边界生效，
+    不写 `state/` 与 `hits/`）。`202` 已受理 / `409` 无运行中任务；任务状态变为 `cancelled`（退出码 130）。
+  - `GET /api/scan/history`：最近任务摘要（`state/tasks.json`，最多 20 条），含状态、耗时、命中概览。
   - `POST /api/config` / `GET /api/config`：保存 / 读取配置；文件不存在时回落到
     `config.DEFAULT_KEYWORDS` / `DEFAULT_DAYS` / `DEFAULT_WORKERS`，并补 `mode="days"` /
     `since=null` / `until=null` / `only=""`。`only` 为可选字段（逗号分隔字符串，也接受字符串
@@ -742,17 +768,19 @@ macOS/Linux Shell 启动脚本语法；Windows job 另外验证 PowerShell 解�
 - **只匹配字面关键词**。默认精确匹配「人工智能」；覆盖同义词或相关表述可用 `--kw`
   多传几个。改词不会清除 `hits/archive.json`，看板可用「查看全部历史」回看旧关键词结果。
 - ⚠️ **光明日报必须走 HTTP/1.1**：`epaper.gmw.cn` 的服务器在 HTTP/2 下会直接断连
-  （curl 报 `52 Empty reply from server`），而 curl 默认会经 ALPN 协商到 h2，
-  所以 `http.py` 显式加了 `--http1.1`。**若把抓取逻辑移植到 requests / aiohttp /
-  Node fetch，务必先验证该站 h2 是否可用**，否则会静默漏掉光明日报（其余四家不受影响）。
+  （curl 报 `52 Empty reply from server`）。`http.py` 现在的**主路径是标准库 `urllib`
+  （默认 HTTP/1.1）**，天然规避该问题；系统 `curl` 仅作兜底且显式加 `--http1.1`。
+  **若把抓取逻辑移植到 requests / aiohttp / Node fetch，务必先验证该站 h2 是否可用**，
+  否则会静默漏掉光明日报（其余四家不受影响）。
   - 诊断手法：同一 URL 分别用 `curl --http1.1`、`curl --http2`、
     `python3 -c "import urllib.request;..."` 各抓一次对比。urllib 默认走 h1.1，
     若它成功而 curl 默认失败，即可锁定是 h2 问题。
 - **对报社站点是轻量访问**：每天每站约 100~200 个请求、并发 8，属正常阅读量级。
   默认并发 8；若某家不稳可降到 4~5（`--workers 5`）。
-- **看板暂无「停止扫描」按钮**：扫描在看板进程内的线程里直接调用 `cli.main`，Python 线程
-  无法安全强杀（改成子进程属设计变更，收益不抵风险）。需要强制停止时，关闭看板进程
-  （Ctrl+C / 关窗口）即可；界面上已标注「本次扫描不可中断」。
+- **看板支持「取消扫描」但为协作式**：扫描在看板进程内的线程里直接调用 `cli.main`，Python
+  线程无法安全强杀。点「取消扫描」或 `POST /api/scan/cancel` 后，会在**下一个「报社 × 日期」
+  单元边界**退出（正在进行的单个 HTTP 请求不会被打断），且**不写入** `state/` 与 `hits/`，
+  任务状态标记为 `cancelled`（退出码 130）。要立即停止整个进程时，Ctrl+C / 关窗口即可。
 
 ---
 

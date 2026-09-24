@@ -7,6 +7,22 @@
 
 ### 新增
 
+- **抓取层改为标准库优先、系统 curl 兜底**：主路径用 `urllib`（HTTP/1.1）直连，天然绕开
+  光明日报在 HTTP/2 下断连的问题，同时去掉「必须装有系统 curl」的硬依赖、少一次 fork/exec；
+  仅当标准库网络层失败且系统存在 curl 时才兜底重试（站点侧 4xx/5xx 不触发兜底）。
+  （`http.py`、`tests/test_http.py`）
+- **看板扫描进度改 SSE + 协作式取消 + 任务历史**：新增 `GET /api/scan/events`
+  （`text/event-stream`，按日志游标增量推送，终态自动关闭；前端不可用/断开时回退轮询）、
+  `POST /api/scan/cancel`（在下一个「报社 × 日期」单元边界退出，退出码 130，不写 state/hits，
+  任务状态 `cancelled`）、`GET /api/scan/history`（`state/tasks.json`，最近 20 条摘要）。
+  取消回调经 ContextVar 传递，不改可注入的 runner 签名（`cli.py`、`web.py`、`web_tasks.py`、
+  `static/*`、`config.py`、`paths.py`）。
+- **前端抽 ES Module**：新增 `static/format.js`（日期 / CSV / 关键词 / 位置文本等纯函数），
+  `static/app.js` 改为 ES Module 入口并 `import` 之；`index.html` 以 `<script type="module">`
+  加载，`static/package.json`（type=module）让 Node/CI 的 `node --check` 覆盖模块。
+- **发布与分发**：新增 `.github/workflows/release.yml`，打 `v*` tag 时构建 sdist/wheel、
+  在全新 venv 冒烟验证 `newspaper-scan --version` 与 `static/` 随包安装，再用 `gh` 发布到
+  GitHub Release；README 增补「分发给别人用」的三种推荐方式。
 - **默认主题与历史查看联动**：默认关键词调整为「人工智能」。看板首次加载聚焦已配置关键词，
   每轮扫描完成后自动聚焦本轮关键词；更换关键词不会清除 `hits/archive.json`，可用「查看全部历史」
   一键回看旧关键词结果。趋势日期柱和版面「查看本版报道」按钮会让趋势、版面与报道使用同一结果集，
@@ -198,6 +214,12 @@
 
 ### 变更
 
+- **看板装配加内存缓存**：`build_dashboard` 以归档 / `seen.json` / `web_config.json` 的
+  `(mtime_ns, size)` 为指纹缓存装配结果，未变化时不再每次请求都全量解析 + 排序；显式传入
+  `now` 时跳过缓存（`web.py`）。archive/seen 完整迁移到 `sqlite3` 列为可选后续项。
+- **静态资源 ETag / Last-Modified / gzip**：`/static/*` 与首页返回弱 ETag，命中
+  `If-None-Match` 回 `304`；大于 1KB 且客户端接受时返回 gzip（尊重 `q=0`，带 `Vary`），
+  静态缓存改 `no-cache`（轻量校验），API 仍 `no-store`（`web.py`）。
 - **本地看板不再是纯只读**：`web.py` 模块 docstring、`--help` 描述与看板 footer 里「只读、
   不触发抓取」的说法全部更正；看板新增触发抓取能力，会写入 `state/` 与 `hits/`。
 - **每日触发时间统一为 10:00**：本机安装脚本默认值（`install_launchd.sh` /
