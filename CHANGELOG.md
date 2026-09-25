@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-25
+
 ### 新增
 
 - **源码分发与克隆体验**：`.gitattributes` 增加 `export-ignore`（`legacy/`、`docs/`、`.github/`），
