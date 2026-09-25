@@ -5,6 +5,47 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-25
+
+### 修复
+
+- **看板前端在真实浏览器里完全不可用**：`web.STATIC_TYPES` 白名单漏收 `store.js`，
+  `app.js` 的静态 `import "./store.js"` 拿到 404，整个 ES Module 不执行 —— 页面停在
+  「正在读取数据…」，命中列表 / 扫描 / 导出 / 报社管理全部失效。jsdom 测试直接从文件系统
+  `import()`，绕过 HTTP 层所以 7 个用例全绿漏检（`web.py`、`tests/test_web.py`）。
+- **`dashboard.py` 未传脚本自身目录**：从仓库外启动时 `state/`、`hits/`、
+  `papers.custom.json` 会落到当前工作目录，与 README「数据目录自动探测项目根」不符；
+  现与 `daily_scan.py` 对齐（`web.main()` 新增 `default_data_dir`，`dashboard.py`）。
+- **`--host ::1` 在绑定阶段失败**并给出「端口不可用」的误导提示：服务器以 `AF_INET`
+  绑定，现把 `::1` 一并归一为 `127.0.0.1`（`web.py`）。
+- **静态 `hits/index.html` 的链接未校验协议**：`data:` 等非 http/https 的 URL 现降级为
+  纯文本，与前端 `safeUrl()` 口径一致（`report.py`）。
+- **`hits_to_csv` 对非数值 `text_len` 不做公式转义**：数值原样输出（避免 `-42` 被误加撇号），
+  只有字符串才走转义兜底（`report.py`）。
+
+### 变更
+
+- **统一扫描回溯天数为 2（今天 + 昨天）**：`.github/workflows/scan.yml` 与
+  `scripts/run_scan.sh` 原先固定 `--days 1`，与 README「默认扫今天+昨天，漏掉一天第二天会
+  自动补回来」的承诺相反 —— 只扫 1 天时，若某报入口当天失败或报纸当天未上线，该日文章不会
+  被后续运行覆盖、`seen.json` 也不记录，属**永久漏报**。现两处与 CLI 默认 `DEFAULT_DAYS = 2` 对齐。
+- **便携包不再携带本机运行数据**：`release.yml` 的 `git archive` 排除 `state/` 与 `hits/`
+  （含维护者的增量状态与历史归档），避免接收方首次扫描显示「0 新增」。
+- **`.gitignore` 增加 `state/tasks.json`**：看板任务历史含本机关键词与 `only` 报社列表，
+  与 `web_config.json` 同等对待，避免被日常 `git add -A` 带进 main。
+- **前端 DOM 测试的版本桩改用哨兵值 `0.0.0-stub`**：原先硬编码 `0.2.0`，容易被误读成
+  「版本漂移漏检」，实际只是桩数据（`tests/frontend/harness.mjs`、`app.dom.mjs`）。
+
+### 测试
+
+- 新增 `test_all_static_assets_reachable_over_http`、`test_app_js_imports_are_served`：
+  在 HTTP 层逐个请求 `static/` 下的资源并遍历 `app.js` 的本地 import，守护白名单同步
+  （本轮 P0 的回归测试）。
+- 新增 `test_create_server_normalizes_ipv6_loopback`、`test_create_server_rejects_non_loopback`。
+- 新增 `test_hits_to_csv_escapes_non_numeric_text_len_only`、
+  `test_render_md_lists_failed_entries`（抓取失败可见化此前零覆盖）、
+  `test_render_html_links_only_http_and_https`。
+
 ## [0.3.0] - 2026-09-25
 
 ### 新增

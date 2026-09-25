@@ -136,6 +136,62 @@ def test_write_md_and_html_roundtrip(tmp_path):
     assert list((tmp_path / "hits").glob("*.tmp")) == []
 
 
+def test_hits_to_csv_escapes_non_numeric_text_len_only():
+    """text_len 是数值时原样输出（负数不能被误加撇号），是字符串时才走公式转义。"""
+    numeric = {**HITS[0], "text_len": -42}
+    texty = {**HITS[0], "text_len": "=1+1"}
+
+    rows = list(csv.DictReader(io.StringIO(report.hits_to_csv([numeric, texty]))))
+
+    assert rows[0]["text_len"] == "-42"
+    assert rows[1]["text_len"] == "'=1+1"
+
+
+def test_render_md_lists_failed_entries():
+    """「抓取失败（缺报）」章节必须渲染出来，否则「无命中」会被误读成「真的没有」。"""
+    stats = [
+        {
+            **STATS[0],
+            "sections_failed": 2,
+            "articles_failed": 1,
+            "failed_urls": [{"code": 404, "url": "http://x/miss.html", "reason": "not found"}],
+        },
+        {
+            "paper": "南方日报",
+            "date": "2026-09-22",
+            "sections": 1,
+            "articles": 0,
+            "scanned": 0,
+            "ok": False,
+            "entry_code": 503,
+            "note": "入口请求失败",
+        },
+    ]
+
+    md = report.render_md("kw", [DATE], stats, [], [], "增量")
+
+    assert "## 抓取失败（缺报）" in md
+    assert "版面页失败 2 个" in md
+    assert "文章页失败 1 篇" in md
+    assert "code=404 http://x/miss.html" in md
+    assert "南方日报" in md
+    assert "code=503" in md
+
+
+def test_render_html_links_only_http_and_https():
+    """非 http/https 的 URL（data: / javascript:）必须降级为纯文本，不得进入 href。"""
+    archive = [
+        {**HITS[0], "url": "http://x/ok.html"},
+        {**HITS[0], "title": "危险条目", "url": "data:text/html,<script>alert(1)</script>"},
+    ]
+
+    html = report.render_html("kw", archive)
+
+    assert '<a href="http://x/ok.html"' in html
+    assert 'href="data:' not in html
+    assert "危险条目" in html
+
+
 # ---------------------------------------------------------------- 任务 B：版内位置
 GEOM_HIT = {
     **HITS[0],

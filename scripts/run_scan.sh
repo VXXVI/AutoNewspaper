@@ -15,7 +15,7 @@
 #
 # 可配置环境变量：
 #   NEWSPAPER_PYTHON  Python 解释器绝对路径（默认：项目 .venv → PATH 中的 python3）
-#   NEWSPAPER_DAYS    回溯天数（默认 1）
+#   NEWSPAPER_DAYS    回溯天数（默认 2＝今天+昨天，与 daily_scan.py 的默认一致）
 #   NEWSPAPER_KW      关键词，逗号或分号分隔
 #
 # 日志：追加写入 logs/scan-YYYY-MM-DD.log
@@ -50,7 +50,7 @@ resolve_python() {
 PYTHON_BIN="$(resolve_python)" || die "未找到可用的 python3，请安装或设置 NEWSPAPER_PYTHON"
 
 # ---------------------------------------------------------------- 参数解析
-DAYS="${NEWSPAPER_DAYS:-1}"
+DAYS="${NEWSPAPER_DAYS:-2}"
 KW_ARGS=()
 PASS_ARGS=()
 

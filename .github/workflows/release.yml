@@ -41,11 +41,14 @@ jobs:
           print("static OK:", static)
           PY
 
-      - name: 打包便携源码 zip（去掉 CI/测试/历史方案，解压即用）
+      - name: 打包便携源码 zip（去掉 CI/测试/历史方案与本机运行数据，解压即用）
         run: |
           git archive --format=zip --prefix="NewspaperAuto-${GITHUB_REF_NAME}/" \
             -o "NewspaperAuto-${GITHUB_REF_NAME}-portable.zip" HEAD \
-            ':(exclude)tests' ':(exclude)legacy' ':(exclude)docs' ':(exclude).github'
+            ':(exclude)tests' ':(exclude)legacy' ':(exclude)docs' ':(exclude).github' \
+            ':(exclude)state' ':(exclude)hits'
+        # state/（seen.json 增量状态）与 hits/（历史命中归档）是维护者的本机运行数据，
+        # 打进便携包会让接收方首次扫描显示「0 新增」。程序会在需要时自行创建这两个目录。
 
       - name: 发布到 GitHub Release
         env:

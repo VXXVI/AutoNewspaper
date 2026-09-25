@@ -54,7 +54,8 @@ export function hitsPayload(records = RECORDS) {
   }
   return {
     generated_at: "2026-09-24 10:00:00",
-    version: "0.2.0",
+    // 桩数据里的版本号：与真实包版本无关，用哨兵值以免被误读成「版本漂移漏检」。
+    version: "0.0.0-stub",
     data_dir: "/tmp/data",
     archive_file: "/tmp/data/hits/archive.json",
     count: records.length,

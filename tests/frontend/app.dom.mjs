@@ -28,7 +28,8 @@ export const domTests = [
     fn: () =>
       withPage(undefined, async (page) => {
         assert.match(page.text("meta"), /共 2 条命中/);
-        assert.equal(page.text("version"), "v0.2.0");
+        // 版本取自 harness 桩数据（哨兵值）：这里只验证「v + version」的渲染格式，不绑定真实包版本。
+        assert.equal(page.text("version"), "v0.0.0-stub");
         assert.equal(rows(page.document).length, 2);
 
         const firstRow = rows(page.document)[0];

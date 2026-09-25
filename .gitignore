@@ -29,10 +29,12 @@ node_modules/
 # hits/
 # state/seen.json
 
-# 看板「扫描设置」的本机持久化（关键词 / 天数 / 并发 / 模式 / only）。
-# 属本机状态而非共享配置，不入库；否则 scan.yml 里的 `git add -A state hits`
-# 会在每天的自动扫描提交里把它一并扫进 main。
+# 看板「扫描设置」的本机持久化（关键词 / 天数 / 并发 / 模式 / only），
+# 以及看板任务历史 state/tasks.json（含本机关键词与 only 报社列表）。
+# 两者都是本机状态而非共享配置，不入库；否则 scan.yml 里的 `git add -A state hits`
+# 会在每天的自动扫描提交里把它们一并扫进 main。
 state/web_config.json
+state/tasks.json
 # 原子写入/跨进程提交的短命临时文件；崩溃残留也不应被 CI 提交。
 state/*.lock
 state/.*.tmp

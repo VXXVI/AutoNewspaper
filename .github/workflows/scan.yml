@@ -51,9 +51,12 @@ jobs:
           echo "北京时间: $(date '+%F %T %Z')"
           echo "UTC 时间: $(date -u '+%F %T')"
 
-      - name: 执行扫描（增量，--days 1）
+      - name: 执行扫描（增量，--days 2）
         id: scan
-        run: python3 daily_scan.py --days 1
+        run: python3 daily_scan.py --days 2
+        # 回溯 2 天（今天 + 昨天）：README 承诺「漏掉一天第二天会自动补回来」，
+        # 只扫 1 天时若某报入口当天失败或报纸当天未上线，该日文章不会被后续运行覆盖，
+        # 且 seen.json 也不会记录 → 永久漏报。已在 v0.3.1 与 run_scan.sh / README 对齐。
         # 入口失败时以非零退出（让步骤变红、工作流最终判 failure），
         # 但不用 continue-on-error——而是在提交步骤用 if: always() 确保
         # 已落盘的增量结果（hits/ state/）仍能被提交回仓库。

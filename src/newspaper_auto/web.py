@@ -56,8 +56,12 @@ STATIC_TYPES = {
     "api.js": "application/javascript; charset=utf-8",
     "app.js": "application/javascript; charset=utf-8",
     "format.js": "application/javascript; charset=utf-8",
+    "store.js": "application/javascript; charset=utf-8",
     "style.css": "text/css; charset=utf-8",
 }
+# ⚠️ 白名单必须与 static/ 下实际提供的文件同步：漏一项浏览器就拿到 404。
+# app.js 是 ES Module 入口，任一静态 import 失败都会让整个看板不执行（v0.3.0 曾漏 store.js）。
+# 由 tests/test_web.py 的 test_all_static_assets_reachable_over_http / test_app_js_imports_are_served 守护。
 # 小于该体积的静态资源不压缩（gzip 头开销不划算）
 STATIC_MIN_GZIP_BYTES = 1024
 
@@ -1581,7 +1585,9 @@ def create_server(
     if host not in LOOPBACK_HOSTS:
         raise ValueError("看板没有登录鉴权，只允许监听 127.0.0.1 或 localhost")
     # 不依赖本机 hosts / DNS 对 localhost 的解析结果，始终绑定明确的环回字面量。
-    if host == "localhost":
+    # ``::1`` 一并归一到 IPv4 环回：服务器以 AF_INET 绑定，直接传 "::1" 会在 bind 阶段
+    # 失败并给出「端口不可用」的误导提示（v0.3.1 起归一处理）。
+    if host in ("localhost", "::1"):
         host = DEFAULT_HOST
     return DashboardServer(
         (host, port),
@@ -1613,9 +1619,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, default_data_dir: Path | None = None) -> int:
     args = build_parser().parse_args(argv)
-    data_dir = paths.resolve_data_dir(args.data_dir)
+    data_dir = paths.resolve_data_dir(args.data_dir, default_data_dir)
 
     try:
         server = create_server(data_dir, args.host, args.port)

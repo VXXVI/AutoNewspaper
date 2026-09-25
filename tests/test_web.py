@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -306,6 +307,53 @@ def test_serves_index_and_static(base_url):
     assert api_body and "/static/api.js" in html
     assert html.index("/static/api.js") < html.index("/static/app.js")
     assert 'type="module"' in html  # app.js 是 ES Module 入口
+
+
+def test_all_static_assets_reachable_over_http(base_url):
+    """static/ 下的每个前端资源都必须能通过 HTTP 取到。
+
+    守护 web.STATIC_TYPES 与 static/ 目录的同步：v0.3.0 漏收 `store.js`，浏览器里
+    app.js 的 `import "./store.js"` 直接 404，整个看板不执行；而当时只断言 4 个固定
+    文件的测试没有发现（jsdom 测试从文件系统 import，绕过了 HTTP）。
+    """
+    names = sorted(p.name for p in web.STATIC_DIR.iterdir() if p.suffix in {".html", ".js", ".css"})
+    assert names, "static/ 目录下应当有前端资源"
+
+    for name in names:
+        status, body, ctype = _get(f"{base_url}/static/{name}")
+        assert status == 200, f"/static/{name} 返回 {status}：STATIC_TYPES 是否漏了这一项？"
+        assert body, f"/static/{name} 内容为空"
+        assert ctype == web.STATIC_TYPES[name], f"/static/{name} 的 Content-Type 不符"
+
+
+def test_app_js_imports_are_served(base_url):
+    """app.js 静态 import 的同级模块必须全部可达：ES Module 任一 import 失败即整体不执行。"""
+    status, body, _ctype = _get(base_url + "/static/app.js")
+    assert status == 200
+
+    source = body.decode("utf-8")
+    targets = sorted(set(re.findall(r'from\s+"\./([A-Za-z0-9_.-]+)"', source)))
+    assert targets, "app.js 应当至少 import 一个同级模块（如 ./format.js、./store.js）"
+
+    for name in targets:
+        status, dep_body, ctype = _get(f"{base_url}/static/{name}")
+        assert status == 200, f"app.js 依赖的 /static/{name} 返回 {status}"
+        assert dep_body, f"/static/{name} 内容为空"
+        assert "javascript" in ctype
+
+
+def test_create_server_normalizes_ipv6_loopback(tmp_path):
+    """``--host ::1`` 也必须能起来：服务器以 AF_INET 绑定，须归一为 127.0.0.1。"""
+    server = web.create_server(tmp_path, "::1", 0)
+    try:
+        assert server.server_address[0] == "127.0.0.1"
+    finally:
+        server.server_close()
+
+
+def test_create_server_rejects_non_loopback(tmp_path):
+    with pytest.raises(ValueError):
+        web.create_server(tmp_path, "0.0.0.0", 0)
 
 
 def test_security_headers_on_success_and_error(base_url):

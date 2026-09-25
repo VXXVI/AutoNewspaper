@@ -16,6 +16,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 # 结构化输出字段（保持与历史 hits 记录一致，便于下游消费）
 JSON_FIELDS = ("paper", "date", "section", "section_no", "title", "url", "text_len", "snippets", "matched")
@@ -29,6 +30,17 @@ def _csv_safe_text(value: Any) -> str:
     if text.startswith(CSV_FORMULA_PREFIXES):
         return f"'{text}"
     return text
+
+
+def _csv_safe_len(value: Any) -> Any:
+    """``text_len`` 专用兜底：数值原样输出，只有非数值才当文本做公式转义。
+
+    负数（如 ``-42``）本身以 ``-`` 开头，若一律走 :func:`_csv_safe_text` 会被误加撇号；
+    而 ``hits_to_csv`` 是公开函数，外部传入字符串时仍需防 ``=…`` 注入，故按类型分流。
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return _csv_safe_text(value)
+    return value
 
 
 def geometry_label(geometry: Any) -> str:
@@ -90,7 +102,7 @@ def hits_to_csv(hits: list[dict[str, Any]]) -> str:
                 "section": _csv_safe_text(hit.get("section", "")),
                 "title": _csv_safe_text(hit.get("title", "")),
                 "url": _csv_safe_text(hit.get("url", "")),
-                "text_len": hit.get("text_len", 0),
+                "text_len": _csv_safe_len(hit.get("text_len", 0)),
                 "matched": _csv_safe_text(";".join(hit.get("matched", []))),
             }
         )
@@ -248,14 +260,20 @@ def render_html(kw: str, archive: list[dict[str, Any]], now: datetime | None = N
         position = geometry_label(hit.get("geometry"))
         if position:
             section += f'<div class="sn">{_html.escape(position)}</div>'
+        title = _html.escape(hit["title"])
+        url = str(hit.get("url") or "")
+        # 只放行 http/https：data: / javascript: 等协议一律降级为纯文本，与前端 safeUrl 口径一致
+        if urlsplit(url).scheme in ("http", "https"):
+            title_cell = f'<a href="{_html.escape(url)}" target="_blank" rel="noopener">{title}</a>{snippets}'
+        else:
+            title_cell = f"{title}{snippets}"
         rows.append(
             "<tr>"
             f'<td class="p">{_html.escape(hit["paper"])}</td>'
             f'<td class="d">{_html.escape(hit["date"])}</td>'
             f'<td class="s">{section}</td>'
             f'<td class="k">{_html.escape(matched) or "—"}</td>'
-            f'<td><a href="{_html.escape(hit["url"])}" target="_blank" rel="noopener">'
-            f"{_html.escape(hit['title'])}</a>{snippets}</td></tr>"
+            f"<td>{title_cell}</td></tr>"
         )
     return _HTML_TEMPLATE.format(
         kw=_html.escape(kw),
