@@ -58,11 +58,19 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 
 1. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
    换机即用；目标机只需装 Python 3.9+。
-2. **从 Release 安装**：打 `v*` tag 会触发 `.github/workflows/release.yml` 构建
-   sdist/wheel 并发布到 GitHub Release，目标机 `pip install <release 里的 .whl>`
-   或 `uv tool install <whl>`（`uv` 会自动准备 Python）。
+2. **从 Release 下载压缩包**（推荐给国内 / Windows）：打 `v*` tag 会触发
+   `.github/workflows/release.yml`，在 GitHub Release 里同时提供
+   - `NewspaperAuto-<tag>-portable.zip`：源码精简包（已剔除 `tests/`、`legacy/`、`docs/`、
+     `.github/`，约 **180 KB**），**解压即用**，无需 git；
+   - `.whl` / `.tar.gz`：`pip install <whl>` 或 `uv tool install <whl>`（`uv` 会自动准备 Python）。
 3. **便携 Python（无 Python 环境时）**：Windows 用官方 *embeddable* Python 解压到项目内
    + 一个 `start.cmd`；macOS 用 python.org 安装包。比 PyInstaller 单文件更稳、更少被杀软误报。
+
+> ⚠️ **`git clone` 慢 ≠ 仓库大**。本仓库 `.git` 只有 ~3 MB、60 个提交，克隆慢几乎总是
+> **到 GitHub 的网络往返延迟/抖动**，而不是体积。加速办法（任选）：
+> - **浅克隆**：`git clone --depth 1 https://github.com/VXXVI/AutoNewspaper.git`（只取最新一次提交，往返最少）；
+> - **直接下压缩包**：到 Releases 下载 Source code (zip) 或上面的 `portable.zip`，解压即用，**完全不碰 git**；
+> - 维护者在本地可 `git gc` 压缩 `.git`，但对克隆速度影响有限。
 
 只有当目标用户既没有 Python、又不能安装时，才考虑 PyInstaller（`--onedir`、按平台分别构建、
 需代码签名/公证），且必须先解决跨平台签名与升级问题。
@@ -737,8 +745,15 @@ make unlock        # 删除沙箱/异常中断可能残留的 .git/index.lock
 ```
 
 测试全部**离线**：通过注入 fake fetcher 驱动扫描，HTML 样例在 `tests/fixtures/`。
-CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查和测试，同时检查前端 JavaScript 与
-macOS/Linux Shell 启动脚本语法；Windows job 另外验证 PowerShell 解析与 BOM。
+前端纯函数另有 Node 内置 test runner 的单元测试（零第三方依赖）：
+
+```bash
+node --test tests/frontend/format.test.mjs
+```
+
+CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查和测试，同时 `node --check` 前端脚本、
+`node --test` 前端纯函数，并检查 macOS/Linux Shell 启动脚本语法；Windows job 另外验证
+PowerShell 解析与 BOM。
 
 ### 故障排查
 

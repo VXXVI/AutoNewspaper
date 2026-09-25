@@ -20,6 +20,12 @@
 *.sh      text eol=lf
 *.command text eol=lf
 
+# ---- 源码归档裁剪：git archive / GitHub 的 "Source code (zip)" ----
+# 这几项只对维护者有意义（历史方案、内部交付说明、CI 配置），终端用户下载源码包时无需携带。
+legacy/** export-ignore
+docs/** export-ignore
+.github/** export-ignore
+
 # ---- 故意不声明的东西（改动前请先想清楚）----
 # 1) 不加 `* text=auto`：tests/fixtures/rmrb_article_30182606.html 与
 #    legacy/result.csv 里存的是真实站点的原始 CRLF 快照，全局规则会改写它们，

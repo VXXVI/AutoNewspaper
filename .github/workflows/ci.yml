@@ -48,6 +48,10 @@ jobs:
           node --check src/newspaper_auto/static/format.js
           node --check src/newspaper_auto/static/app.js
 
+      - name: 前端纯函数单元测试
+        if: matrix.python-version == '3.12'
+        run: node --test tests/frontend/format.test.mjs
+
       - name: 单元测试
         run: pytest -q
 

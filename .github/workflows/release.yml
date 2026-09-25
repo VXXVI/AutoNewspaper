@@ -41,7 +41,13 @@ jobs:
           print("static OK:", static)
           PY
 
+      - name: 打包便携源码 zip（去掉 CI/测试/历史方案，解压即用）
+        run: |
+          git archive --format=zip --prefix="NewspaperAuto-${GITHUB_REF_NAME}/" \
+            -o "NewspaperAuto-${GITHUB_REF_NAME}-portable.zip" HEAD \
+            ':(exclude)tests' ':(exclude)legacy' ':(exclude)docs' ':(exclude).github'
+
       - name: 发布到 GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes
+        run: gh release create "${GITHUB_REF_NAME}" dist/* "NewspaperAuto-${GITHUB_REF_NAME}-portable.zip" --generate-notes

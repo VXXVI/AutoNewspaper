@@ -7,6 +7,13 @@
 
 ### 新增
 
+- **源码分发与克隆体验**：`.gitattributes` 增加 `export-ignore`（`legacy/`、`docs/`、`.github/`），
+  Release workflow 额外产出约 180 KB 的 `NewspaperAuto-<tag>-portable.zip`（解压即用、无需 git）；
+  README 说明「clone 慢是网络而非体积」并给出 `--depth 1` 浅克隆与直接下压缩包两种加速方式
+  （`.gitattributes`、`.github/workflows/release.yml`、`README.md`）。
+- **前端自动化测试**：新增 `tests/frontend/format.test.mjs`，用 Node 内置 `node:test`
+  （零第三方依赖）覆盖日期计算、CSV 公式注入防护、关键词切分、版内位置文本等纯函数，
+  并接入 CI 的 `node --test`（`tests/frontend/`、`.github/workflows/ci.yml`、`README.md`）。
 - **抓取层改为标准库优先、系统 curl 兜底**：主路径用 `urllib`（HTTP/1.1）直连，天然绕开
   光明日报在 HTTP/2 下断连的问题，同时去掉「必须装有系统 curl」的硬依赖、少一次 fork/exec；
   仅当标准库网络层失败且系统存在 curl 时才兜底重试（站点侧 4xx/5xx 不触发兜底）。
