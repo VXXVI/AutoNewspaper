@@ -227,6 +227,12 @@
 
 ### 变更
 
+- **前端改为「dispatch → state → render」单向数据流**：新增 `dispatch(patch, options)` 作为
+  **状态变更唯一入口**（默认 140ms 防抖渲染；`{immediate:true}` 同步渲染，`{silent:true}` 由
+  调用方自行渲染）。搜索、起止日期、排序、快捷区间、报纸/关键词 chips、重置、关联筛选等
+  用户动作全部改经 `dispatch`；数据加载走 `{silent:true}` 后统一 `render()`；`app.js` 的
+  事件处理器不再各自散落 `render()`（`static/app.js`，由 `tests/frontend/run-dom.mjs` 的 6 个
+  DOM 用例守护）。
 - **看板装配加内存缓存**：`build_dashboard` 以归档 / `seen.json` / `web_config.json` 的
   `(mtime_ns, size)` 为指纹缓存装配结果，未变化时不再每次请求都全量解析 + 排序；显式传入
   `now` 时跳过缓存（`web.py`）。archive/seen 完整迁移到 `sqlite3` 列为可选后续项。

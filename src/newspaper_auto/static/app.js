@@ -61,6 +61,16 @@ import {
 
   function $(id) { return document.getElementById(id); }
 
+  // 单向数据流：用户动作 → dispatch(patch) → state → render。
+  // 事件处理器只描述「状态怎么变」，不再各自调用 render()；
+  // 默认走 140ms 防抖渲染，需要同步生效时传 { immediate: true }。
+  function dispatch(patch, options) {
+    Object.assign(state, patch);
+    if (options && options.silent) return;      // 由调用方自行 render（如数据加载）
+    if (options && options.immediate) render();
+    else scheduleRender();
+  }
+
   function el(tag, className, text) {
     var node = document.createElement(tag);
     if (className) node.className = className;
@@ -89,35 +99,37 @@ import {
     api.get("/api/hits")
       .then(function (data) {
         if (requestId !== loadRequestId) return;
-        state.data = data;
         var requestedFocus = Array.isArray(options.focusKeywords) && options.focusKeywords.length
           ? options.focusKeywords
           : (!hadData && Array.isArray(data.configured_keywords) && data.configured_keywords.length
             ? data.configured_keywords : null);
+        var patch = { data: data };
         if (!hadData || !options.preserve || requestedFocus) {
-          state.papers = new Set(data.papers);
-          state.focusKeywords = requestedFocus ? requestedFocus.slice() : null;
-          state.keywords = new Set(requestedFocus || data.keywords);
-          state.linkedFilter = null;
-          state.q = "";
-          state.from = "";
-          state.to = "";
-          state.sort = "date-desc";
-          state.preset = "all";
-          state.visibleRows = INITIAL_ROWS;
+          patch.papers = new Set(data.papers);
+          patch.focusKeywords = requestedFocus ? requestedFocus.slice() : null;
+          patch.keywords = new Set(requestedFocus || data.keywords);
+          patch.linkedFilter = null;
+          patch.q = "";
+          patch.from = "";
+          patch.to = "";
+          patch.sort = "date-desc";
+          patch.preset = "all";
+          patch.visibleRows = INITIAL_ROWS;
+          dispatch(patch, { silent: true });
           $("q").value = "";
           $("from").value = "";
           $("to").value = "";
           $("sort").value = "date-desc";
         } else {
-          state.papers = allPapersSelected
+          patch.papers = allPapersSelected
             ? new Set(data.papers)
             : new Set(data.papers.filter(function (name) { return state.papers.has(name); }));
-          state.keywords = state.focusKeywords
+          patch.keywords = state.focusKeywords
             ? new Set(state.focusKeywords)
             : (allKeywordsSelected
               ? new Set(data.keywords)
               : new Set(data.keywords.filter(function (name) { return state.keywords.has(name); })));
+          dispatch(patch, { silent: true });
         }
         $("version").textContent = "v" + data.version;
         buildControls();
@@ -137,7 +149,9 @@ import {
     paperBox.textContent = "";
     data.papers.forEach(function (name) {
       paperBox.appendChild(makeChip(name, state.papers.has(name), function (on) {
-        if (on) state.papers.add(name); else state.papers.delete(name);
+        var next = new Set(state.papers);
+        if (on) next.add(name); else next.delete(name);
+        dispatch({ papers: next });
       }));
     });
 
@@ -149,8 +163,9 @@ import {
     });
     keywordNames.forEach(function (kw) {
       kwBox.appendChild(makeChip(kw, state.keywords.has(kw), function (on) {
-        if (on) state.keywords.add(kw); else state.keywords.delete(kw);
-        state.focusKeywords = null;
+        var next = new Set(state.keywords);
+        if (on) next.add(kw); else next.delete(kw);
+        dispatch({ keywords: next, focusKeywords: null });
       }));
     });
 
@@ -171,9 +186,7 @@ import {
       chip.classList.toggle("on", on);
       chip.setAttribute("aria-pressed", on ? "true" : "false");
       toggle(on);
-      state.linkedFilter = null;
-      state.visibleRows = INITIAL_ROWS;
-      render();
+      dispatch({ linkedFilter: null, visibleRows: INITIAL_ROWS }, { immediate: true });
     });
     return chip;
   }
@@ -217,28 +230,20 @@ import {
   }
 
   function clearLinkedFilter(renderNow) {
-    state.linkedFilter = null;
-    state.visibleRows = INITIAL_ROWS;
-    if (renderNow !== false) render();
+    dispatch({ linkedFilter: null, visibleRows: INITIAL_ROWS }, { immediate: renderNow !== false });
   }
 
   function showLinkedResults(filter) {
     var current = state.linkedFilter;
     var same = current && current.type === filter.type && current.key === filter.key;
-    state.linkedFilter = same ? null : filter;
-    state.visibleRows = INITIAL_ROWS;
-    render();
+    dispatch({ linkedFilter: same ? null : filter, visibleRows: INITIAL_ROWS }, { immediate: true });
     $("results-card").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function showAllHistory() {
     if (!state.data) return;
-    state.focusKeywords = null;
-    state.keywords = new Set(state.data.keywords);
-    state.linkedFilter = null;
-    state.visibleRows = INITIAL_ROWS;
-    buildControls();
-    render();
+    dispatch({ focusKeywords: null, keywords: new Set(state.data.keywords), linkedFilter: null, visibleRows: INITIAL_ROWS });
+    buildControls();  // 防抖渲染前重建 chips
   }
 
   /* -------------------------------------------------------------- 日期快捷区间 */
@@ -259,20 +264,18 @@ import {
 
   // 以「数据里最新的日期」为基准，避免用今天算导致历史数据筛不出东西
   function applyPreset(kind) {
-    state.linkedFilter = null;
-    state.preset = kind;
-    state.visibleRows = INITIAL_ROWS;
+    var patch = { linkedFilter: null, preset: kind, visibleRows: INITIAL_ROWS };
     if (state.data) {
       var latest = dateBounds()[1];
-      if (kind === "all") { state.from = ""; state.to = ""; }
-      else if (latest && kind === "today") { state.from = latest; state.to = latest; }
-      else if (latest && kind === "7d") { state.from = shiftDate(latest, -6); state.to = latest; }
-      else if (latest && kind === "30d") { state.from = shiftDate(latest, -29); state.to = latest; }
+      if (kind === "all") { patch.from = ""; patch.to = ""; }
+      else if (latest && kind === "today") { patch.from = latest; patch.to = latest; }
+      else if (latest && kind === "7d") { patch.from = shiftDate(latest, -6); patch.to = latest; }
+      else if (latest && kind === "30d") { patch.from = shiftDate(latest, -29); patch.to = latest; }
     }
+    dispatch(patch);
     $("from").value = state.from;
     $("to").value = state.to;
     updatePresetUI();
-    render();
   }
 
   /* -------------------------------------------------------------- 导出结果 */
@@ -1459,23 +1462,18 @@ import {
     loadPapers();
     resumeScan();
     $("q").addEventListener("input", function (e) {
-      state.q = e.target.value;
-      state.linkedFilter = null;
-      state.visibleRows = INITIAL_ROWS;
-      scheduleRender();
+      dispatch({ q: e.target.value, linkedFilter: null, visibleRows: INITIAL_ROWS });
     });
     $("from").addEventListener("change", function (e) {
-      state.from = e.target.value; state.preset = "custom"; state.visibleRows = INITIAL_ROWS;
-      state.linkedFilter = null;
-      updatePresetUI(); render();
+      dispatch({ from: e.target.value, preset: "custom", visibleRows: INITIAL_ROWS, linkedFilter: null });
+      updatePresetUI();
     });
     $("to").addEventListener("change", function (e) {
-      state.to = e.target.value; state.preset = "custom"; state.visibleRows = INITIAL_ROWS;
-      state.linkedFilter = null;
-      updatePresetUI(); render();
+      dispatch({ to: e.target.value, preset: "custom", visibleRows: INITIAL_ROWS, linkedFilter: null });
+      updatePresetUI();
     });
     $("sort").addEventListener("change", function (e) {
-      state.sort = e.target.value; state.visibleRows = INITIAL_ROWS; render();
+      dispatch({ sort: e.target.value, visibleRows: INITIAL_ROWS }, { immediate: true });
     });
     $("export").addEventListener("click", openExportDialog);
     $("export-form").addEventListener("submit", saveExport);
@@ -1493,31 +1491,27 @@ import {
       if (event.target === $("export-dialog")) closeExportDialog();
     });
     $("results-more").addEventListener("click", function () {
-      state.visibleRows += ROW_STEP;
-      render();
+      dispatch({ visibleRows: state.visibleRows + ROW_STEP }, { immediate: true });
     });
     Array.prototype.forEach.call($("preset-chips").querySelectorAll("[data-preset]"), function (btn) {
       btn.addEventListener("click", function () { applyPreset(btn.getAttribute("data-preset")); });
     });
     $("reset").addEventListener("click", function () {
+      var patch = {
+        linkedFilter: null, q: "", from: "", to: "",
+        sort: "date-desc", preset: "all", visibleRows: INITIAL_ROWS
+      };
       if (state.data) {
-        state.papers = new Set(state.data.papers);
-        state.keywords = new Set(state.focusKeywords || state.data.keywords);
+        patch.papers = new Set(state.data.papers);
+        patch.keywords = new Set(state.focusKeywords || state.data.keywords);
       }
-      state.linkedFilter = null;
-      state.q = "";
-      state.from = "";
-      state.to = "";
-      state.sort = "date-desc";
-      state.preset = "all";
-      state.visibleRows = INITIAL_ROWS;
+      dispatch(patch);
       $("q").value = "";
       $("from").value = "";
       $("to").value = "";
       $("sort").value = "date-desc";
       buildControls();
       updatePresetUI();
-      render();
     });
     load();
   }

@@ -74,6 +74,17 @@ export const domTests = [
       }),
   },
   {
+    name: "快捷区间：点「今天」后日期框与结果同步",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        page.document.querySelector('#preset-chips [data-preset="today"]').click();
+        await settle();
+        assert.equal(page.document.getElementById("from").value, "2026-09-23");
+        assert.equal(page.document.getElementById("to").value, "2026-09-23");
+        assert.equal(rows(page.document).length, 1);
+      }),
+  },
+  {
     name: "提交扫描：POST /api/scan 并轮询至完成态",
     fn: () => {
       let polls = 0;
