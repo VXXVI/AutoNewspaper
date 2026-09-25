@@ -48,9 +48,15 @@ jobs:
           node --check src/newspaper_auto/static/format.js
           node --check src/newspaper_auto/static/app.js
 
-      - name: 前端纯函数单元测试
+      - name: 安装前端测试依赖（jsdom，仅 dev）
         if: matrix.python-version == '3.12'
-        run: node --test tests/frontend/format.test.mjs
+        run: npm ci --no-audit --no-fund
+
+      - name: 前端单元测试（纯函数 + jsdom DOM）
+        if: matrix.python-version == '3.12'
+        run: |
+          node --test tests/frontend/format.test.mjs
+          node tests/frontend/run-dom.mjs
 
       - name: 单元测试
         run: pytest -q

@@ -1,0 +1,13 @@
+{
+  "name": "newspaper-auto-frontend-dev",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "仅前端测试用（jsdom）。不属于运行时依赖，Python 侧仍为零第三方依赖。",
+  "scripts": {
+    "test": "node --test tests/frontend/format.test.mjs && node tests/frontend/run-dom.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}

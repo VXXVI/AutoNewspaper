@@ -745,15 +745,23 @@ make unlock        # 删除沙箱/异常中断可能残留的 .git/index.lock
 ```
 
 测试全部**离线**：通过注入 fake fetcher 驱动扫描，HTML 样例在 `tests/fixtures/`。
-前端纯函数另有 Node 内置 test runner 的单元测试（零第三方依赖）：
+前端另有两层**离线**测试（仅开发用，运行时不引入任何依赖）：
 
 ```bash
+# 纯函数（Node 内置 test runner，零依赖）
 node --test tests/frontend/format.test.mjs
+
+# app.js 的 DOM 行为（jsdom，devDependency；首次需 npm ci 安装）
+npm ci
+node tests/frontend/run-dom.mjs
 ```
 
+> `package.json` / `package-lock.json` 只服务于前端测试（jsdom）。Python 侧的
+> **零第三方运行时依赖**不受影响；`node_modules/` 不入库。
+
 CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查和测试，同时 `node --check` 前端脚本、
-`node --test` 前端纯函数，并检查 macOS/Linux Shell 启动脚本语法；Windows job 另外验证
-PowerShell 解析与 BOM。
+`node --test` 前端纯函数、`node tests/frontend/run-dom.mjs` 前端 DOM 测试，并检查
+macOS/Linux Shell 启动脚本语法；Windows job 另外验证 PowerShell 解析与 BOM。
 
 ### 故障排查
 

@@ -14,6 +14,12 @@
 - **前端自动化测试**：新增 `tests/frontend/format.test.mjs`，用 Node 内置 `node:test`
   （零第三方依赖）覆盖日期计算、CSV 公式注入防护、关键词切分、版内位置文本等纯函数，
   并接入 CI 的 `node --test`（`tests/frontend/`、`.github/workflows/ci.yml`、`README.md`）。
+- **前端 DOM 测试（jsdom，仅 dev 依赖）**：新增 `tests/frontend/harness.mjs`（把真实
+  `index.html` + `api.js` + `app.js` 装进 jsdom、注入 fetch 桩，**不联网**）、
+  `app.dom.mjs`（首屏渲染 / 报社列表 / 搜索过滤 / 扫描模式切换 / 提交扫描并轮询共 5 例）、
+  `run-dom.mjs`（极简驱动，规避 jsdom 句柄导致的 node:test 挂起）。新增根 `package.json`
+  与 `package-lock.json`（**仅前端测试用的 devDependency**，Python 侧零依赖不变），
+  CI 用 `npm ci` + `node tests/frontend/run-dom.mjs` 运行。
 - **抓取层改为标准库优先、系统 curl 兜底**：主路径用 `urllib`（HTTP/1.1）直连，天然绕开
   光明日报在 HTTP/2 下断连的问题，同时去掉「必须装有系统 curl」的硬依赖、少一次 fork/exec；
   仅当标准库网络层失败且系统存在 curl 时才兜底重试（站点侧 4xx/5xx 不触发兜底）。

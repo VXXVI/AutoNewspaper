@@ -13,6 +13,9 @@ dist/
 .ruff_cache/
 .mypy_cache/
 
+# 前端测试（jsdom）依赖：仅开发用，不入库（package.json / package-lock.json 入库）
+node_modules/
+
 # macOS
 .DS_Store
 ._*
