@@ -74,6 +74,20 @@ export const domTests = [
       }),
   },
   {
+    name: "报社 chip 取消勾选后结果随之减少",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const chip = [...page.document.querySelectorAll("#paper-chips .chip")].find((c) =>
+          c.textContent.includes("光明日报")
+        );
+        assert.ok(chip, "应有「光明日报」chip");
+        chip.click();
+        await settle();
+        assert.equal(rows(page.document).length, 1);
+        assert.match(rows(page.document)[0].textContent, /湛江日报/);
+      }),
+  },
+  {
     name: "快捷区间：点「今天」后日期框与结果同步",
     fn: () =>
       withPage(undefined, async (page) => {

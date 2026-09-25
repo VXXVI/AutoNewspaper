@@ -11,15 +11,17 @@
   Release workflow 额外产出约 180 KB 的 `NewspaperAuto-<tag>-portable.zip`（解压即用、无需 git）；
   README 说明「clone 慢是网络而非体积」并给出 `--depth 1` 浅克隆与直接下压缩包两种加速方式
   （`.gitattributes`、`.github/workflows/release.yml`、`README.md`）。
-- **前端自动化测试**：新增 `tests/frontend/format.test.mjs`，用 Node 内置 `node:test`
-  （零第三方依赖）覆盖日期计算、CSV 公式注入防护、关键词切分、版内位置文本等纯函数，
-  并接入 CI 的 `node --test`（`tests/frontend/`、`.github/workflows/ci.yml`、`README.md`）。
+- **前端自动化测试**：新增 `tests/frontend/format.test.mjs`（日期计算、CSV 公式注入防护、
+  关键词切分、版内位置文本等纯函数）与 `tests/frontend/store.test.mjs`（reducer 的 11 个用例：
+  action → 新 state、Set 不可变、`LOAD_DATA` 的 reset/preserve 等），均用 Node 内置 `node:test`
+  （零第三方依赖），CI 以 `node --test tests/frontend/*.test.mjs` 运行
+  （`tests/frontend/`、`.github/workflows/ci.yml`、`README.md`）。
 - **前端 DOM 测试（jsdom，仅 dev 依赖）**：新增 `tests/frontend/harness.mjs`（把真实
   `index.html` + `api.js` + `app.js` 装进 jsdom、注入 fetch 桩，**不联网**）、
-  `app.dom.mjs`（首屏渲染 / 报社列表 / 搜索过滤 / 扫描模式切换 / 提交扫描并轮询共 5 例）、
-  `run-dom.mjs`（极简驱动，规避 jsdom 句柄导致的 node:test 挂起）。新增根 `package.json`
-  与 `package-lock.json`（**仅前端测试用的 devDependency**，Python 侧零依赖不变），
-  CI 用 `npm ci` + `node tests/frontend/run-dom.mjs` 运行。
+  `app.dom.mjs`（首屏渲染 / 报社列表 / 搜索过滤 / 报社 chip 切换 / 扫描模式切换 / 快捷区间 /
+  提交扫描并轮询共 7 例）、`run-dom.mjs`（极简驱动，规避 jsdom 句柄导致的 node:test 挂起）。
+  新增根 `package.json` 与 `package-lock.json`（**仅前端测试用的 devDependency**，Python 侧零依赖
+  不变），CI 用 `npm ci` + `node tests/frontend/run-dom.mjs` 运行。
 - **抓取层改为标准库优先、系统 curl 兜底**：主路径用 `urllib`（HTTP/1.1）直连，天然绕开
   光明日报在 HTTP/2 下断连的问题，同时去掉「必须装有系统 curl」的硬依赖、少一次 fork/exec；
   仅当标准库网络层失败且系统存在 curl 时才兜底重试（站点侧 4xx/5xx 不触发兜底）。
@@ -227,12 +229,13 @@
 
 ### 变更
 
-- **前端改为「dispatch → state → render」单向数据流**：新增 `dispatch(patch, options)` 作为
-  **状态变更唯一入口**（默认 140ms 防抖渲染；`{immediate:true}` 同步渲染，`{silent:true}` 由
-  调用方自行渲染）。搜索、起止日期、排序、快捷区间、报纸/关键词 chips、重置、关联筛选等
-  用户动作全部改经 `dispatch`；数据加载走 `{silent:true}` 后统一 `render()`；`app.js` 的
-  事件处理器不再各自散落 `render()`（`static/app.js`，由 `tests/frontend/run-dom.mjs` 的 6 个
-  DOM 用例守护）。
+- **前端状态改为严格「action + reducer」单向数据流**：新增 `static/store.js`——`A.*` action 常量、
+  **纯** `reducer(state, action)`（不读写外部变量，Set 一律产生新实例）与 `createStore`
+  （`getState / dispatch / subscribe`）。`app.js` 只经 `store.dispatch(action)` 变更状态，
+  事件处理器不再直接改 `state`、也不再各自散落 `render()`；默认 140ms 防抖渲染
+  （`{immediate:true}` 同步、`{silent:true}` 由调用方渲染）。数据加载 `LOAD_DATA` 的
+  reset / preserve 分支也移入 reducer。纯 reducer 单测 `tests/frontend/store.test.mjs`（11 例）、
+  DOM 回归 `tests/frontend/run-dom.mjs`（7 例）守护。
 - **看板装配加内存缓存**：`build_dashboard` 以归档 / `seen.json` / `web_config.json` 的
   `(mtime_ns, size)` 为指纹缓存装配结果，未变化时不再每次请求都全量解析 + 排序；显式传入
   `now` 时跳过缓存（`web.py`）。archive/seen 完整迁移到 `sqlite3` 列为可选后续项。

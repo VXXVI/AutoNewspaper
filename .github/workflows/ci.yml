@@ -55,7 +55,7 @@ jobs:
       - name: 前端单元测试（纯函数 + jsdom DOM）
         if: matrix.python-version == '3.12'
         run: |
-          node --test tests/frontend/format.test.mjs
+          node --test tests/frontend/*.test.mjs
           node tests/frontend/run-dom.mjs
 
       - name: 单元测试

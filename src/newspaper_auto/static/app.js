@@ -14,12 +14,16 @@ import {
   splitKeywords,
   todayIso,
 } from "./format.js";
+import {
+  A,
+  createInitialState,
+  createStore,
+  reducer,
+} from "./store.js";
 
 (function () {
   "use strict";
 
-  var INITIAL_ROWS = 50;
-  var ROW_STEP = 50;
   var MAX_LAYOUTS = 24;
   var SCAN_POLL_MS = 1200;
   var api = window.NewspaperApi;
@@ -45,27 +49,17 @@ import {
   var PAPERS_COMMIT_CMD =
     'git fetch origin main && git pull --rebase --autostash origin main && git add papers.custom.json && git commit -m "chore(papers): 更新报社配置" && git push && git ls-remote origin refs/heads/main';
 
-  var state = {
-    data: null,
-    q: "",
-    papers: new Set(),
-    keywords: new Set(),
-    focusKeywords: null,
-    linkedFilter: null,
-    from: "",
-    to: "",
-    sort: "date-desc",
-    preset: "all",
-    visibleRows: INITIAL_ROWS
-  };
+  // 单一 store：所有状态变更都经 dispatch(action) → reducer → 新 state。
+  var store = createStore(reducer, createInitialState());
+  var state = store.getState();
+  store.subscribe(function (next) { state = next; });
 
   function $(id) { return document.getElementById(id); }
 
-  // 单向数据流：用户动作 → dispatch(patch) → state → render。
-  // 事件处理器只描述「状态怎么变」，不再各自调用 render()；
-  // 默认走 140ms 防抖渲染，需要同步生效时传 { immediate: true }。
-  function dispatch(patch, options) {
-    Object.assign(state, patch);
+  // 事件处理器只描述「发生了什么」，不直接改 state、也不各自 render()。
+  // 默认走 140ms 防抖渲染；{ immediate: true } 同步渲染，{ silent: true } 由调用方自行渲染。
+  function dispatch(action, options) {
+    store.dispatch(action);
     if (options && options.silent) return;      // 由调用方自行 render（如数据加载）
     if (options && options.immediate) render();
     else scheduleRender();
@@ -103,33 +97,20 @@ import {
           ? options.focusKeywords
           : (!hadData && Array.isArray(data.configured_keywords) && data.configured_keywords.length
             ? data.configured_keywords : null);
-        var patch = { data: data };
-        if (!hadData || !options.preserve || requestedFocus) {
-          patch.papers = new Set(data.papers);
-          patch.focusKeywords = requestedFocus ? requestedFocus.slice() : null;
-          patch.keywords = new Set(requestedFocus || data.keywords);
-          patch.linkedFilter = null;
-          patch.q = "";
-          patch.from = "";
-          patch.to = "";
-          patch.sort = "date-desc";
-          patch.preset = "all";
-          patch.visibleRows = INITIAL_ROWS;
-          dispatch(patch, { silent: true });
+        var resetView = !hadData || !options.preserve || Boolean(requestedFocus);
+        dispatch({
+          type: A.LOAD_DATA,
+          data: data,
+          mode: resetView ? "reset" : "preserve",
+          requestedFocus: requestedFocus,
+          allPapersSelected: allPapersSelected,
+          allKeywordsSelected: allKeywordsSelected
+        }, { silent: true });
+        if (resetView) {
           $("q").value = "";
           $("from").value = "";
           $("to").value = "";
           $("sort").value = "date-desc";
-        } else {
-          patch.papers = allPapersSelected
-            ? new Set(data.papers)
-            : new Set(data.papers.filter(function (name) { return state.papers.has(name); }));
-          patch.keywords = state.focusKeywords
-            ? new Set(state.focusKeywords)
-            : (allKeywordsSelected
-              ? new Set(data.keywords)
-              : new Set(data.keywords.filter(function (name) { return state.keywords.has(name); })));
-          dispatch(patch, { silent: true });
         }
         $("version").textContent = "v" + data.version;
         buildControls();
@@ -149,9 +130,7 @@ import {
     paperBox.textContent = "";
     data.papers.forEach(function (name) {
       paperBox.appendChild(makeChip(name, state.papers.has(name), function (on) {
-        var next = new Set(state.papers);
-        if (on) next.add(name); else next.delete(name);
-        dispatch({ papers: next });
+        dispatch({ type: A.TOGGLE_PAPER, name: name, on: on });
       }));
     });
 
@@ -163,9 +142,7 @@ import {
     });
     keywordNames.forEach(function (kw) {
       kwBox.appendChild(makeChip(kw, state.keywords.has(kw), function (on) {
-        var next = new Set(state.keywords);
-        if (on) next.add(kw); else next.delete(kw);
-        dispatch({ keywords: next, focusKeywords: null });
+        dispatch({ type: A.TOGGLE_KEYWORD, name: kw, on: on });
       }));
     });
 
@@ -186,7 +163,7 @@ import {
       chip.classList.toggle("on", on);
       chip.setAttribute("aria-pressed", on ? "true" : "false");
       toggle(on);
-      dispatch({ linkedFilter: null, visibleRows: INITIAL_ROWS }, { immediate: true });
+      dispatch({ type: A.CLEAR_LINKED }, { immediate: true });
     });
     return chip;
   }
@@ -230,19 +207,19 @@ import {
   }
 
   function clearLinkedFilter(renderNow) {
-    dispatch({ linkedFilter: null, visibleRows: INITIAL_ROWS }, { immediate: renderNow !== false });
+    dispatch({ type: A.CLEAR_LINKED }, { immediate: renderNow !== false });
   }
 
   function showLinkedResults(filter) {
     var current = state.linkedFilter;
     var same = current && current.type === filter.type && current.key === filter.key;
-    dispatch({ linkedFilter: same ? null : filter, visibleRows: INITIAL_ROWS }, { immediate: true });
+    dispatch({ type: A.SET_LINKED, filter: same ? null : filter }, { immediate: true });
     $("results-card").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function showAllHistory() {
     if (!state.data) return;
-    dispatch({ focusKeywords: null, keywords: new Set(state.data.keywords), linkedFilter: null, visibleRows: INITIAL_ROWS });
+    dispatch({ type: A.SHOW_ALL_HISTORY });
     buildControls();  // 防抖渲染前重建 chips
   }
 
@@ -264,15 +241,15 @@ import {
 
   // 以「数据里最新的日期」为基准，避免用今天算导致历史数据筛不出东西
   function applyPreset(kind) {
-    var patch = { linkedFilter: null, preset: kind, visibleRows: INITIAL_ROWS };
+    var action = { type: A.SET_PRESET, preset: kind };
     if (state.data) {
       var latest = dateBounds()[1];
-      if (kind === "all") { patch.from = ""; patch.to = ""; }
-      else if (latest && kind === "today") { patch.from = latest; patch.to = latest; }
-      else if (latest && kind === "7d") { patch.from = shiftDate(latest, -6); patch.to = latest; }
-      else if (latest && kind === "30d") { patch.from = shiftDate(latest, -29); patch.to = latest; }
+      if (kind === "all") { action.from = ""; action.to = ""; }
+      else if (latest && kind === "today") { action.from = latest; action.to = latest; }
+      else if (latest && kind === "7d") { action.from = shiftDate(latest, -6); action.to = latest; }
+      else if (latest && kind === "30d") { action.from = shiftDate(latest, -29); action.to = latest; }
     }
-    dispatch(patch);
+    dispatch(action);
     $("from").value = state.from;
     $("to").value = state.to;
     updatePresetUI();
@@ -1462,18 +1439,18 @@ import {
     loadPapers();
     resumeScan();
     $("q").addEventListener("input", function (e) {
-      dispatch({ q: e.target.value, linkedFilter: null, visibleRows: INITIAL_ROWS });
+      dispatch({ type: A.SET_QUERY, value: e.target.value });
     });
     $("from").addEventListener("change", function (e) {
-      dispatch({ from: e.target.value, preset: "custom", visibleRows: INITIAL_ROWS, linkedFilter: null });
+      dispatch({ type: A.SET_DATE_RANGE, from: e.target.value });
       updatePresetUI();
     });
     $("to").addEventListener("change", function (e) {
-      dispatch({ to: e.target.value, preset: "custom", visibleRows: INITIAL_ROWS, linkedFilter: null });
+      dispatch({ type: A.SET_DATE_RANGE, to: e.target.value });
       updatePresetUI();
     });
     $("sort").addEventListener("change", function (e) {
-      dispatch({ sort: e.target.value, visibleRows: INITIAL_ROWS }, { immediate: true });
+      dispatch({ type: A.SET_SORT, value: e.target.value }, { immediate: true });
     });
     $("export").addEventListener("click", openExportDialog);
     $("export-form").addEventListener("submit", saveExport);
@@ -1491,21 +1468,13 @@ import {
       if (event.target === $("export-dialog")) closeExportDialog();
     });
     $("results-more").addEventListener("click", function () {
-      dispatch({ visibleRows: state.visibleRows + ROW_STEP }, { immediate: true });
+      dispatch({ type: A.LOAD_MORE }, { immediate: true });
     });
     Array.prototype.forEach.call($("preset-chips").querySelectorAll("[data-preset]"), function (btn) {
       btn.addEventListener("click", function () { applyPreset(btn.getAttribute("data-preset")); });
     });
     $("reset").addEventListener("click", function () {
-      var patch = {
-        linkedFilter: null, q: "", from: "", to: "",
-        sort: "date-desc", preset: "all", visibleRows: INITIAL_ROWS
-      };
-      if (state.data) {
-        patch.papers = new Set(state.data.papers);
-        patch.keywords = new Set(state.focusKeywords || state.data.keywords);
-      }
-      dispatch(patch);
+      dispatch({ type: A.RESET_VIEW });
       $("q").value = "";
       $("from").value = "";
       $("to").value = "";

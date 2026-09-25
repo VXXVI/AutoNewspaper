@@ -100,6 +100,7 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   ├── static/                   #   看板前端（原生 HTML/CSS/JS ES Module，无构建）
 │   │   ├── app.js                #     ES Module 入口（渲染 / 事件 / 扫描编排）
 │   │   ├── api.js                #     统一 JSON 请求层
+│   │   ├── store.js              #     action + 纯 reducer + store（单向数据流）
 │   │   └── format.js             #     纯函数工具（日期 / CSV / 关键词 / 位置文本）
 │   └── cli.py                    #   参数解析与主流程
 ├── papers.custom.json            # 自定义报社配置（项目根，有意入库，见「自定义报社」）
@@ -748,8 +749,8 @@ make unlock        # 删除沙箱/异常中断可能残留的 .git/index.lock
 前端另有两层**离线**测试（仅开发用，运行时不引入任何依赖）：
 
 ```bash
-# 纯函数（Node 内置 test runner，零依赖）
-node --test tests/frontend/format.test.mjs
+# 纯函数 + 纯 reducer（Node 内置 test runner，零依赖）
+node --test tests/frontend/*.test.mjs
 
 # app.js 的 DOM 行为（jsdom，devDependency；首次需 npm ci 安装）
 npm ci
@@ -758,10 +759,14 @@ node tests/frontend/run-dom.mjs
 
 > `package.json` / `package-lock.json` 只服务于前端测试（jsdom）。Python 侧的
 > **零第三方运行时依赖**不受影响；`node_modules/` 不入库。
+>
+> 前端状态集中在 `static/store.js`：`reducer(state, action)` 是纯函数
+> （Set 一律产生新实例），`app.js` 只经 `store.dispatch(action)` 改状态，
+> 纯 reducer 单测见 `tests/frontend/store.test.mjs`。
 
 CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查和测试，同时 `node --check` 前端脚本、
-`node --test` 前端纯函数、`node tests/frontend/run-dom.mjs` 前端 DOM 测试，并检查
-macOS/Linux Shell 启动脚本语法；Windows job 另外验证 PowerShell 解析与 BOM。
+`node --test tests/frontend/*.test.mjs` 前端纯函数 / reducer、`node tests/frontend/run-dom.mjs`
+前端 DOM 测试，并检查 macOS/Linux Shell 启动脚本语法；Windows job 另外验证 PowerShell 解析与 BOM。
 
 ### 故障排查
 
