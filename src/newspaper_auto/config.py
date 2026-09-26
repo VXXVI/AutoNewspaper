@@ -1,9 +1,18 @@
-"""静态配置：报社入口、清洗规则与默认参数。
+"""静态配置与共享纯函数：报社入口、清洗规则、默认参数与基础校验。
 
 本模块不含任何 I/O 与可变全局状态，便于被 CLI、扫描器与测试共同复用。
 """
 
 from __future__ import annotations
+
+from typing import Any
+
+
+# ---------------------------------------------------------------- 共享校验
+def is_int(value: Any) -> bool:
+    """严格的 int 判定（``bool`` 是 int 的子类，必须排除）。"""
+    return isinstance(value, int) and not isinstance(value, bool)
+
 
 # ---------------------------------------------------------------- 默认值
 DEFAULT_KEYWORDS: tuple[str, ...] = ("人工智能",)

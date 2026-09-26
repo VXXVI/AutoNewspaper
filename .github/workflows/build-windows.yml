@@ -1,13 +1,24 @@
 name: build-windows
 
-# 手动触发：在 windows-latest 上构建单文件 exe 并产出可分发的 zip（作为 artifact 下载），
-# 不需要打 tag。打 v* tag 时的正式发布由 release.yml 负责。
+# 可复用 + 可手动触发：在 windows-latest 上构建单文件 exe 并产出可分发的 zip。
+#
+# - workflow_dispatch：在 Actions 页手动构建并下载 artifact（无需打 tag）；
+# - workflow_call：由 release.yml 在打 v* tag 时复用，产物随 Release 一起发布。
+#
+# 构建 / 冒烟 / 打包逻辑均在 scripts/build_windows.ps1，两个入口共用同一份实现。
 on:
   workflow_dispatch:
     inputs:
       version:
         description: "版本标签（留空则使用源码中的版本号）"
         required: false
+        default: ""
+  workflow_call:
+    inputs:
+      version:
+        description: "版本标签（留空则使用源码中的版本号）"
+        required: false
+        type: string
         default: ""
 
 permissions:

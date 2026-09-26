@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### 变更
+
+- **去重与死代码清理（内部重构，无行为变化）**：`web.py` 的「天数 / 并发取值范围」校验抽成
+  `_valid_days` / `_valid_workers`（原先同一表达式逐字重复 7 次）；严格 `int` 判定 `is_int`
+  收敛到 `config.py` 成为共享纯函数，删除 `papers.py` / `web.py` 里逐字重复的两份 `_is_int`；
+  删除全仓库无调用方的 `papers.load_disabled`。
+- **CI 去重**：`build-windows.yml` 改为可复用工作流（`workflow_call` + `workflow_dispatch`），
+  `release.yml` 的 Windows 构建改为复用它，消除两处近乎逐行相同的 job（构建/冒烟/打包逻辑
+  本就集中在 `scripts/build_windows.ps1`）。
+
 ## [0.3.2] - 2026-09-26
 
 ### 新增

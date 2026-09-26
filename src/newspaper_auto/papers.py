@@ -81,11 +81,6 @@ def _warn(message: str) -> None:
     print(f"[警告] {config.CUSTOM_PAPERS_FILENAME}：{message}", file=sys.stderr)
 
 
-def _is_int(value: Any) -> bool:
-    """严格的 int 判定（``bool`` 是 int 的子类，必须排除）。"""
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
 def _clean_name(value: Any) -> tuple[str | None, str | None]:
     """校验并规范化报社名称，供报社对象与 ``disabled`` 共用。"""
     if not isinstance(value, str) or not value.strip():
@@ -175,13 +170,13 @@ def validate_paper(
 
     timeout = obj.get("timeout")
     if timeout is not None:
-        if not _is_int(timeout) or not MIN_TIMEOUT <= timeout <= MAX_TIMEOUT:
+        if not config.is_int(timeout) or not MIN_TIMEOUT <= timeout <= MAX_TIMEOUT:
             return None, f"timeout 必须是 {MIN_TIMEOUT}~{MAX_TIMEOUT} 之间的整数"
         paper["timeout"] = timeout
 
     retries = obj.get("retries")
     if retries is not None:
-        if not _is_int(retries) or not MIN_RETRIES <= retries <= MAX_RETRIES:
+        if not config.is_int(retries) or not MIN_RETRIES <= retries <= MAX_RETRIES:
             return None, f"retries 必须是 {MIN_RETRIES}~{MAX_RETRIES} 之间的整数"
         paper["retries"] = retries
 
@@ -315,11 +310,6 @@ def load_settings(root: Path) -> PaperSettings:
 def load_custom(root: Path) -> list[dict[str, Any]]:
     """兼容接口：只返回 ``papers`` 列表。"""
     return [dict(paper) for paper in load_settings(root).custom]
-
-
-def load_disabled(root: Path) -> set[str]:
-    """返回持久化的停用报社名称。"""
-    return set(load_settings(root).disabled)
 
 
 def load_settings_for_update(root: Path) -> PaperSettings:

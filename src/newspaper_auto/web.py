@@ -318,9 +318,14 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
 
 
 # ---------------------------------------------------------------- 参数校验
-def _is_int(value: Any) -> bool:
-    """严格的 int 判定（``bool`` 是 int 的子类，必须排除）。"""
-    return isinstance(value, int) and not isinstance(value, bool)
+def _valid_days(value: Any) -> bool:
+    """天数必须是 1~``config.MAX_RANGE_DAYS`` 的整数（``bool`` 被 :func:`config.is_int` 排除）。"""
+    return config.is_int(value) and 1 <= value <= config.MAX_RANGE_DAYS
+
+
+def _valid_workers(value: Any) -> bool:
+    """并发数必须是 1~``MAX_WORKERS`` 的整数。"""
+    return config.is_int(value) and 1 <= value <= MAX_WORKERS
 
 
 def _parse_iso_date(text: Any) -> datetime | None:
@@ -393,7 +398,7 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
     use_range = since is not None or until is not None
     if days is not None and use_range:
         return None, "days 不能与 since/until 同时使用"
-    if days is not None and (not _is_int(days) or not 1 <= days <= config.MAX_RANGE_DAYS):
+    if days is not None and not _valid_days(days):
         return None, f"days 必须是 1~{config.MAX_RANGE_DAYS} 之间的整数"
 
     since_text: str | None = None
@@ -421,7 +426,7 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
     workers = payload.get("workers")
     if workers is None:
         workers = config.DEFAULT_WORKERS
-    elif not _is_int(workers) or not 1 <= workers <= MAX_WORKERS:
+    elif not _valid_workers(workers):
         return None, f"workers 必须是 1~{MAX_WORKERS} 之间的整数"
 
     if not use_range and days is None:
@@ -459,7 +464,7 @@ def validate_web_config(payload: Any) -> tuple[dict[str, Any] | None, str | None
     if error:
         return None, error
     workers = payload.get("workers", config.DEFAULT_WORKERS)
-    if not _is_int(workers) or not 1 <= workers <= MAX_WORKERS:
+    if not _valid_workers(workers):
         return None, f"workers 必须是 1~{MAX_WORKERS} 之间的整数"
 
     mode = payload.get("mode", "days")
@@ -477,7 +482,7 @@ def validate_web_config(payload: Any) -> tuple[dict[str, Any] | None, str | None
     if mode == "days":
         if since is not None or until is not None:
             return None, "mode=days 时不能提供 since/until"
-        if not _is_int(days) or not 1 <= days <= config.MAX_RANGE_DAYS:
+        if not _valid_days(days):
             return None, f"days 必须是 1~{config.MAX_RANGE_DAYS} 之间的整数"
         return {
             "keywords": keywords,
@@ -500,7 +505,7 @@ def validate_web_config(payload: Any) -> tuple[dict[str, Any] | None, str | None
         return None, "since 不能晚于 until"
     if (until_dt - since_dt).days + 1 > config.MAX_RANGE_DAYS:
         return None, f"日期跨度不能超过 {config.MAX_RANGE_DAYS} 天"
-    if not _is_int(days) or not 1 <= days <= config.MAX_RANGE_DAYS:
+    if not _valid_days(days):
         days = config.DEFAULT_DAYS
     return {
         "keywords": keywords,
@@ -543,11 +548,11 @@ def load_web_config(data_dir: Path | str) -> dict[str, Any]:
         keywords = defaults["keywords"]
 
     days = data.get("days")
-    if not _is_int(days) or not 1 <= days <= config.MAX_RANGE_DAYS:
+    if not _valid_days(days):
         days = defaults["days"]
 
     workers = data.get("workers")
-    if not _is_int(workers) or not 1 <= workers <= MAX_WORKERS:
+    if not _valid_workers(workers):
         workers = defaults["workers"]
 
     mode = data.get("mode", "days")
