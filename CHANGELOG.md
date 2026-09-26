@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-26
+
 ### 新增
 
 - **Windows 单文件 exe（便于分发）**：新增统一入口 `newspaper_auto.exe`（`scan` / `dashboard`
