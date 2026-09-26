@@ -323,7 +323,7 @@ def main(
     kw_label = " / ".join(keywords)
 
     # 自定义报社跟随**项目根**（配置层），与 --data-dir（数据层）无关
-    paper_settings = papers.load_settings(paths.find_project_root())
+    paper_settings = papers.load_settings(paths.app_dir())
     all_papers = papers.merge_papers(config.PAPERS, paper_settings.custom, paper_settings.disabled)
     if not all_papers:
         parser.error("没有已启用的报社，请先在看板中恢复或添加报社")

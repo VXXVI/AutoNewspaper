@@ -31,10 +31,13 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "ruff>=0.6"]
+# 仅构建 Windows 单文件 exe 时需要；运行时不引入任何依赖。
+packaging = ["pyinstaller>=6.0"]
 
 [project.scripts]
 newspaper-scan = "newspaper_auto.cli:main"
 newspaper-dashboard = "newspaper_auto.web:main"
+newspaper-auto = "newspaper_auto.exe:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

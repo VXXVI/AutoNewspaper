@@ -48,6 +48,21 @@ def test_run_scan_ps1_defaults_to_two_days_and_mentions_range_example():
     assert "--since 2026-09-20 --until 2026-09-25" in text
 
 
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "scripts/run_scan.ps1",
+        "scripts/install_task_scheduler.ps1",
+        "scripts/build_windows.ps1",
+    ],
+)
+def test_windows_powershell_scripts_are_utf8_bom_with_crlf(rel):
+    """与 .gitattributes / CI 的约定一致：PowerShell 脚本必须 BOM + CRLF。"""
+    data = (ROOT / rel).read_bytes()
+    assert data[:3] == b"\xef\xbb\xbf", f"{rel} 缺少 UTF-8 BOM（PowerShell 5.1 会乱码）"
+    assert data.count(b"\n") == data.count(b"\r\n"), f"{rel} 存在裸 LF 行"
+
+
 def _make_isolated_project(tmp_path: Path) -> tuple[Path, Path]:
     """复制 run_scan.sh 到 tmp 项目，并造一个回显 argv 的桩 Python。"""
     scripts = tmp_path / "scripts"

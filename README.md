@@ -27,12 +27,14 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 旧的「两边共写 `state/seen.json`，必须二选一」说法已被证伪，不再适用
 （两种路径的产出物差异见「定时任务（macOS launchd）」一节）。
 
-**是否需要打包 exe：不需要。** 两条理由：
+**是否需要打包 exe：源码分发不需要；Windows 用户可选。** 项目**零第三方运行时依赖**
+（仅 Python 标准库；`curl` 可选），有 Python 环境时直接跑源码即可。但把工具发给**没装
+Python 的 Windows 用户**时，单文件 exe 最省事：CI 在打 `v*` tag 时构建
+`NewspaperAuto-<tag>-windows-x64.zip`（内含 `NewspaperAuto.exe` + 双击启动器），也可在
+仓库 Actions 手动触发 `build-windows` 构建并下载。exe 只捆绑标准库，**运行时仍零第三方依赖**。
 
-1. 项目**零第三方运行时依赖**（仅 Python 标准库；`curl` 可选），exe 想解决的
-   「用户装不上依赖」问题在本项目根本不存在；
-2. 真正的问题是**「谁每天来触发」**——exe 自己不会定时启动，打包并不能解决调度；
-   反而会引入体积、杀软误报、升级需重新分发等新麻烦。
+> exe 解决不了「谁每天来触发」——它自己不会定时启动；本机定时仍需 Windows 任务计划程序
+> （见「定时任务（Windows 任务计划程序）」）。exe 的定位是**便于手动使用与分发**。
 
 唯一的"服务器"角色是**被采集方**——六家报社官网本身，这是数据源，无法避免。
 需要注意的边界：**本机**定时任务要求本机在触发时刻处于唤醒/登录状态
@@ -52,19 +54,31 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 
 **日级精度下四种都可接受**——默认扫「今天 + 昨天」，漏掉一天第二天会自动补回来。
 
-### 分发给别人用（推荐的三种方式）
+### 分发给别人用（推荐方式）
 
-不需要 exe。按目标用户从易到难：
+按目标用户从易到难：
 
-1. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
+1. **Windows 单文件 exe（无需 Python，最省事）**：打 `v*` tag 后，
+   `.github/workflows/release.yml` 会在 `windows-latest` 上构建并挂出
+   `NewspaperAuto-<tag>-windows-x64.zip`（内含 `NewspaperAuto.exe`、`Run-Scan.cmd`、
+   `Start-Dashboard.cmd` 与使用说明）。也可在仓库 **Actions → build-windows → Run workflow**
+   手动构建并下载 artifact，无需打 tag。解压到任意**可写**目录即用（勿放 `C:\Program Files`）。
+   本机自行构建：在 Windows 上执行 `scripts\build_windows.ps1`
+   （`pip install pyinstaller` 属构建期依赖，不进入运行时）。
+2. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
    换机即用；目标机只需装 Python 3.9+。
-2. **从 Release 下载压缩包**（推荐给国内 / Windows）：打 `v*` tag 会触发
+3. **从 Release 下载压缩包**（推荐给国内 / Python 用户）：打 `v*` tag 会触发
    `.github/workflows/release.yml`，在 GitHub Release 里同时提供
    - `NewspaperAuto-<tag>-portable.zip`：源码精简包（已剔除 `tests/`、`legacy/`、`docs/`、
-     `.github/`，约 **180 KB**），**解压即用**，无需 git；
+     `.github/`、`state/`、`hits/`），**解压即用**，无需 git；
    - `.whl` / `.tar.gz`：`pip install <whl>` 或 `uv tool install <whl>`（`uv` 会自动准备 Python）。
-3. **便携 Python（无 Python 环境时）**：Windows 用官方 *embeddable* Python 解压到项目内
-   + 一个 `start.cmd`；macOS 用 python.org 安装包。比 PyInstaller 单文件更稳、更少被杀软误报。
+4. **便携 Python（无 Python 环境、又不想用 exe）**：Windows 用官方 *embeddable* Python 解压到
+   项目内 + 一个启动脚本；macOS 用 python.org 安装包。
+
+**Windows exe 用法**：解压后双击 `Start-Dashboard.cmd` 打开看板、`Run-Scan.cmd` 扫一次；
+命令行可用 `NewspaperAuto.exe scan --days 7`、`NewspaperAuto.exe dashboard --open`
+（`NewspaperAuto.exe --help` 查看全部子命令）。`state/`、`hits/` 与 `papers.custom.json`
+默认写在 **exe 所在目录**，整个文件夹可整体拷贝换机。
 
 > ⚠️ **`git clone` 慢 ≠ 仓库大**。本仓库 `.git` 只有 ~3 MB、60 个提交，克隆慢几乎总是
 > **到 GitHub 的网络往返延迟/抖动**，而不是体积。加速办法（任选）：
@@ -72,8 +86,9 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 > - **直接下压缩包**：到 Releases 下载 Source code (zip) 或上面的 `portable.zip`，解压即用，**完全不碰 git**；
 > - 维护者在本地可 `git gc` 压缩 `.git`，但对克隆速度影响有限。
 
-只有当目标用户既没有 Python、又不能安装时，才考虑 PyInstaller（`--onedir`、按平台分别构建、
-需代码签名/公证），且必须先解决跨平台签名与升级问题。
+> exe 未做代码签名，首次运行可能触发 Windows SmartScreen：点「更多信息 → 仍要运行」即可；
+> 若要做正式签名分发，需自行准备 Windows 代码签名证书。exe 用 PyInstaller **单文件**构建、
+> 只捆绑标准库；对体积/启动更敏感时可在 `packaging/NewspaperAuto.spec` 里改成 onedir。
 
 ---
 
@@ -102,7 +117,9 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   │   ├── api.js                #     统一 JSON 请求层
 │   │   ├── store.js              #     action + 纯 reducer + store（单向数据流）
 │   │   └── format.js             #     纯函数工具（日期 / CSV / 关键词 / 位置文本）
-│   └── cli.py                    #   参数解析与主流程
+│   ├── cli.py                    #   参数解析与主流程
+│   └── exe.py                    #   单文件 exe / newspaper-auto 统一入口（子命令分发）
+├── packaging/                    # Windows exe 打包（PyInstaller spec + 双击启动器 + 使用说明）
 ├── papers.custom.json            # 自定义报社配置（项目根，有意入库，见「自定义报社」）
 ├── .github/workflows/            # CI 与每日扫描 workflow（生产调度入口）
 ├── tests/                        # 离线回归测试 + HTML fixture
@@ -111,7 +128,8 @@ macOS `launchd` 与 Windows 任务计划程序是**本机替代路径**，与 Ac
 │   ├── com.quark.newspaperauto.plist.template  # launchd 模板
 │   ├── install_launchd.sh        #   macOS 幂等安装/状态/立即运行/卸载
 │   ├── run_scan.ps1              #   Windows 启动脚本（对标 run_scan.sh）
-│   └── install_task_scheduler.ps1 #  Windows 任务计划程序幂等安装/状态/立即运行/卸载
+│   ├── install_task_scheduler.ps1 #  Windows 任务计划程序幂等安装/状态/立即运行/卸载
+│   └── build_windows.ps1         #   Windows 单文件 exe 构建（PyInstaller + 冒烟 + 打包 zip）
 ├── docs/                         # 交付说明
 ├── legacy/                       # 已废弃的 Google News 旧方案（仅作参考）
 ├── hits/                         # 运行产出：报告与历史命中（有意入库）

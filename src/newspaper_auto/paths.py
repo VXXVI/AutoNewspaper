@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from . import config
@@ -26,6 +27,18 @@ def find_project_root(start: Path | None = None) -> Path:
         if any((candidate / marker).exists() for marker in config.ROOT_MARKERS):
             return candidate
     return cur
+
+
+def app_dir() -> Path:
+    """运行根目录（配置层与默认数据落点）。
+
+    - **冻结运行**（PyInstaller 单文件 exe）：返回可执行文件所在目录，做到「解压即用、
+      配置与数据跟随 exe」，而不是落到临时解包目录或当前 cwd；
+    - **源码运行**：与 :func:`find_project_root` 一致（向上找 ``.git`` / ``pyproject.toml``）。
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return find_project_root()
 
 
 def resolve_data_dir(

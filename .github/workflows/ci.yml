@@ -105,7 +105,7 @@ jobs:
         shell: pwsh
         run: |
           $bad = $false
-          foreach ($f in @('scripts/run_scan.ps1', 'scripts/install_task_scheduler.ps1')) {
+          foreach ($f in @('scripts/run_scan.ps1', 'scripts/install_task_scheduler.ps1', 'scripts/build_windows.ps1')) {
             $tokens = $null
             $errors = $null
             $path = (Resolve-Path $f).Path
@@ -123,7 +123,7 @@ jobs:
       - name: PowerShell 文件必须为 UTF-8 with BOM
         shell: pwsh
         run: |
-          foreach ($f in @('scripts/run_scan.ps1', 'scripts/install_task_scheduler.ps1')) {
+          foreach ($f in @('scripts/run_scan.ps1', 'scripts/install_task_scheduler.ps1', 'scripts/build_windows.ps1')) {
             $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $f).Path)
             if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
               Write-Host "::error file=$f::缺少 UTF-8 BOM，Windows PowerShell 5.1 会按 ANSI 解码导致中文乱码"

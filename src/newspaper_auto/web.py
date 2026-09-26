@@ -50,7 +50,21 @@ from urllib.parse import parse_qs, urlsplit
 from . import __version__, cli, config, exporter, papers, paths, report, scanner, state
 from .web_tasks import ScanTask
 
-STATIC_DIR = Path(__file__).parent / "static"
+
+def _static_dir() -> Path:
+    """静态资源目录：源码运行取 ``static/``；PyInstaller 冻结后取解包目录。"""
+    here = Path(__file__).resolve().parent / "static"
+    if here.is_dir():
+        return here
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle:
+        candidate = Path(bundle) / "newspaper_auto" / "static"
+        if candidate.is_dir():
+            return candidate
+    return here
+
+
+STATIC_DIR = _static_dir()
 STATIC_TYPES = {
     "index.html": "text/html; charset=utf-8",
     "api.js": "application/javascript; charset=utf-8",
@@ -940,7 +954,7 @@ class DashboardServer(ThreadingHTTPServer):
         self.paper_probe = paper_probe or default_paper_probe
         # 自定义报社跟随**项目根**（配置层），与 data_dir（数据层）无关；
         # 显式传入 papers_root 仅用于测试隔离，避免污染真实项目根。
-        self.papers_root = Path(papers_root) if papers_root is not None else paths.find_project_root()
+        self.papers_root = Path(papers_root) if papers_root is not None else paths.app_dir()
         self.scan_lock = threading.Lock()
         self.config_lock = threading.Lock()
         self.papers_lock = threading.Lock()

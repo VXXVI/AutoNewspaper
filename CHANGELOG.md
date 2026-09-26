@@ -7,6 +7,13 @@
 
 ### 新增
 
+- **Windows 单文件 exe（便于分发）**：新增统一入口 `newspaper_auto.exe`（`scan` / `dashboard`
+  子命令）与冻结感知的路径解析（`paths.app_dir()`、`web._static_dir()`），默认数据目录与
+  `papers.custom.json` 跟随 **exe 所在目录**（便携）；新增 `packaging/`（PyInstaller spec +
+  双击启动器 + 使用说明）、`scripts/build_windows.ps1`（构建 + 冒烟 + 打包 zip）与
+  `.github/workflows/build-windows.yml`（手动触发、产出可分发的 artifact）；`release.yml`
+  改为「Python 分发包 + Windows exe 并行构建 → 统一发布到 Release」。exe 只捆绑标准库，
+  **运行时仍零第三方依赖**（PyInstaller 仅构建期依赖）。
 - **归档生命周期（可选）**：`daily_scan.py` 新增 `--archive-keep-days N`（0 = 不限，默认），
   仅保留 `hits/archive.json` 中最近 N 天的记录；`date` 缺失或非法的条目一律保留，且不影响
   `seen.json` 的增量判定（`cli.prune_archive` / `cli.update_archive`）。默认不删，守住审计历史。
@@ -29,6 +36,8 @@
 
 ### 测试
 
+- 新增 `tests/test_exe.py`：子命令分发、冻结路径解析（`app_dir`）、静态目录 `_MEIPASS`
+  回退、打包文件语法检查；另加 PowerShell 脚本 BOM/CRLF 守卫。
 - 新增 `tests/test_scripts.py`：用桩解释器驱动 `run_scan.sh`，验证 `--since/--until/--export-*`
   确实透传且不注入互斥的 `--days`；并用 CLI 选项清单对两个脚本做文本同步断言，防止白名单再次滞后。
 - 新增 `prune_archive` / `update_archive(keep_days=)` / `--archive-keep-days` 校验、
