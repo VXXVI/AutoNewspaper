@@ -63,63 +63,65 @@ def merge_geometry(
 ) -> None:
     """把本版文章位置并入 ``target``，分三条互斥的优先级路径。
 
-    1. **有 ``<area>`` 映射**（优先级 1）：用本版坐标边界归一化，``index`` 按 ``y1``
-       升序编号，写出原坐标与 ``left/top/right/bottom``，``basis="area"``。
-       个别文章没被任何 area 覆盖时仍然不写该键——同一版不混用两套编号体系。
+    1. **有 ``<area>`` 映射**（优先级 1）：先只保留「属于本版文章」的 area，再用这些
+       area 的坐标边界归一化，``index`` 按 ``y1`` 升序编号，写出原坐标与
+       ``left/top/right/bottom``，``basis="area"``。``total`` 恒等于本版有坐标的文章数，
+       编号连续无空号；若没有任何文章被 area 覆盖，则回退到下一级而不是留下空结果。
     2. **内嵌百分比映射**（优先级 2，如南方日报 ``window.layoutData.mappingOriginal``）：
-       按 (top, left, 原始出现顺序) 升序编号，index 从 1 开始，写
+       同样先按本版文章过滤，再按 (top, left, 原始出现顺序) 升序编号，index 从 1 开始，写
        ``left`` / ``top`` / ``right`` / ``bottom`` / ``index`` / ``total`` / ``basis="mapping"``，
        不写 ``x1..y2``。
-    3. **纯链接式兜底**（优先级 3）：两者都没有时，按 ``articles`` 的出现顺序编号，
+    3. **纯链接式兜底**（优先级 3）：前两级都没有可用项时，按 ``articles`` 的出现顺序编号，
        只写 ``index`` / ``total`` / ``basis="order"``，绝不编造坐标。
     """
+    article_set = set(articles)
+
     if rects:
-        max_x2 = max(rect[2] for rect in rects.values())
-        max_y2 = max(rect[3] for rect in rects.values())
-        if max_x2 <= 0 or max_y2 <= 0:
-            return
-        article_set = set(articles)
-        ordered = sorted(rects.items(), key=lambda item: item[1][1])
-        total = len(ordered)
-        for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
-            if url not in article_set:
-                continue
-            target[url] = {
-                "x1": x1,
-                "y1": y1,
-                "x2": x2,
-                "y2": y2,
-                "left": round(x1 / max_x2, 4),
-                "top": round(y1 / max_y2, 4),
-                "right": round(x2 / max_x2, 4),
-                "bottom": round(y2 / max_y2, 4),
-                "index": index,
-                "total": total,
-                "basis": "area",
-            }
-        return
+        # 只对本版文章做归一化与编号：否则跨日期 / 非本版 area 会把 total 撑大、
+        # 让 index 出现空号（与 build_section_layout 的口径也会不一致）。
+        usable_rects = {url: rect for url, rect in rects.items() if url in article_set}
+        if usable_rects:
+            max_x2 = max(rect[2] for rect in usable_rects.values())
+            max_y2 = max(rect[3] for rect in usable_rects.values())
+            if max_x2 > 0 and max_y2 > 0:
+                ordered = sorted(usable_rects.items(), key=lambda item: item[1][1])
+                total = len(ordered)
+                for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
+                    target[url] = {
+                        "x1": x1,
+                        "y1": y1,
+                        "x2": x2,
+                        "y2": y2,
+                        "left": round(x1 / max_x2, 4),
+                        "top": round(y1 / max_y2, 4),
+                        "right": round(x2 / max_x2, 4),
+                        "bottom": round(y2 / max_y2, 4),
+                        "index": index,
+                        "total": total,
+                        "basis": "area",
+                    }
+                return
 
     if mapping:
-        raw_items = list(mapping.items())
-        ordered_mapping = sorted(
-            enumerate(raw_items),
-            key=lambda entry: (entry[1][1][1], entry[1][1][0], entry[0]),
-        )
-        total = len(ordered_mapping)
-        article_set = set(articles)
-        for index, (_orig_idx, (url, (left, top, right, bottom))) in enumerate(ordered_mapping, 1):
-            if url not in article_set:
-                continue
-            target[url] = {
-                "left": round(left, 4),
-                "top": round(top, 4),
-                "right": round(right, 4),
-                "bottom": round(bottom, 4),
-                "index": index,
-                "total": total,
-                "basis": "mapping",
-            }
-        return
+        usable_mapping = {url: box for url, box in mapping.items() if url in article_set}
+        if usable_mapping:
+            raw_items = list(usable_mapping.items())
+            ordered_mapping = sorted(
+                enumerate(raw_items),
+                key=lambda entry: (entry[1][1][1], entry[1][1][0], entry[0]),
+            )
+            total = len(ordered_mapping)
+            for index, (_orig_idx, (url, (left, top, right, bottom))) in enumerate(ordered_mapping, 1):
+                target[url] = {
+                    "left": round(left, 4),
+                    "top": round(top, 4),
+                    "right": round(right, 4),
+                    "bottom": round(bottom, 4),
+                    "index": index,
+                    "total": total,
+                    "basis": "mapping",
+                }
+            return
 
     total = len(articles)
     if total == 0:
@@ -250,6 +252,7 @@ def scan_paper(
     workers: int,
     dry: bool = False,
     fetcher: Fetcher | None = None,
+    cancel: Callable[[], bool] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """扫描某家报社某一天的报纸。
 
@@ -257,9 +260,16 @@ def scan_paper(
     - ``hits`` 标题或正文命中关键词的文章
     - ``all_articles`` 成功抓取到的全部文章（含未命中）
     - ``stats`` 本次扫描的统计与失败原因
+
+    ``cancel`` 是协作式取消回调：在**每个版面 / 每篇文章抓取前**检查，返回真则跳过该
+    抓取（不再发新的 HTTP 请求），从而把取消延迟从「报社 × 日期」单元边界缩短到
+    「单个在途请求」。已提交的请求无法中断，但排队中的任务会立即空转结束。
     """
     base_fetcher: Fetcher = fetcher or http.fetch
     _fetch = _paper_fetch(paper, base_fetcher)
+
+    def _cancelled() -> bool:
+        return cancel is not None and cancel()
 
     date_part = papers.format_date_path(paper, day)
     entry = paper["tpl"].format(a=date_part)
@@ -327,6 +337,9 @@ def scan_paper(
         int,
         str,
     ]:
+        if _cancelled():
+            # 取消：不发请求，也不计入失败样本
+            return node_url, "", [], {}, {}, 0, ""
         section_code, section_html = _fetch(node_url)
         if section_code != 200 or len(section_html) < config.MIN_HTML_BYTES:
             reason = (
@@ -372,6 +385,8 @@ def scan_paper(
     article_failed_records: list[dict[str, Any]] = []
 
     def grab_article(article_url: str) -> dict[str, Any] | None:
+        if _cancelled():
+            return None
         article_code, article_html = _fetch(article_url)
         if article_code != 200 or len(article_html) < config.MIN_HTML_BYTES:
             reason = (

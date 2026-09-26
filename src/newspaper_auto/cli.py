@@ -85,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=config.DEFAULT_WORKERS,
         help=f"并发数（1~{config.MAX_WORKERS}，默认 {config.DEFAULT_WORKERS}）",
     )
+    parser.add_argument(
+        "--archive-keep-days",
+        type=_bounded_int("--archive-keep-days", 0, 3650),
+        default=0,
+        help="hits/archive.json 的保留天数（0 = 不限，默认；不影响 seen.json 的增量判定）",
+    )
     parser.add_argument("--only", default="", help="只扫指定报社，逗号分隔")
     parser.add_argument("--full", action="store_true", help="忽略增量记录，全量重报")
     parser.add_argument("--dry", action="store_true", help="只探测入口与版面，不抓文章")
@@ -184,11 +190,21 @@ def select_papers(
     return selected, unmatched
 
 
-def update_archive(data_dir: os.PathLike[str] | str, all_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """把本次命中并入 ``archive.json``，返回合并后的归档。
+def update_archive(
+    data_dir: os.PathLike[str] | str,
+    all_hits: list[dict[str, Any]],
+    *,
+    keep_days: int = 0,
+    now: datetime | None = None,
+    log: Callable[..., None] | None = None,
+) -> list[dict[str, Any]]:
+    """把本次命中并入 ``archive.json``，返回合并（并按需修剪）后的归档。
 
     旧归档中的局部脏数据会被跳过；同 URL 再次命中时更新标题、版面与
     几何信息，并对 ``matched`` 取有序并集，避免新关键词永远不进看板。
+
+    ``keep_days > 0`` 时顺带丢弃 ``date`` 早于该天数的条目（见 :func:`prune_archive`），
+    默认 ``0`` 表示归档只增不删，保留完整审计历史。
     """
     archive_path = paths.archive_file(data_dir)
     try:
@@ -218,8 +234,35 @@ def update_archive(data_dir: os.PathLike[str] | str, all_hits: list[dict[str, An
             dict.fromkeys([*(previous.get("matched") or []), *(normalized_hit.get("matched") or [])])
         )
         archive[index] = merged
+
+    archive, dropped = prune_archive(archive, keep_days, now)
     report.write_text(archive_path, json.dumps(archive, ensure_ascii=False, indent=1))
+    if dropped and log:
+        log(f"  （已清理 {dropped} 条早于最近 {keep_days} 天的归档记录）")
     return archive
+
+
+def prune_archive(
+    archive: list[dict[str, Any]], keep_days: int, now: datetime | None = None
+) -> tuple[list[dict[str, Any]], int]:
+    """丢弃 ``date`` 早于最近 ``keep_days`` 天的归档条目，返回 ``(保留, 删除数)``。
+
+    ``keep_days <= 0`` 时原样返回（默认保留完整历史）。``date`` 缺失或非法的条目一律保留，
+    避免脏数据被误删。仅影响看板/报告用的 ``archive.json``，与 ``seen.json`` 的增量判定无关。
+    """
+    if keep_days <= 0:
+        return archive, 0
+    now = now or datetime.now()
+    cutoff = (now - timedelta(days=keep_days)).strftime("%Y-%m-%d")
+    kept: list[dict[str, Any]] = []
+    dropped = 0
+    for item in archive:
+        date = item.get("date") if isinstance(item, dict) else None
+        if isinstance(date, str) and date and date < cutoff:
+            dropped += 1
+            continue
+        kept.append(item)
+    return kept, dropped
 
 
 def _normalize_archive_item(item: Any) -> dict[str, Any] | None:
@@ -330,7 +373,7 @@ def main(
                 cancelled = True
                 break
             hits, articles, stats = scanner.scan_paper(
-                paper, day, kw_res, args.workers, dry=args.dry, fetcher=fetcher
+                paper, day, kw_res, args.workers, dry=args.dry, fetcher=fetcher, cancel=cancel
             )
             all_stats.append(stats)
             all_hits += hits
@@ -340,6 +383,11 @@ def main(
                 f"  {flag} {paper['name']:<5} {day:%m-%d}  版面{stats['sections']:>3}  "
                 f"文章{stats['scanned']:>4}  命中{len(hits):>2}  {stats['note']}"
             )
+            # 单元内也可能被取消（scan_paper 会在下一个版面/文章前停止）；
+            # 这里再检查一次，确保取消时整体走「不落盘」路径。
+            if cancel is not None and cancel():
+                cancelled = True
+                break
 
     if cancelled:
         log("-" * 72)
@@ -366,7 +414,7 @@ def main(
             with state.exclusive_lock(state_path):
                 seen = state.load_seen(state_path)
                 new_hits = state.compute_new_hits(all_hits, seen, full=args.full)
-                archive = update_archive(data_dir, all_hits)
+                archive = update_archive(data_dir, all_hits, keep_days=args.archive_keep_days, log=log)
                 stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
                 md_path = paths.hits_dir(data_dir) / f"{stamp}.md"
                 report.write_md(

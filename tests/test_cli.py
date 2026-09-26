@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 
@@ -622,3 +623,86 @@ def test_cancel_after_first_unit_keeps_partial_without_persisting(tmp_path, caps
     assert code == 130
     assert "湛江日报" in out
     assert not (tmp_path / "hits").exists()
+
+
+def test_cancel_mid_unit_stops_before_article_fetch(tmp_path, capsys, site_fetcher, today):
+    """取消发生在单元内部（入口抓完之后）时，不再抓任何文章，且不落盘。"""
+    upstream = site_fetcher(today)
+    state = {"cancelled": False, "calls": []}
+
+    def cancel() -> bool:
+        return state["cancelled"]
+
+    def fetch(url: str):
+        state["calls"].append(url)
+        if len(state["calls"]) == 1:  # 入口页返回后立即请求取消
+            state["cancelled"] = True
+        return upstream(url)
+
+    code = cli.main(
+        ["--only", "湛江日报", "--days", "1", "--data-dir", str(tmp_path)],
+        fetcher=fetch,
+        cancel=cancel,
+    )
+    capsys.readouterr()
+    assert code == 130
+    assert state["calls"], "至少应抓取入口页"
+    assert all("content_" not in url for url in state["calls"]), state["calls"]
+    assert not (tmp_path / "hits").exists()
+    assert not (tmp_path / "state").exists()
+
+
+# ---------------------------------------------------------------- 任务 B：归档生命周期
+def test_prune_archive_by_keep_days_keeps_recent_and_dateless():
+    now = datetime(2026, 9, 25)
+    archive = [
+        {"url": "u1", "date": "2026-09-20"},
+        {"url": "u2", "date": "2026-09-24"},
+        {"url": "u3", "date": ""},
+        {"url": "u4"},
+        {"url": "u5", "date": "2025-01-01"},
+    ]
+    kept, dropped = cli.prune_archive(archive, 30, now=now)
+
+    assert dropped == 1
+    assert [item["url"] for item in kept] == ["u1", "u2", "u3", "u4"]
+    # keep_days <= 0：原样保留（默认不删，守住审计历史）
+    kept_all, dropped_all = cli.prune_archive(archive, 0, now=now)
+    assert dropped_all == 0 and kept_all == archive
+
+
+def test_update_archive_with_keep_days_prunes_old_entries(tmp_path):
+    hits_dir = tmp_path / "hits"
+    hits_dir.mkdir()
+    (hits_dir / "archive.json").write_text(
+        json.dumps([{"url": "old", "date": "2020-01-01", "matched": ["k"]}]), encoding="utf-8"
+    )
+
+    merged = cli.update_archive(
+        tmp_path,
+        [{"url": "new", "date": "2026-09-25", "matched": ["k"]}],
+        keep_days=30,
+        now=datetime(2026, 9, 25),
+    )
+
+    assert [item["url"] for item in merged] == ["new"]
+    on_disk = json.loads((hits_dir / "archive.json").read_text(encoding="utf-8"))
+    assert [item["url"] for item in on_disk] == ["new"]
+
+
+def test_update_archive_default_keeps_full_history(tmp_path):
+    hits_dir = tmp_path / "hits"
+    hits_dir.mkdir()
+    (hits_dir / "archive.json").write_text(
+        json.dumps([{"url": "old", "date": "2020-01-01"}]), encoding="utf-8"
+    )
+    merged = cli.update_archive(tmp_path, [{"url": "new", "date": "2026-09-25"}])
+    assert [item["url"] for item in merged] == ["old", "new"]
+
+
+def test_archive_keep_days_rejects_negative_before_network():
+    calls: list[str] = []
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--archive-keep-days", "-1"], fetcher=lambda url: calls.append(url) or (404, ""))
+    assert exc.value.code == 2
+    assert calls == []

@@ -443,3 +443,63 @@ def test_custom_date_and_link_patterns_drive_scan(fixed_day):
     assert stats["sections"] == 2  # 入口页 + page-1 去重后的扫描集合
     assert len(articles) == 1 and len(hits) == 1
     assert articles[0]["url"] == base + "story-7.html"
+
+
+def test_merge_geometry_ignores_non_article_rects_and_keeps_contiguous_index():
+    """非本版文章的 area 不应撑大 total、也不应让 index 出现空号。"""
+    articles = ["http://x/a.html", "http://x/b.html"]
+    rects = {
+        "http://x/a.html": (0, 0, 10, 100),
+        "http://x/b.html": (0, 200, 10, 300),
+        "http://x/other.html": (0, 50, 10, 60),  # 非本版文章（如跨日期链接）
+    }
+    target: dict = {}
+    scanner.merge_geometry(target, rects=rects, mapping={}, articles=articles)
+    assert target["http://x/a.html"]["total"] == 2
+    assert target["http://x/a.html"]["index"] == 1
+    assert target["http://x/b.html"]["total"] == 2
+    assert target["http://x/b.html"]["index"] == 2
+    assert "http://x/other.html" not in target
+
+
+def test_merge_geometry_area_without_usable_entry_falls_back_to_mapping():
+    """有 area 但没有任何 area 落在本版文章上时，应降级到 mapping 而非留空。"""
+    articles = ["http://x/a.html"]
+    target: dict = {}
+    scanner.merge_geometry(
+        target,
+        rects={"http://x/z.html": (0, 0, 10, 10)},
+        mapping={"http://x/a.html": (0.0, 0.1, 0.5, 0.4)},
+        articles=articles,
+    )
+    assert target["http://x/a.html"]["basis"] == "mapping"
+    assert target["http://x/a.html"]["total"] == 1
+
+
+def test_merge_geometry_without_any_usable_geometry_falls_back_to_order():
+    articles = ["http://x/a.html", "http://x/b.html"]
+    target: dict = {}
+    scanner.merge_geometry(
+        target,
+        rects={"http://x/z.html": (0, 0, 10, 10)},
+        mapping={"http://x/y.html": (0.0, 0.0, 1.0, 1.0)},
+        articles=articles,
+    )
+    assert target["http://x/a.html"] == {"index": 1, "total": 2, "basis": "order"}
+    assert target["http://x/b.html"] == {"index": 2, "total": 2, "basis": "order"}
+
+
+def test_scan_paper_cancel_skips_fetches_after_entry(zhanjiang_paper, fixed_day, site_fetcher):
+    """协作式取消：入口之后不再发起任何版面/文章请求。"""
+    upstream = site_fetcher(fixed_day)
+    calls: list[str] = []
+
+    def fetch(url: str):
+        calls.append(url)
+        return upstream(url)
+
+    hits, articles, _stats = scanner.scan_paper(
+        zhanjiang_paper, fixed_day, KW, workers=2, fetcher=fetch, cancel=lambda: True
+    )
+    assert hits == [] and articles == []
+    assert len(calls) == 1, f"取消后不应再抓版面/文章，实际请求：{calls}"

@@ -5,6 +5,35 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **归档生命周期（可选）**：`daily_scan.py` 新增 `--archive-keep-days N`（0 = 不限，默认），
+  仅保留 `hits/archive.json` 中最近 N 天的记录；`date` 缺失或非法的条目一律保留，且不影响
+  `seen.json` 的增量判定（`cli.prune_archive` / `cli.update_archive`）。默认不删，守住审计历史。
+
+### 变更
+
+- **启动脚本参数透传补全**：`scripts/run_scan.sh` / `run_scan.ps1` 现支持 `--since` /
+  `--until` / `--export-dir` / `--export-format` / `--archive-keep-days` / `--version`，
+  并在给了 `--since/--until` 时自动省略默认 `--days`（二者在 CLI 互斥，同时显式给出会报错退出）；
+  PowerShell 侧默认天数与 CLI、`run_scan.sh` 对齐为 2（今天 + 昨天）。
+- **取消扫描细化为「单个在途请求」粒度**：`scanner.scan_paper` 新增协作式 `cancel` 回调，
+  在每个版面 / 每篇文章抓取前检查；`cli.main` 透传并在单元内二次检查。取消后排队任务立即
+  空转结束，延迟从「整家报社 × 整天」缩短为一个在途请求（`scanner.py`、`cli.py`）。
+
+### 修复
+
+- **版面几何 `total/index` 不再被非本版 area 撑大**：`scanner.merge_geometry` 先按本版文章
+  过滤 `<area>` / `mappingOriginal`，`total` 恒等于本版有坐标的文章数、`index` 连续无空号；
+  没有可用几何时正确回退到 mapping / order，而不是留下空结果（`scanner.py`）。
+
+### 测试
+
+- 新增 `tests/test_scripts.py`：用桩解释器驱动 `run_scan.sh`，验证 `--since/--until/--export-*`
+  确实透传且不注入互斥的 `--days`；并用 CLI 选项清单对两个脚本做文本同步断言，防止白名单再次滞后。
+- 新增 `prune_archive` / `update_archive(keep_days=)` / `--archive-keep-days` 校验、
+  `merge_geometry` 非本版 area 过滤与降级、`scan_paper(cancel=)` 与「单元内取消不落盘」等用例。
+
 ## [0.3.1] - 2026-09-25
 
 ### 修复

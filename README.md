@@ -210,6 +210,7 @@ python3 daily_scan.py --full           # 忽略增量记录，全量重报
 python3 daily_scan.py --workers 8      # 并发数（默认 8）
 python3 daily_scan.py --export-dir ./exports                 # 本次命中另存为 CSV
 python3 daily_scan.py --export-dir ./exports --export-format json  # 改存 JSON
+python3 daily_scan.py --archive-keep-days 730  # 归档只保留最近 730 天（默认 0 = 不限，保留全量）
 python3 daily_scan.py --dry            # 只探测入口和版面，不抓文章
 python3 daily_scan.py --version        # 版本号
 ```
@@ -310,7 +311,7 @@ NEWSPAPER_TIMES="10:00,12:30" ./scripts/install_launchd.sh install
 - 修改时间后**重新执行一次 `install`** 即生效（幂等，会自动卸载旧的）。
 - 建议 07:00 之后：报纸一般凌晨上线，过早跑可能版面不全。
 - 自定义回溯天数：在模板里给 `EnvironmentVariables` 加
-  `NEWSPAPER_DAYS`（默认 1）。
+  `NEWSPAPER_DAYS`（默认 2＝今天+昨天，与 `daily_scan.py` 一致）。
 
 自定义关键词：编辑 `scripts/com.quark.newspaperauto.plist.template`，取消
 `NEWSPAPER_KW` 注释后重新 `install`；或直接用启动脚本传参：
@@ -318,8 +319,14 @@ NEWSPAPER_TIMES="10:00,12:30" ./scripts/install_launchd.sh install
 ```bash
 ./scripts/run_scan.sh 人工智能 生成式人工智能
 ./scripts/run_scan.sh --kw 人工智能 --days 3 --only 湛江日报
+./scripts/run_scan.sh --since 2026-09-20 --until 2026-09-25   # 显式区间（与 --days 互斥）
 NEWSPAPER_KW="人工智能,生成式人工智能" ./scripts/run_scan.sh
 ```
+
+> `run_scan.sh` / `run_scan.ps1` 会把 CLI 的选项（`--since` / `--until` /
+> `--export-dir` / `--export-format` / `--archive-keep-days` 等）原样透传给
+> `daily_scan.py`；脚本本身固定追加 `--no-state`，并在给了 `--since/--until` 时
+> 自动省略默认的 `--days`（两者在 CLI 里互斥）。
 
 ### 定时任务（Windows 任务计划程序）
 
@@ -495,7 +502,7 @@ rm -rf ~/.newspaperauto
 |---|---|
 | `hits/<时间戳>.md` | 每次运行的报告（各家扫描情况 + 新增命中 + 上下文） |
 | `hits/index.html` | 历史全部命中汇总，可直接浏览 |
-| `hits/archive.json` | 命中归档（结构化，便于二次加工） |
+| `hits/archive.json` | 命中归档（结构化，便于二次加工；默认只增不删，可用 `--archive-keep-days N` 按天保留） |
 | `state/seen.json` | 增量状态（已判定过的文章 URL），保证只报新增 |
 | `logs/scan-YYYY-MM-DD.log` | 定时任务运行日志 |
 | `exports/newspaper-hits-<时间戳>-<随机标识>.<格式>` | 可选 CSV / JSON 导出文件（目录可自定义） |
@@ -550,7 +557,7 @@ make start                         # 打开看板 + 按上次页面设置自动�
   页面首次加载会聚焦**当前保存的关键词**；每轮扫描完成后自动切换为该次扫描关键词并刷新报道，
   避免新结果混在旧关键词历史里难以发现。
   ⓘ 看板已**不再是纯只读**——扫描会写 `state/` 与 `hits/`；扫描中可点「取消扫描」
-  （协作式，下一个工作单元边界生效，不写 `state/` 与 `hits/`），也可直接关闭看板进程。
+  （协作式，排队中的版面/文章抓取立即停止、在途请求不打断，不写 `state/` 与 `hits/`），也可直接关闭看板进程。
   当命中为 0（空归档）时，命中列表区会给出**空状态引导**：显示当前数据目录并提示点
   「开始扫描」；若是**全新环境**（该目录下还没有 `state/web_config.json`），还会提示
   默认关键词与默认扫「今天 + 昨天」。
@@ -571,8 +578,9 @@ make start                         # 打开看板 + 按上次页面设置自动�
     `?after=<日志游标>` 只取新增日志，响应含任务 ID、总体进度和下一游标。
   - `GET /api/scan/events`：SSE（`text/event-stream`）持续推送任务快照与日志增量，到达终态自动
     关闭；前端优先用它接收进度，不可用或断开时回退到 `GET /api/scan` 轮询。
-  - `POST /api/scan/cancel`：请求取消当前扫描（**协作式**，在下一个「报社 × 日期」单元边界生效，
-    不写 `state/` 与 `hits/`）。`202` 已受理 / `409` 无运行中任务；任务状态变为 `cancelled`（退出码 130）。
+  - `POST /api/scan/cancel`：请求取消当前扫描（**协作式**，排队中的版面/文章抓取立即停止，
+    在途的单个 HTTP 请求不打断，不写 `state/` 与 `hits/`）。`202` 已受理 / `409` 无运行中任务；
+    任务状态变为 `cancelled`（退出码 130）。
   - `GET /api/scan/history`：最近任务摘要（`state/tasks.json`，最多 20 条），含状态、耗时、命中概览。
   - `POST /api/config` / `GET /api/config`：保存 / 读取配置；文件不存在时回落到
     `config.DEFAULT_KEYWORDS` / `DEFAULT_DAYS` / `DEFAULT_WORKERS`，并补 `mode="days"` /
@@ -806,9 +814,13 @@ CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查和测试，同时 `no
 - **对报社站点是轻量访问**：每天每站约 100~200 个请求、并发 8，属正常阅读量级。
   默认并发 8；若某家不稳可降到 4~5（`--workers 5`）。
 - **看板支持「取消扫描」但为协作式**：扫描在看板进程内的线程里直接调用 `cli.main`，Python
-  线程无法安全强杀。点「取消扫描」或 `POST /api/scan/cancel` 后，会在**下一个「报社 × 日期」
-  单元边界**退出（正在进行的单个 HTTP 请求不会被打断），且**不写入** `state/` 与 `hits/`，
-  任务状态标记为 `cancelled`（退出码 130）。要立即停止整个进程时，Ctrl+C / 关窗口即可。
+  线程无法安全强杀。点「取消扫描」或 `POST /api/scan/cancel` 后，**排队中的版面/文章抓取会立即
+  停止**（每个版面、每篇文章抓取前都会检查取消标记），**在途的单个 HTTP 请求无法打断**；
+  整体**不写入** `state/` 与 `hits/`，任务状态标记为 `cancelled`（退出码 130）。取消延迟通常为
+  一个在途请求，而不是整家报社 + 整天的所有文章。要立即停止整个进程时，Ctrl+C / 关窗口即可。
+- **历史归档默认只增不删**：`hits/archive.json` 是审计用的全量历史，默认不做滚动清理；
+  长期运行后可用 `--archive-keep-days N` 只保留最近 N 天（0 = 不限，默认）。看板 `GET /api/hits`
+  会一次性下发整份归档，记录极大时首屏会变慢，届时应按需裁剪或改为按月分片。
 
 ---
 

@@ -37,6 +37,7 @@
     python3 daily_scan.py --csv              # 命中结果以 CSV 格式输出到 stdout
     python3 daily_scan.py --export-dir ./exports              # 本次命中另存 CSV
     python3 daily_scan.py --export-dir ./exports --export-format json
+    python3 daily_scan.py --archive-keep-days 730             # 归档只保留最近 730 天（默认 0 = 不限）
 
 输出
 ----

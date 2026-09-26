@@ -12,6 +12,8 @@
 #
 # 其余选项原样透传给 daily_scan.py，例如：
 #   ./scripts/run_scan.sh --days 3 --workers 4 --only 湛江日报,南方日报
+#   ./scripts/run_scan.sh --since 2026-09-20 --until 2026-09-25   # 显式区间（与 --days 互斥）
+#   ./scripts/run_scan.sh --export-dir ./exports --export-format json
 #
 # 可配置环境变量：
 #   NEWSPAPER_PYTHON  Python 解释器绝对路径（默认：项目 .venv → PATH 中的 python3）
@@ -53,6 +55,10 @@ PYTHON_BIN="$(resolve_python)" || die "未找到可用的 python3，请安装或
 DAYS="${NEWSPAPER_DAYS:-2}"
 KW_ARGS=()
 PASS_ARGS=()
+# --days 与 --since/--until 在 daily_scan.py 里互斥：给了显式区间就不再注入 --days，
+# 两者同时显式给出则直接报错，避免「静默忽略其中一个」。
+HAS_DAYS=0
+HAS_RANGE=0
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -69,20 +75,31 @@ while [ "$#" -gt 0 ]; do
             ;;
         --days)
             [ "$#" -ge 2 ] || die "--days 缺少参数"
-            DAYS="$2"; shift 2
+            DAYS="$2"; HAS_DAYS=1; shift 2
             ;;
         --days=*)
-            DAYS="${1#--days=}"; shift
+            DAYS="${1#--days=}"; HAS_DAYS=1; shift
             ;;
-        --workers|--only|--data-dir)
+        --since|--until)
+            [ "$#" -ge 2 ] || die "$1 缺少参数"
+            PASS_ARGS+=("$1" "$2"); HAS_RANGE=1; shift 2
+            ;;
+        --since=*|--until=*)
+            PASS_ARGS+=("$1"); HAS_RANGE=1; shift
+            ;;
+        --workers|--only|--data-dir|--export-dir|--export-format|--archive-keep-days)
             [ "$#" -ge 2 ] || die "$1 缺少参数"
             PASS_ARGS+=("$1" "$2"); shift 2
             ;;
-        --workers=*|--only=*|--data-dir=*)
+        --workers=*|--only=*|--data-dir=*|--export-dir=*|--export-format=*|--archive-keep-days=*)
             PASS_ARGS+=("$1"); shift
             ;;
-        --dry|--full|--json|--csv|-h|--help)
+        --dry|--full|--json|--csv|--version|-h|--help)
             PASS_ARGS+=("$1"); shift
+            ;;
+        --no-state)
+            # 本脚本始终以 --no-state 运行；重复传入直接忽略，避免 argv 重复
+            shift
             ;;
         --*)
             die "未知选项：$1（如需传给 daily_scan.py 的新选项，请在此脚本中登记）"
@@ -93,6 +110,10 @@ while [ "$#" -gt 0 ]; do
             ;;
     esac
 done
+
+if [ "${HAS_DAYS}" -eq 1 ] && [ "${HAS_RANGE}" -eq 1 ]; then
+    die "--days 与 --since/--until 不能同时使用（与 daily_scan.py 一致）"
+fi
 
 # 位置参数与显式 --kw 均未给出时，退回环境变量
 if [ "${#KW_ARGS[@]}" -eq 0 ] && [ -n "${NEWSPAPER_KW:-}" ]; then
@@ -112,7 +133,10 @@ LOG_FILE="logs/scan-$(date +'%Y-%m-%d').log"
 export PYTHONIOENCODING="utf-8"
 
 # bash 3.2（macOS 自带）在 set -u 下展开空数组会报错，故用 ${arr[@]+...} 惯用法
-CMD=("${PYTHON_BIN}" daily_scan.py --days "${DAYS}" --no-state)
+CMD=("${PYTHON_BIN}" daily_scan.py --no-state)
+if [ "${HAS_RANGE}" -eq 0 ]; then
+    CMD+=(--days "${DAYS}")
+fi
 CMD+=(${KW_ARGS[@]+"${KW_ARGS[@]}"})
 CMD+=(${PASS_ARGS[@]+"${PASS_ARGS[@]}"})
 

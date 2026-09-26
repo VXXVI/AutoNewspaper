@@ -11,10 +11,12 @@
 #
 # 其余选项原样透传给 daily_scan.py，例如：
 #   .\scripts\run_scan.ps1 --days 3 --workers 4 --only 湛江日报,南方日报
+#   .\scripts\run_scan.ps1 --since 2026-09-20 --until 2026-09-25   # 显式区间（与 --days 互斥）
+#   .\scripts\run_scan.ps1 --export-dir .\exports --export-format json
 #
 # 可配置环境变量：
 #   NEWSPAPER_PYTHON  Python 解释器绝对路径（默认：项目 .venv\Scripts\python.exe → PATH 中的 python）
-#   NEWSPAPER_DAYS    回溯天数（默认 1）
+#   NEWSPAPER_DAYS    回溯天数（默认 2＝今天+昨天，与 daily_scan.py 的默认一致）
 #   NEWSPAPER_KW      关键词，逗号或分号分隔
 #
 # 日志：追加写入 logs\scan-YYYY-MM-DD.log
@@ -59,9 +61,13 @@ function Resolve-Python {
 $PythonBin = Resolve-Python
 
 # ---------------------------------------------------------------- 参数解析
-$Days = if ($env:NEWSPAPER_DAYS) { [string]$env:NEWSPAPER_DAYS } else { '1' }
+$Days = if ($env:NEWSPAPER_DAYS) { [string]$env:NEWSPAPER_DAYS } else { '2' }
 $KwArgs = @()
 $PassArgs = @()
+# --days 与 --since/--until 在 daily_scan.py 里互斥：给了显式区间就不再注入 --days，
+# 两者同时显式给出则直接报错，避免「静默忽略其中一个」。
+$HasDays = $false
+$HasRange = $false
 
 $rawArgs = @($args)
 for ($i = 0; $i -lt $rawArgs.Count; $i++) {
@@ -85,20 +91,35 @@ for ($i = 0; $i -lt $rawArgs.Count; $i++) {
         if ($i + 1 -ge $rawArgs.Count) { Die '--days 缺少参数' }
         $i++
         $Days = [string]$rawArgs[$i]
+        $HasDays = $true
     }
     elseif ($a -like '--days=*') {
         $Days = $a.Substring(7)
+        $HasDays = $true
     }
-    elseif ($a -eq '--workers' -or $a -eq '--only' -or $a -eq '--data-dir') {
+    elseif ($a -eq '--since' -or $a -eq '--until') {
+        if ($i + 1 -ge $rawArgs.Count) { Die "$a 缺少参数" }
+        $i++
+        $PassArgs += @($a, [string]$rawArgs[$i])
+        $HasRange = $true
+    }
+    elseif ($a -like '--since=*' -or $a -like '--until=*') {
+        $PassArgs += $a
+        $HasRange = $true
+    }
+    elseif ($a -eq '--workers' -or $a -eq '--only' -or $a -eq '--data-dir' -or $a -eq '--export-dir' -or $a -eq '--export-format' -or $a -eq '--archive-keep-days') {
         if ($i + 1 -ge $rawArgs.Count) { Die "$a 缺少参数" }
         $i++
         $PassArgs += @($a, [string]$rawArgs[$i])
     }
-    elseif ($a -like '--workers=*' -or $a -like '--only=*' -or $a -like '--data-dir=*') {
+    elseif ($a -like '--workers=*' -or $a -like '--only=*' -or $a -like '--data-dir=*' -or $a -like '--export-dir=*' -or $a -like '--export-format=*' -or $a -like '--archive-keep-days=*') {
         $PassArgs += $a
     }
-    elseif ($a -eq '--dry' -or $a -eq '--full' -or $a -eq '--json' -or $a -eq '--csv' -or $a -eq '-h' -or $a -eq '--help') {
+    elseif ($a -eq '--dry' -or $a -eq '--full' -or $a -eq '--json' -or $a -eq '--csv' -or $a -eq '--version' -or $a -eq '-h' -or $a -eq '--help') {
         $PassArgs += $a
+    }
+    elseif ($a -eq '--no-state') {
+        # 本脚本始终以 --no-state 运行；重复传入直接忽略，避免 argv 重复
     }
     elseif ($a -like '-*') {
         Die "未知选项：$a（如需传给 daily_scan.py 的新选项，请在此脚本中登记）"
@@ -107,6 +128,10 @@ for ($i = 0; $i -lt $rawArgs.Count; $i++) {
         # 裸关键词（向后兼容旧用法）
         $KwArgs += @('--kw', $a)
     }
+}
+
+if ($HasDays -and $HasRange) {
+    Die "--days 与 --since/--until 不能同时使用（与 daily_scan.py 一致）"
 }
 
 # 位置参数与显式 --kw 均未给出时，退回环境变量
@@ -125,7 +150,11 @@ New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
 $LogFile = Join-Path $LogsDir ('scan-{0}.log' -f (Get-Date -Format 'yyyy-MM-dd'))
 $env:PYTHONIOENCODING = 'utf-8'
 
-$CmdArgs = @('daily_scan.py', '--days', $Days, '--no-state') + $KwArgs + $PassArgs
+$CmdArgs = @('daily_scan.py', '--no-state')
+if (-not $HasRange) {
+    $CmdArgs += @('--days', $Days)
+}
+$CmdArgs += $KwArgs + $PassArgs
 
 # 日志统一用 UTF-8（不带 BOM）追加写入
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
