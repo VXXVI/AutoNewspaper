@@ -23,7 +23,10 @@ from newspaper_auto import cli
 
 ROOT = Path(__file__).resolve().parents[1]
 
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="需要 bash 才能驱动 run_scan.sh")
+# 行为测试依赖 POSIX shell（Linux/macOS）；Windows 上的 Git Bash 无法可靠执行这些脚本，
+# 但「文本契约」与「PowerShell 守卫」在所有平台都可运行，必须在 Windows 上照样生效。
+_HAS_POSIX_BASH = os.name == "posix" and shutil.which("bash") is not None
+_requires_posix_bash = pytest.mark.skipif(not _HAS_POSIX_BASH, reason="需要 POSIX bash 环境")
 
 
 def _cli_long_options() -> set[str]:
@@ -94,6 +97,7 @@ def _logged_command(tmp_path: Path) -> str:
     return matches[-1]
 
 
+@_requires_posix_bash
 def test_run_scan_sh_forwards_range_and_export_options(tmp_path):
     project, stub = _make_isolated_project(tmp_path)
     proc = _run_script(
@@ -123,6 +127,7 @@ def test_run_scan_sh_forwards_range_and_export_options(tmp_path):
     assert "--days" not in command
 
 
+@_requires_posix_bash
 def test_run_scan_sh_injects_default_days_when_no_range(tmp_path):
     project, stub = _make_isolated_project(tmp_path)
     proc = _run_script(project, stub, "--workers", "4")
@@ -132,6 +137,7 @@ def test_run_scan_sh_injects_default_days_when_no_range(tmp_path):
     assert "--since" not in command
 
 
+@_requires_posix_bash
 def test_run_scan_sh_rejects_days_with_explicit_range(tmp_path):
     project, stub = _make_isolated_project(tmp_path)
     proc = _run_script(project, stub, "--days", "3", "--since", "2026-09-20")
