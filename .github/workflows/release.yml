@@ -94,10 +94,24 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: 创建 Release 并上传全部产物
+      - name: 创建/更新 Release 并上传全部产物
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           ls -la release-assets
-          gh release create "${GITHUB_REF_NAME}" release-assets/* \
-            --generate-notes -R "${{ github.repository }}"
+          # download-artifact 会保留部分目录层级（如 dist/），必须只挑文件，
+          # 否则 gh 会把目录当资产上传并报 "read ...: is a directory"。
+          mapfile -t assets < <(find release-assets -type f -print | sort)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "没有可发布的产物" >&2
+            exit 1
+          fi
+          printf '待发布：%s\n' "${assets[@]}"
+          if gh release view "${GITHUB_REF_NAME}" -R "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" \
+              --clobber -R "${{ github.repository }}"
+          else
+            gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+              --generate-notes -R "${{ github.repository }}"
+          fi
