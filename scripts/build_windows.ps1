@@ -7,6 +7,7 @@
 # 产物：
 #   dist\NewspaperAuto.exe
 #   dist\NewspaperAuto-<版本>-windows-x64.zip   （exe + 双击启动器 + 使用说明）
+#   dist\NewspaperAuto-<版本>-setup.exe         （安装包；需 Inno Setup，缺失则跳过）
 #
 # 说明：PyInstaller 无法跨平台交叉编译（只能在 Windows 上产出 Windows 产物）。
 #       macOS / Linux 上请改用 GitHub Actions（.github/workflows/build-windows.yml）。
@@ -18,7 +19,8 @@
 param(
     [string]$Version = '',
     [switch]$SkipInstall,
-    [switch]$SkipSmoke
+    [switch]$SkipSmoke,
+    [switch]$SkipInstaller
 )
 
 $ErrorActionPreference = 'Stop'
@@ -100,6 +102,40 @@ $zipPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-windows-x64.zip' -f $V
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -Force -LiteralPath $zipPath }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipPath -Force
 
+# ---------------------------------------------------------------- 安装包（Inno Setup，可选）
+# 便携 zip 直接可用；有 Inno Setup 时再产出「安装版」：装到 %LOCALAPPDATA%\Programs，
+# 建开始菜单/桌面快捷方式、带卸载，用户不必解压也不必挑 .cmd。
+$setupPath = $null
+if (-not $SkipInstaller) {
+    Write-Host ''
+    Write-Host '构建 Windows 安装包（Inno Setup）…'
+
+    $iscc = $null
+    $candidates = @(
+        (Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),
+        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+        'C:\Program Files\Inno Setup 6\ISCC.exe',
+        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
+    )
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) { $iscc = $candidate; break }
+    }
+
+    if (-not $iscc) {
+        Write-Host '未找到 Inno Setup（ISCC.exe），跳过安装包构建。'
+        Write-Host '如需构建：winget install JRSoftware.InnoSetup（CI 里由 chocolatey 安装）。'
+    } else {
+        Write-Host "使用 ISCC：$iscc"
+        $issPath = Join-Path $ProjectDir 'packaging\windows\installer.iss'
+        & $iscc "/DAppVersion=$Version" "/DSourceDir=$stage" $issPath
+        if ($LASTEXITCODE -ne 0) { Die 'Inno Setup 编译失败' }
+
+        $setupPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-setup.exe' -f $Version)
+        if (-not (Test-Path -LiteralPath $setupPath)) { Die "未生成安装包 $setupPath" }
+    }
+}
+
 Write-Host ''
 Write-Host "已生成：$zipPath"
+if ($setupPath) { Write-Host "已生成：$setupPath" }
 Write-Output $zipPath

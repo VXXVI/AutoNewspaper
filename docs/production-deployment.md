@@ -64,27 +64,40 @@ exe 只捆绑标准库，**运行时仍零第三方依赖**。
 
 按目标用户从易到难：
 
-1. **Windows 单文件 exe（无需 Python，最省事）**：打 `v*` tag 后，
+1. **Windows 安装包（推荐给普通用户）**：`NewspaperAuto-<tag>-setup.exe`，双击安装，
+   装到 `%LOCALAPPDATA%\Programs\NewspaperAuto`（**用户可写**，无需管理员权限），
+   自动创建开始菜单快捷方式（打开看板 / 扫描一次 / 使用说明 / 卸载）与可选的桌面快捷方式，
+   装完可直接开看板。卸载**不删除** `state/`、`hits/`（扫描数据是用户资产）。
+2. **Windows 单文件 exe（便携、无需安装）**：打 `v*` tag 后，
    `.github/workflows/release.yml` 会在 `windows-latest` 上构建并挂出
    `NewspaperAuto-<tag>-windows-x64.zip`（内含 `NewspaperAuto.exe`、`Run-Scan.cmd`、
    `Start-Dashboard.cmd` 与使用说明）。也可在仓库 **Actions → build-windows → Run workflow**
    手动构建并下载 artifact，无需打 tag。解压到任意**可写**目录即用（勿放 `C:\Program Files`）。
    本机自行构建：在 Windows 上执行 `scripts\build_windows.ps1`
-   （`pip install pyinstaller` 属构建期依赖，不进入运行时）。
-2. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
+   （`pip install pyinstaller` 属构建期依赖，不进入运行时；
+   安装了 Inno Setup 时会顺带产出 `setup.exe`，否则自动跳过）。
+3. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
    换机即用；目标机只需装 Python 3.9+。
-3. **从 Release 下载压缩包**（推荐给国内 / Python 用户）：打 `v*` tag 会触发
+4. **从 Release 下载压缩包**（推荐给国内 / Python 用户）：打 `v*` tag 会触发
    `.github/workflows/release.yml`，在 GitHub Release 里同时提供
    - `NewspaperAuto-<tag>-portable.zip`：源码精简包（已剔除 `tests/`、`legacy/`、
      `.github/`、`state/`、`hits/`，**包含 `docs/`**），**解压即用**，无需 git；
    - `.whl` / `.tar.gz`：`pip install <whl>` 或 `uv tool install <whl>`（`uv` 会自动准备 Python）。
-4. **便携 Python（无 Python 环境、又不想用 exe）**：Windows 用官方 *embeddable* Python 解压到
+5. **便携 Python（无 Python 环境、又不想用 exe）**：Windows 用官方 *embeddable* Python 解压到
    项目内 + 一个启动脚本；macOS 用 python.org 安装包。
 
-**Windows exe 用法**：解压后双击 `Start-Dashboard.cmd` 打开看板、`Run-Scan.cmd` 扫一次；
-命令行可用 `NewspaperAuto.exe scan --days 7`、`NewspaperAuto.exe dashboard --open`
+**Windows exe 用法**：双击 `NewspaperAuto.exe`（或 `Start-Dashboard.cmd`，两者等效）打开看板，
+`Run-Scan.cmd` 扫一次。看板服务默认**后台运行** —— 关掉命令行窗口不会停止它，
+停止用 `NewspaperAuto.exe dashboard --stop`，查状态用 `dashboard --status`。
+命令行还可用 `NewspaperAuto.exe scan --days 7`、`NewspaperAuto.exe dashboard --port 9000 --open`
 （`NewspaperAuto.exe --help` 查看全部子命令）。`state/`、`hits/` 与 `papers.custom.json`
 默认写在 **exe 所在目录**，整个文件夹可整体拷贝换机。
+
+> 为什么把看板放到后台：早先 `dashboard --open` 跑在前台控制台里，用户扫完一次就把黑窗口
+> 关掉 —— 那正是服务进程本体，于是浏览器里再点「开始扫描」只会看到「无法连接本地服务」。
+> 现在服务与控制台解耦，并把 `host/port/pid` 落在 `state/dashboard.json`：
+> 启动器据此复用已在运行的实例（也顺带解决「端口变了、旧标签页连不上」）。
+> 前端在连不上时会给出明确的恢复指引与「重新连接看板」按钮。
 
 > exe 未做代码签名，首次运行可能触发 Windows SmartScreen：点「更多信息 → 仍要运行」即可；
 > 若要做正式签名分发，需自行准备 Windows 代码签名证书。exe 用 PyInstaller **单文件**构建、

@@ -36,6 +36,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: 安装 Inno Setup（构建安装包用）
+        shell: pwsh
+        run: |
+          # 便携 zip 里已有 exe；安装包（setup.exe）需要 Inno Setup。
+          # chocolatey 在 windows-latest 上预装，用它装 Inno Setup 6。
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) {
+            Write-Host '::error::Inno Setup 未安装成功（找不到 ISCC.exe）'
+            exit 1
+          }
+
       - name: 构建 exe（含冒烟测试与 zip 组装）
         shell: pwsh
         run: |
@@ -45,5 +57,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: NewspaperAuto-windows-x64
-          path: dist/NewspaperAuto-*-windows-x64.zip
+          path: |
+            dist/NewspaperAuto-*-windows-x64.zip
+            dist/NewspaperAuto-*-setup.exe
           if-no-files-found: error

@@ -1,9 +1,8 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-echo 正在打开本地看板（浏览器会自动打开，关闭本窗口或按 Ctrl+C 停止）...
+echo 正在启动本地看板（浏览器会自动打开）...
 echo.
-"%~dp0NewspaperAuto.exe" dashboard --open
-echo.
-echo 看板已退出。按任意键关闭本窗口...
-pause >nul
+rem --detach：服务在后台运行，关掉本窗口不会停止看板。
+rem 停止看板：NewspaperAuto.exe dashboard --stop
+"%~dp0NewspaperAuto.exe" dashboard --open --detach
