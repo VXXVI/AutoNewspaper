@@ -33,6 +33,12 @@
   #define VersionInfoVersion AppVersion + ".0"
 #endif
 
+#ifndef IconFile
+  ; 安装包自身（setup.exe 与「应用和功能」列表）的图标：直接用看板的品牌 ico，
+  ; 与 exe / 快捷方式同一份，避免三处图标漂移。构建脚本会传绝对路径覆盖。
+  #define IconFile "..\..\src\newspaper_auto\static\favicon.ico"
+#endif
+
 #define AppName "NewspaperAuto"
 #define AppTitle "NewspaperAuto · 数字报关键词监测"
 #define AppPublisher "VXXVI"
@@ -62,6 +68,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppTitle} {#AppVersion}
 UninstallDisplayIcon={app}\NewspaperAuto.exe
+; 安装包自身也带品牌图标（默认是 Inno 的通用图标）
+SetupIconFile={#IconFile}
 ; 压缩包/安装包都未做代码签名，首次运行会有 SmartScreen 提示（README 已说明）
 
 [Languages]

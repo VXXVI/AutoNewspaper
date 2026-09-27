@@ -71,6 +71,9 @@ python3 dashboard.py --open --scan   # 打开看板并按默认配置抓取一�
 - **一键扫描**：填关键词、选时间范围，点「开始扫描」；进度经 SSE 实时推送，可中途取消。
 - **浏览命中**：列表列序是「报社 / 日期 / 标题与命中上下文 / **版面位置**」—— 版面位置放在
   **最右列**，一条报道对应右侧一格（版名 + `版内 k/m`，网站提供坐标时另有 `上版 xx%`）。
+- **版面位置图就在结果右侧**：整块版面位置图从页面底部移到命中列表**右边一栏**并随滚动吸附，
+  不用往下翻一整节；命中多、版面多时该栏自成滚动区，不把整页撑长。窗口较窄（<1440px）时
+  自动折回上下排列。
 - **收起筛选栏**：结果区右上角「隐藏筛选」可收起左侧筛选面板，让结果表占满整行；该选择会
   记在浏览器本地，重开看板保持。
 - **图形看板**：报社排名、关键词排名、日期 × 报社热力图、最近扫描历史。
@@ -179,8 +182,15 @@ Shell 启动脚本语法检查；Windows job 另外验证 PowerShell 解析与 U
 
 ## 分发给别人用
 
-- **Windows 单文件 exe（无需 Python）**：打 `v*` tag 后 Release 会挂出
-  `NewspaperAuto-<tag>-windows-x64.zip`；也可在 Actions 手动触发 `build-windows`。
+**Windows 首选「便携版」——不需要安装包，解压双击即用：**
+
+- 打 `v*` tag 后 Release 会挂出 `NewspaperAuto-<tag>-windows-x64.zip`：解压到任意**可写**
+  目录（别放 `C:\Program Files`），双击 `NewspaperAuto.exe`（或 `Start-Dashboard.cmd`）
+  就会在后台起看板并自动打开浏览器。不需要 Python、不需要管理员权限、不写注册表，
+  整个文件夹可整体拷到 U 盘/别的电脑继续用。
+- 也可在仓库 **Actions → build-windows → Run workflow** 手动构建并下载，无需打 tag。
+- **安装包是可选项**：`NewspaperAuto-<tag>-setup.exe` 只是给「想要开始菜单/桌面快捷方式」
+  的人用的便捷壳子，装到 `%LOCALAPPDATA%\Programs` 且同样免管理员权限；不装安装包也能用。
 - **源码 / Python 用户**：`portable.zip`（含 docs，解压即用）或
   `.whl` / `.tar.gz`（`pip install <whl>`）。
 

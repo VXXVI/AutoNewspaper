@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import ClassVar
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "newspaper_auto" / "static"
 
@@ -205,3 +206,80 @@ def test_new_widget_and_legacy_tokens_are_styled():
         ".service-tip",
     ):
         assert cls in css, f"style.css 缺少 {cls} 样式"
+
+
+class _NestCollector(HTMLParser):
+    """记录每个带 id 元素的「祖先链」，用于断言页面骨架（谁是谁的父级）。"""
+
+    _VOID: ClassVar[set[str]] = {
+        "meta",
+        "link",
+        "img",
+        "br",
+        "hr",
+        "input",
+        "source",
+        "area",
+        "col",
+        "base",
+        "wbr",
+    }
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[dict] = []
+        self.by_id: dict[str, dict] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        node = {"tag": tag, "attrs": attributes, "chain": list(self.stack)}
+        if attributes.get("id"):
+            self.by_id[attributes["id"]] = node
+        if tag not in self._VOID:
+            self.stack.append(node)
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index]["tag"] == tag:
+                del self.stack[index:]
+                return
+
+
+def test_layout_rail_sits_beside_the_result_list():
+    """版面位置图是命中列表的右栏，而不是结果下方「03 分析」网格里的一项。
+
+    回归：这正是本次布局改动的核心契约 —— 版面位置栏必须和命中列表同处
+    ``.results-layout`` 的两列，并且不能再挂在 ``.analysis-grid`` 下。
+    """
+    parser = _NestCollector()
+    parser.feed(_read("index.html"))
+
+    def classes_in_chain(node: dict) -> set[str]:
+        found: set[str] = set()
+        for ancestor in node["chain"]:
+            found.update((ancestor["attrs"].get("class") or "").split())
+        return found
+
+    rail = parser.by_id["layout-rail"]
+    results = parser.by_id["results-card"]
+    layouts = parser.by_id["layouts"]
+    chart = parser.by_id["chart"]
+
+    assert "results-layout" in classes_in_chain(rail), "版面位置栏应在 .results-layout 内"
+    assert "results-layout" in classes_in_chain(results), "命中列表应在 .results-layout 内"
+    assert "layout-rail" in classes_in_chain(layouts), "版面位置图应画在 .layout-rail 里"
+    assert "analysis-grid" not in classes_in_chain(layouts), "版面位置图不应再挂在 .analysis-grid 下"
+
+    # 两者是同一个 .results-layout 下的同级列
+    assert rail["chain"] and results["chain"]
+    assert rail["chain"][-1] is results["chain"][-1]
+
+    # 时间趋势留在独立的分析区（#trend-section 是 .chart 的祖先）
+    assert parser.by_id["trend-section"] in chart["chain"]
+    assert parser.by_id["trend-section"] not in rail["chain"]
+
+
+def test_layout_rail_and_page_width_tokens_are_styled():
+    css = _read("style.css")
+    for token in (".results-layout", ".layout-rail", "--page-max", "--sticky-top"):
+        assert token in css, f"style.css 缺少布局相关样式：{token}"

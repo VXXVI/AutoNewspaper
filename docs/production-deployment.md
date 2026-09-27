@@ -64,18 +64,26 @@ exe 只捆绑标准库，**运行时仍零第三方依赖**。
 
 按目标用户从易到难：
 
-1. **Windows 安装包（推荐给普通用户）**：`NewspaperAuto-<tag>-setup.exe`，双击安装，
-   装到 `%LOCALAPPDATA%\Programs\NewspaperAuto`（**用户可写**，无需管理员权限），
-   自动创建开始菜单快捷方式（打开看板 / 扫描一次 / 使用说明 / 卸载）与可选的桌面快捷方式，
-   装完可直接开看板。卸载**不删除** `state/`、`hits/`（扫描数据是用户资产）。
-2. **Windows 单文件 exe（便携、无需安装）**：打 `v*` tag 后，
+1. **Windows 便携版（默认推荐，点击即用、无需安装）**：打 `v*` tag 后，
    `.github/workflows/release.yml` 会在 `windows-latest` 上构建并挂出
    `NewspaperAuto-<tag>-windows-x64.zip`（内含 `NewspaperAuto.exe`、`Run-Scan.cmd`、
-   `Start-Dashboard.cmd` 与使用说明）。也可在仓库 **Actions → build-windows → Run workflow**
-   手动构建并下载 artifact，无需打 tag。解压到任意**可写**目录即用（勿放 `C:\Program Files`）。
+   `Start-Dashboard.cmd` 与使用说明）。**解压到任意可写目录，双击 `NewspaperAuto.exe`
+   即可**（起后台看板 + 自动开浏览器）——不需要 Python、不需要管理员权限、不写注册表，
+   整个文件夹可整体拷贝换机（数据默认写在 exe 旁边）。勿放 `C:\Program Files`（无写权限）。
+   也可在仓库 **Actions → build-windows → Run workflow** 手动构建并下载 artifact，无需打 tag。
    本机自行构建：在 Windows 上执行 `scripts\build_windows.ps1`
-   （`pip install pyinstaller` 属构建期依赖，不进入运行时；
-   安装了 Inno Setup 时会顺带产出 `setup.exe`，否则自动跳过）。
+   （`pip install pyinstaller` 属构建期依赖，不进入运行时）。
+2. **Windows 安装包（可选的便捷壳子）**：同一份构建产出的
+   `NewspaperAuto-<tag>-setup.exe`，双击安装，装到
+   `%LOCALAPPDATA%\Programs\NewspaperAuto`（**用户可写**，无需管理员权限），
+   自动创建开始菜单快捷方式（打开看板 / 扫描一次 / 使用说明 / 卸载）与可选的桌面快捷方式，
+   装完可直接开看板。它只是给「想要开始菜单/桌面快捷方式」的人用的；
+   **不装安装包一样能用上面的便携 zip**。卸载**不删除** `state/`、`hits/`（扫描数据是用户资产）。
+   便携 zip 与安装包共用同一个 `NewspaperAuto.exe`；exe、快捷方式与 `setup.exe` 自身
+   都使用 `src/newspaper_auto/static/favicon.ico` 这一份品牌图标
+   （`NewspaperAuto.spec` 的 `icon=` 与 `installer.iss` 的 `SetupIconFile`）。
+   构建需要 Inno Setup（CI 由 chocolatey 安装）；缺 Inno 时脚本只跳过 `setup.exe`，
+   便携 zip 照常产出。
 3. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
    换机即用；目标机只需装 Python 3.9+。
 4. **从 Release 下载压缩包**（推荐给国内 / Python 用户）：打 `v*` tag 会触发

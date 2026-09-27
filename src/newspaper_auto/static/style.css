@@ -21,6 +21,10 @@
   --shadow-sm: 0 1px 2px rgba(18, 31, 53, .05);
   --shadow: 0 16px 40px rgba(18, 31, 53, .075);
   --radius: 18px;
+  /* 页面最大宽度：宽屏下把结果表 + 右侧版面位置栏一并排开（旧值 1380 在 1900px 屏上留白过多）。 */
+  --page-max: 1560px;
+  /* 顶部导航高度 + 页面内边距，供筛选栏 / 版面位置栏的 sticky 定位复用。 */
+  --sticky-top: 99px;
 }
 
 * { box-sizing: border-box; }
@@ -78,7 +82,7 @@ a { color: inherit; }
   grid-template-columns: minmax(250px, 1fr) auto minmax(250px, 1fr);
   align-items: center;
   gap: 24px;
-  width: min(1380px, 100%);
+  width: min(var(--page-max), 100%);
   min-height: 76px;
   margin: 0 auto;
   padding: 12px 28px;
@@ -140,7 +144,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 22px;
-  width: min(1380px, 100%);
+  width: min(var(--page-max), 100%);
   margin: 0 auto;
   padding: 28px 28px 72px;
 }
@@ -376,7 +380,7 @@ details > summary { cursor: pointer; }
 .results-workspace.is-collapsed { grid-template-columns: minmax(0, 1fr); }
 .filter-panel {
   position: sticky;
-  top: 99px;
+  top: var(--sticky-top);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -423,10 +427,39 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .results-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border-top: 1px solid var(--line); background: var(--surface-soft); color: var(--muted); font-size: 12.5px; }
 .results-footer .btn { min-height: 34px; }
 
+/* 结果区 + 右侧「版面位置」栏
+ * 命中列表在左、版面位置图贴右一栏并随滚动吸附：列表往右紧挨着就是「这条在第几版第几块」，
+ * 不必再往下翻一整节。窄屏（<1440px）自动折回上下排列，见 media query。 */
+.results-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 368px);
+  gap: 20px;
+  align-items: start;
+}
+.layout-rail { position: sticky; top: var(--sticky-top); min-width: 0; }
+/* 栏内自成滚动区：命中多、版面多时不把整页撑长，标题始终留在顶部。 */
+.layout-rail .layout-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 128px);
+  padding: 18px;
+}
+.layout-rail .layout-card .section-heading { flex-direction: column; align-items: flex-start; gap: 5px; }
+.layout-rail .layout-card .section-heading h2 { font-size: 16px; }
+.layout-rail .layout-card .section-heading p { font-size: 12px; }
+.layout-rail .layout-grid {
+  flex: 1 1 auto;
+  min-height: 0; /* 允许在 max-height 内收缩并滚动，否则会被内容顶破 */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
 /* 分析区 */
 .analysis-heading { align-items: flex-end; padding: 7px 2px 0; }
 .analysis-heading h2 { margin-top: 7px; font-size: 22px; }
-.analysis-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, .7fr); gap: 16px; align-items: start; }
+.analysis-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 .layout-card, .trend-card { padding: 22px; }
 .count-badge { background: var(--surface-soft); }
 .layout-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -445,8 +478,10 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .layout-legend span { color: var(--muted); font-size: 10.5px; }
 .layout-legend i { display: inline-block; width: 12px; height: 8px; margin-right: 4px; border: 1px solid #cbd2dc; background: #e7ebf0; vertical-align: middle; }
 .layout-legend .hit-key i { border-color: #ce352a; background: rgba(231, 71, 58, .35); }
-.chart { display: flex; align-items: flex-end; gap: 7px; min-height: 230px; overflow-x: auto; padding: 28px 3px 2px; border-bottom: 1px solid var(--line); }
-.bar-col { display: flex; flex: 1 0 31px; min-width: 31px; flex-direction: column; align-items: center; gap: 5px; padding: 2px 3px; border: 0; border-radius: 7px 7px 0 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.chart { display: flex; align-items: flex-end; justify-content: space-between; gap: 7px; min-height: 230px; overflow-x: auto; padding: 28px 3px 2px; border-bottom: 1px solid var(--line); }
+/* 时间趋势现在独占整行：给单列设上限，日期少时柱体不会被拉得稀稀拉拉；
+ * flex-shrink 仍为 0，日期多（最多 90 天）时照旧横向滚动。 */
+.bar-col { display: flex; flex: 1 0 31px; min-width: 31px; max-width: 64px; flex-direction: column; align-items: center; gap: 5px; padding: 2px 3px; border: 0; border-radius: 7px 7px 0 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .bar-col:hover, .bar-col:focus-visible { background: var(--primary-soft); outline: none; }
 .bar-col:focus-visible { box-shadow: inset 0 0 0 2px #8aa8f7; }
 .bar-col.is-active { background: #e8eeff; }
@@ -498,7 +533,7 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .technical-details .filters { margin-top: 14px; }
 .form-actions { gap: 9px; flex-wrap: wrap; }
 .form-actions .hint { flex: 1 1 320px; }
-.foot { width: min(1380px, 100%); margin: 0 auto; padding: 0 28px 38px; color: var(--muted); font-size: 11.5px; word-break: break-all; }
+.foot { width: min(var(--page-max), 100%); margin: 0 auto; padding: 0 28px 38px; color: var(--muted); font-size: 11.5px; word-break: break-all; }
 .foot code { font-size: 11px; }
 
 /* 导出结果 */
@@ -551,11 +586,19 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .dialog-action-spacer { flex: 1; }
 .dialog-actions .btn { white-space: nowrap; }
 
+/* 结果表 + 右侧版面位置栏并排需要足够宽度：1440px 以下折回上下排列，
+ * 版面位置图恢复成两列，避免结果表被挤成一条。 */
+@media (max-width: 1439px) {
+  .results-layout { grid-template-columns: minmax(0, 1fr); }
+  .layout-rail { position: static; }
+  .layout-rail .layout-card { max-height: none; padding: 22px; }
+  .layout-rail .layout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; overflow: visible; padding-right: 0; }
+}
+
 @media (max-width: 1180px) {
   .topbar-inner { grid-template-columns: 1fr auto; }
   .page-nav { display: none; }
   .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .analysis-grid { grid-template-columns: 1fr; }
   .trend-card .chart { min-height: 170px; }
 }
 
@@ -623,6 +666,8 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
   .results-footer { margin-top: 0; }
   .layout-card, .trend-card { padding: 18px 15px; }
   .layout-grid { grid-template-columns: 1fr; }
+  .layout-rail .layout-card { padding: 18px 15px; }
+  .layout-rail .layout-grid { grid-template-columns: minmax(0, 1fr); }
   .papers-list { grid-template-columns: 1fr; }
   .settings-intro { align-items: flex-start; flex-direction: column; }
   .papers-row { align-items: flex-start; flex-wrap: wrap; padding: 12px; }

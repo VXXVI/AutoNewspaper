@@ -139,7 +139,10 @@ if (-not $SkipInstaller) {
         $versionInfo = ($numeric[0..3] -join '.')
 
         $issPath = Join-Path $ProjectDir 'packaging\windows\installer.iss'
-        & $iscc "/DAppVersion=$Version" "/DVersionInfoVersion=$versionInfo" "/DSourceDir=$stage" $issPath
+        # 安装包自身与 exe / 快捷方式共用同一份品牌图标（NewspaperAuto.spec 也用这个文件）。
+        $iconPath = Join-Path $ProjectDir 'src\newspaper_auto\static\favicon.ico'
+        if (-not (Test-Path -LiteralPath $iconPath)) { Die "缺少品牌图标 $iconPath" }
+        & $iscc "/DAppVersion=$Version" "/DVersionInfoVersion=$versionInfo" "/DSourceDir=$stage" "/DIconFile=$iconPath" $issPath
         if ($LASTEXITCODE -ne 0) { Die 'Inno Setup 编译失败' }
 
         $setupPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-setup.exe' -f $Version)
