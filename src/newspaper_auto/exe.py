@@ -50,11 +50,16 @@ _DASHBOARD_COMMANDS = frozenset({"dashboard", "web"})
 
 def main(argv: Sequence[str] | None = None) -> int:
     """分发子命令；返回进程退出码（供 ``SystemExit`` 使用）。"""
+    # 帮助文本与日志都是中文：先按同一约定固定输出编码，
+    # 否则在 cp1252 之类的 Windows 控制台上 print 会直接 UnicodeEncodeError。
+    cli._configure_output_encoding()
+
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
         # 双击即用：直接起看板（后台运行 + 打开浏览器）。
         # 这样用户不必知道该双击哪个 .cmd，也不会再遇到「关掉窗口 = 服务没了」。
-        return web.main(["dashboard", "--open", "--detach"], default_data_dir=paths.app_dir())
+        # 注意 web.main 只接看板自己的选项，不要把子命令名也传进去。
+        return web.main(["--open", "--detach"], default_data_dir=paths.app_dir())
     if args[0] in ("-h", "--help", "help"):
         print(_USAGE)
         return 0

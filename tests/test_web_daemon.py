@@ -512,6 +512,18 @@ def test_child_env_strips_pyinstaller_vars_when_frozen(monkeypatch):
     assert env["KEEP_ME"] == "yes"
 
 
+def test_child_env_forces_utf8_output(monkeypatch):
+    """子进程 stdout/stderr 是日志文件：必须强制 UTF-8，否则 Windows(cp1252) 打中文日志会崩。"""
+    for frozen in (True, False):
+        if frozen:
+            monkeypatch.setattr(web_daemon.sys, "frozen", True, raising=False)
+        else:
+            monkeypatch.delattr(web_daemon.sys, "frozen", raising=False)
+        monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+        env = web_daemon._child_env()
+        assert env["PYTHONIOENCODING"] == "utf-8", f"frozen={frozen} 时应强制 UTF-8"
+
+
 def test_child_env_strips_pyinstaller_vars_in_source_mode(monkeypatch):
     monkeypatch.delattr(web_daemon.sys, "frozen", raising=False)
     monkeypatch.setenv("_MEIPASS2", "/tmp/mei")
@@ -521,20 +533,27 @@ def test_child_env_strips_pyinstaller_vars_in_source_mode(monkeypatch):
 
 
 # ---------------------------------------------------------------- 真起进程（端到端）
-def test_launch_and_stop_a_real_background_server(tmp_path):
+def test_launch_and_stop_a_real_background_server(tmp_path, monkeypatch):
     """真起一个后台子进程 —— 这是唯一能覆盖「脱离控制台 + 状态文件归属」的测试。
 
     刻意用 ``--port 0``：不与任何固定端口冲突，跨平台稳定。
+
+    另刻意把父进程的 ``PYTHONIOENCODING`` 设成 ``cp1252``（CI 的 windows runner 就是这种
+    编码）：子进程若按 cp1252 打印中文日志会 ``UnicodeEncodeError`` 直接崩，而且崩在拿到
+    日志之前（连原因都看不到）。这条断言因此能拦住「换个 locale 就挂」的回归。
     """
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+
     state = web_daemon.launch(tmp_path, "127.0.0.1", 0)
     try:
         assert state["running"] is True, f"后台启动失败：{state.get('reason')}"
         assert state["reused"] is False
         assert state["port"] > 0
         assert web_daemon.status(tmp_path)["running"] is True
-        # 日志确实写到了数据目录里（后台运行的可观测性）
+        # 日志确实写到了数据目录里，且中文没有变成乱码/抛异常
         log = paths.dashboard_log_file(tmp_path)
-        assert log.is_file() and "看板已启动" in log.read_text(encoding="utf-8", errors="replace")
+        text = log.read_text(encoding="utf-8", errors="replace")
+        assert log.is_file() and "看板已启动" in text, f"日志内容异常：{text[:200]!r}"
         # 复用：第二次 launch 不再起新进程
         again = web_daemon.launch(tmp_path, "127.0.0.1", 0)
         assert again["reused"] is True

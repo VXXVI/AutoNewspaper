@@ -255,8 +255,10 @@ def _detach(data_dir: Path, args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None, *, default_data_dir: Path | None = None) -> int:
-    # 后台运行时 stdout/stderr 是文件（块缓冲），日志会「什么都看不到」；
-    # 改成行缓冲，出问题时有据可查。
+    # 中文日志必须显式 UTF-8：后台运行时 stdout/stderr 是日志文件，子进程会按**自身 locale**
+    # 解码（Windows 上常是 cp1252），直接 print 中文会 UnicodeEncodeError 把服务打崩。
+    # 这里复用扫描侧的同一约定，并把输出改成行缓冲 —— 否则后台日志是块缓冲，排障时「什么都看不到」。
+    cli._configure_output_encoding()
     for stream in (sys.stdout, sys.stderr):
         try:
             if stream is not None and hasattr(stream, "reconfigure"):

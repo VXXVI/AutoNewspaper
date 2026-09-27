@@ -47,6 +47,9 @@ def test_exe_no_args_opens_dashboard_in_background(monkeypatch):
 
     这条守护的是一个真实的用户事故：以前无参数只打印帮助，双击后窗口一闪而过，
     用户以为程序坏了；而看板又跑在前台窗口里，关掉窗口服务就没了。
+
+    注意断言的是**看板自己的选项**（不含子命令名）—— 多传一个 "dashboard" 会让
+    argparse 直接报「unrecognized arguments」。
     """
     seen: dict[str, object] = {}
 
@@ -57,8 +60,19 @@ def test_exe_no_args_opens_dashboard_in_background(monkeypatch):
 
     monkeypatch.setattr(exe.web, "main", fake_web)
     assert exe.main([]) == 0
-    assert seen["argv"] == ["dashboard", "--open", "--detach"]
+    assert seen["argv"] == ["--open", "--detach"]
     assert seen["dir"] == paths.app_dir()
+
+
+def test_exe_no_args_arguments_are_accepted_by_the_real_parser():
+    """上一条断言的是转发内容；这条确认它真的能被看板的 parser 接受。
+
+    （曾出现「把子命令名也传进去」的 bug：mock 掉的 web.main 让单测察觉不到，
+    只有真正解析参数才会报 unrecognized arguments。）
+    """
+    args = web.build_parser().parse_args(["--open", "--detach"])
+    assert args.open is True
+    assert args.detach is True
 
 
 def test_exe_help_and_version(capsys):

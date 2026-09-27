@@ -247,15 +247,19 @@ _PYI_ENV_PREFIXES = ("_MEI", "_PYI_")
 
 
 def _child_env() -> dict[str, str]:
-    """子进程环境：清掉 PyInstaller 内部变量；源码运行时再补 PYTHONPATH。
+    """子进程环境：清掉 PyInstaller 内部变量，强制日志输出用 UTF-8。
 
-    PYTHONPATH 是为了保证 ``-m newspaper_auto.web`` 一定能 import（冻结运行不需要，
-    子进程就是 exe 自己，自带包）。
+    清 _MEI*/_PYI_*：否则会复用父进程的解包目录，父进程退出后静态资源消失。
+    强制 PYTHONIOENCODING=utf-8：子进程的 stdout/stderr 是日志文件，若不指定就按自身
+    locale 解码（Windows 上常是 cp1252），打印中文日志会 UnicodeEncodeError 直接崩，
+    而这发生在我们拿到日志之前（连崩溃原因都看不到）。源码运行时再补 PYTHONPATH，
+    保证 ``-m newspaper_auto.web`` 一定能 import。
     """
     env = {key: value for key, value in os.environ.items() if not key.startswith(_PYI_ENV_PREFIXES)}
+    env["PYTHONIOENCODING"] = "utf-8"
     if getattr(sys, "frozen", False):
-        return env
-    import newspaper_auto
+        return env  # 冻结运行时子进程就是 exe 自己，自带包，无需 PYTHONPATH
+    import newspaper_auto  # 只为拿到包的实际位置
 
     package_parent = str(Path(newspaper_auto.__file__).resolve().parent.parent)
     existing = env.get("PYTHONPATH", "")
