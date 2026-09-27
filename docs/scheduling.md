@@ -305,16 +305,16 @@ rm -rf ~/.newspaperauto
 cd /path/to/AutoNewspaper
 
 # 纯结果（无状态，不产生历史文件）
-python3 daily_scan.py --days 1 --no-state --kw 广东海洋大学
+python3 daily_scan.py --days 1 --no-state --kw 示例大学
 
 # JSON 输出，管道喂给其他程序
-python3 daily_scan.py --days 1 --no-state --json --kw 广东海洋大学
+python3 daily_scan.py --days 1 --no-state --json --kw 示例大学
 
 # CSV 输出
-python3 daily_scan.py --days 1 --no-state --csv --kw 广东海洋大学
+python3 daily_scan.py --days 1 --no-state --csv --kw 示例大学
 
 # 多关键词
-python3 daily_scan.py --days 1 --no-state --kw 广东海洋大学 --kw 广海 --kw 海大
+python3 daily_scan.py --days 1 --no-state --kw 示例大学 --kw 示大 --kw 例大
 
 # 定时任务
 ./scripts/install_launchd.sh install     # 启用每天 10:00 自动运行
@@ -334,7 +334,7 @@ python3 daily_scan.py --days 1 --no-state --kw 广东海洋大学 --kw 广海 --
    ✓ 中国教育报 版面13  ✓ 湛江日报 版面9
 
 2. 无状态 + JSON（stdout 交 python 解析）
-   python3 daily_scan.py --days 1 --no-state --json --kw 广东海洋大学 2>/dev/null | python3 -c 'import json,sys; ...'
+   python3 daily_scan.py --days 1 --no-state --json --kw 示例大学 2>/dev/null | python3 -c 'import json,sys; ...'
    → JSON OK, records = 2
      · [湛江日报] 扎实抓好中央环保督察问题整改 用心用情用力守护"国宝"红树林
        http://paper.gdzjdaily.com.cn/html/2026-09/22/content_146377...

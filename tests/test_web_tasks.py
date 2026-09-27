@@ -9,7 +9,7 @@ from newspaper_auto.web_tasks import ScanTask
 
 def test_snapshot_is_detached_and_nonzero_exit_is_error():
     task = ScanTask.running(
-        {"keywords": ["海大"], "days": 1},
+        {"keywords": ["例大"], "days": 1},
         total_units=2,
         max_log_lines=10,
     )
@@ -25,7 +25,7 @@ def test_snapshot_is_detached_and_nonzero_exit_is_error():
     snapshot["params"]["keywords"].append("污染")
     snapshot["summary"]["details"].append("污染")
     clean = task.snapshot()
-    assert clean["params"]["keywords"] == ["海大"]
+    assert clean["params"]["keywords"] == ["例大"]
     assert clean["summary"]["details"] == ["partial"]
 
 

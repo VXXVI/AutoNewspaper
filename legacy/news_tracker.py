@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-广东海洋大学 · 五家报社报道追踪器
+示例机构 · 五家报社报道追踪器
 ==================================================
 只做一件事：在指定关键词下，从这五家报社抓取相关报道。
 
@@ -13,9 +13,9 @@
   5. 湛江日报   gdzjdaily.com.cn  -> 湛江新闻网站内搜索 /s?wd=（Google 收录停滞，必须走站内）
 
 用法：
-  python3 gdou_tracker.py                        # 默认关键词「广东海洋大学」
-  python3 gdou_tracker.py --kw 广东海洋大学 --days 90
-  python3 gdou_tracker.py --pages 5              # 湛江站内搜索翻页数
+  python3 news_tracker.py                        # 默认关键词「示例大学」
+  python3 news_tracker.py --kw 示例大学 --days 90
+  python3 news_tracker.py --pages 5              # 湛江站内搜索翻页数
 
 输出：result.json / result.csv / report.html （脚本同目录）
 """
@@ -147,12 +147,15 @@ def zhanjiang_search(kw, pages=3):
 
 
 # ---------- 二次过滤 / 置信度分级 ----------
+# 关键词 → 公认简称（按需补充；默认只把关键词本身当作匹配目标）
+KEYWORD_VARIANTS = {
+    "示例大学": {"示例大", "例大学"},
+}
+
+
 def kw_variants(kw):
     """关键词及其公认简称。"""
-    vs = {kw}
-    if kw == "广东海洋大学":
-        vs |= {"广东海大", "海洋大学"}
-    return vs
+    return {kw} | set(KEYWORD_VARIANTS.get(kw, ()))
 
 
 def grade(items, kw):
@@ -326,7 +329,7 @@ def write_outputs(kw, rows, stats, days):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--kw", default="广东海洋大学")
+    ap.add_argument("--kw", default="示例大学")
     ap.add_argument("--days", type=int, default=0, help="时间窗天数，0=不限")
     ap.add_argument("--pages", type=int, default=3, help="湛江站内搜索翻页数")
     a = ap.parse_args()

@@ -47,6 +47,9 @@ exe = EXE(
     a.datas,
     [],
     name="NewspaperAuto",
+    # 应用图标复用看板的 favicon.ico（16→256 多尺寸，小尺寸是简化版画法）。
+    # 同一个文件既是浏览器标签图标也是 exe/快捷方式图标，避免两处漂移。
+    icon=str(STATIC / "favicon.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

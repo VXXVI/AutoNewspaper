@@ -21,14 +21,14 @@ HITS = [
         "title": "标题A",
         "url": "http://x/2026-09/22/content_101.html",
         "text_len": 100,
-        "snippets": ["…广东海洋大学…"],
-        "matched": ["广东海洋大学"],
+        "snippets": ["…示例大学…"],
+        "matched": ["示例大学"],
     }
 ]
 
 
 def test_render_md_lists_new_hits_and_stats_table():
-    md = report.render_md("广东海洋大学", [DATE], STATS, HITS, HITS, "增量")
+    md = report.render_md("示例大学", [DATE], STATS, HITS, HITS, "增量")
     assert "## 新增命中" in md
     assert "标题A" in md
     assert "| 湛江日报 | 2026-09-22 | 3 | 4/4 | 1 |" in md
@@ -73,7 +73,7 @@ def test_hits_to_json_roundtrip():
 def test_hits_to_csv_header_and_semicolon_join():
     lines = report.hits_to_csv(HITS).strip().splitlines()
     assert lines[0] == "paper,date,section,section_no,title,url,text_len,matched"
-    assert lines[1].endswith("广东海洋大学")
+    assert lines[1].endswith("示例大学")
     assert len(lines) == 2
 
 
@@ -152,7 +152,7 @@ def test_render_html_labels_archive_as_history_and_shows_matched_keywords():
     assert "数字报历史命中汇总" in html
     assert "本次更新关键词：人工智能" in html
     assert "命中关键词" in html
-    assert "广东海洋大学" in html
+    assert "示例大学" in html
 
 
 def test_write_md_and_html_roundtrip(tmp_path):

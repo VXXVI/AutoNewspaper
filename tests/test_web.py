@@ -24,15 +24,15 @@ ARCHIVE = [
         "title": "标题B",
         "url": "http://x/2026-09/22/content_2.html",
         "text_len": "12",
-        "snippets": ["…广东海洋大学…"],
-        "matched": ["广东海洋大学"],
+        "snippets": ["…示例大学…"],
+        "matched": ["示例大学"],
     },
     {
         "paper": "南方日报",
         "date": "2026-09-21",
         "title": "标题A",
         "url": "http://x/2026-09/21/content_1.html",
-        "matched": ["广海"],
+        "matched": ["示大"],
     },
     {"paper": "湛江日报", "title": "缺少 url，应被丢弃"},
     "不是字典，也应被丢弃",
@@ -56,7 +56,7 @@ def test_build_dashboard_normalizes_sorts_and_drops_dirty(tmp_path):
     assert data["records"][0]["text_len"] == 12  # 字符串数字被转 int
     assert data["records"][1]["section"] == ""  # 缺失字段补空串
     assert data["papers"] == ["南方日报", "湛江日报"]
-    assert sorted(data["keywords"]) == ["广东海洋大学", "广海"]
+    assert sorted(data["keywords"]) == ["示例大学", "示大"]
     assert data["date_counts"] == {"2026-09-22": 1, "2026-09-21": 1}
 
 
@@ -113,9 +113,9 @@ def test_build_dashboard_reads_seen_counts(tmp_path):
     state_dir = tmp_path / "state"
     state_dir.mkdir()
     (state_dir / "seen.json").write_text(
-        json.dumps({"广东海洋大学": {"http://x/a": 1, "http://x/b": 1}}, ensure_ascii=False), encoding="utf-8"
+        json.dumps({"示例大学": {"http://x/a": 1, "http://x/b": 1}}, ensure_ascii=False), encoding="utf-8"
     )
-    assert web.build_dashboard(tmp_path)["seen_counts"] == {"广东海洋大学": 2}
+    assert web.build_dashboard(tmp_path)["seen_counts"] == {"示例大学": 2}
 
 
 def test_build_dashboard_exposes_empty_state_hints(tmp_path):
@@ -410,7 +410,10 @@ def test_all_static_assets_reachable_over_http(base_url):
     app.js 的 `import "./store.js"` 直接 404，整个看板不执行；而当时只断言 4 个固定
     文件的测试没有发现（jsdom 测试从文件系统 import，绕过了 HTTP）。
     """
-    names = sorted(p.name for p in web.STATIC_DIR.iterdir() if p.suffix in {".html", ".js", ".css"})
+    # 后缀集合必须覆盖 static/ 下**所有**会被浏览器请求的类型：漏收即 404。
+    # 白名单由 web.STATIC_TYPES 维护，这里做「目录 → 白名单」的同步守护。
+    served_suffixes = {".html", ".js", ".css", ".svg", ".ico", ".png"}
+    names = sorted(p.name for p in web.STATIC_DIR.iterdir() if p.suffix in served_suffixes)
     assert names, "static/ 目录下应当有前端资源"
 
     for name in names:
@@ -663,7 +666,7 @@ def test_scan_post_runs_to_done_and_logs(tmp_path):
 
     with _serve(tmp_path, runner) as url:
         status, body = _request(
-            "POST", url + "/api/scan", {"keywords": ["广东海洋大学"], "days": 1, "workers": 4}
+            "POST", url + "/api/scan", {"keywords": ["示例大学"], "days": 1, "workers": 4}
         )
         assert status == 202
         assert json.loads(body)["status"] == "running"
@@ -904,10 +907,10 @@ def test_export_api_writes_filtered_json_to_requested_directory(tmp_path):
         "format": "json",
         "filters": {
             "papers": ["湛江日报"],
-            "keywords": ["广东海洋大学"],
+            "keywords": ["示例大学"],
             "from": "2026-09-22",
             "to": "2026-09-22",
-            "query": "广东海洋大学",
+            "query": "示例大学",
             "sort": "title",
         },
     }
@@ -1136,11 +1139,11 @@ def test_load_web_config_legacy_file_defaults_to_days(tmp_path):
     state_dir = tmp_path / "state"
     state_dir.mkdir()
     (state_dir / "web_config.json").write_text(
-        json.dumps({"keywords": ["海大"], "days": 4, "workers": 2}, ensure_ascii=False),
+        json.dumps({"keywords": ["例大"], "days": 4, "workers": 2}, ensure_ascii=False),
         encoding="utf-8",
     )
     assert web.load_web_config(tmp_path) == {
-        "keywords": ["海大"],
+        "keywords": ["例大"],
         "days": 4,
         "workers": 2,
         "mode": "days",
@@ -1153,7 +1156,7 @@ def test_load_web_config_legacy_file_defaults_to_days(tmp_path):
 def test_config_only_roundtrip(tmp_path):
     """only 字段往返：字符串按原样保存，GET 读回一致。"""
     with _serve(tmp_path) as url:
-        payload = {"keywords": ["广东海洋大学"], "days": 2, "workers": 8, "only": "湛江日报,南方日报"}
+        payload = {"keywords": ["示例大学"], "days": 2, "workers": 8, "only": "湛江日报,南方日报"}
         status, body = _request("POST", url + "/api/config", payload)
         assert status == 200
         saved = json.loads(body)
@@ -1201,7 +1204,7 @@ def test_load_web_config_legacy_without_only_falls_back_to_empty(tmp_path):
     state_dir = tmp_path / "state"
     state_dir.mkdir()
     (state_dir / "web_config.json").write_text(
-        json.dumps({"keywords": ["海大"], "days": 4, "workers": 2}, ensure_ascii=False),
+        json.dumps({"keywords": ["例大"], "days": 4, "workers": 2}, ensure_ascii=False),
         encoding="utf-8",
     )
     assert web.load_web_config(tmp_path)["only"] == ""
@@ -1210,7 +1213,7 @@ def test_load_web_config_legacy_without_only_falls_back_to_empty(tmp_path):
 def test_config_range_mode_roundtrip(tmp_path):
     with _serve(tmp_path) as url:
         payload = {
-            "keywords": ["广东海洋大学"],
+            "keywords": ["示例大学"],
             "workers": 8,
             "mode": "range",
             "since": "2026-09-23",

@@ -76,19 +76,19 @@ def test_fetch_retries_until_min_bytes(monkeypatch):
 
 # ---------------------------------------------------------------- charset 解码
 def test_decode_body_prefers_content_type_charset():
-    assert http._decode_body("广东海洋大学".encode("gbk"), "", "text/html; charset=gbk") == "广东海洋大学"
+    assert http._decode_body("示例大学".encode("gbk"), "", "text/html; charset=gbk") == "示例大学"
 
 
 def test_decode_body_sniffs_meta_charset():
-    payload = '<meta charset="gb2312"><body>广东海洋大学</body>'.encode("gb2312")
-    assert "广东海洋大学" in http._decode_body(payload, "")
+    payload = '<meta charset="gb2312"><body>示例大学</body>'.encode("gb2312")
+    assert "示例大学" in http._decode_body(payload, "")
 
 
 def test_decode_body_sniffs_meta_http_equiv_charset():
     payload = (
-        '<meta http-equiv="Content-Type" content="text/html; charset=gbk"><body>广东海洋大学</body>'
+        '<meta http-equiv="Content-Type" content="text/html; charset=gbk"><body>示例大学</body>'
     ).encode("gbk")
-    assert "广东海洋大学" in http._decode_body(payload, "")
+    assert "示例大学" in http._decode_body(payload, "")
 
 
 def test_decode_body_defaults_to_utf8():
@@ -97,7 +97,7 @@ def test_decode_body_defaults_to_utf8():
 
 def test_decode_body_falls_back_to_gb18030_without_declaration():
     """未声明 charset 的 GBK 页面：严格 UTF-8 失败后应退 GB18030，而不是丢字节。"""
-    assert http._decode_body("广东海洋大学".encode("gbk"), "") == "广东海洋大学"
+    assert http._decode_body("示例大学".encode("gbk"), "") == "示例大学"
 
 
 def test_decode_body_never_drops_undecodable_bytes():
@@ -106,9 +106,9 @@ def test_decode_body_never_drops_undecodable_bytes():
 
 
 def test_curl_once_decodes_body_bytes_and_parses_code(monkeypatch):
-    proc = type("P", (), {"stdout": "广东海洋大学".encode("gbk") + b"\n@@HTTP:200"})()
+    proc = type("P", (), {"stdout": "示例大学".encode("gbk") + b"\n@@HTTP:200"})()
     monkeypatch.setattr(http.subprocess, "run", lambda *args, **kwargs: proc)
-    assert http._curl_once("http://x", 5) == (200, "广东海洋大学")
+    assert http._curl_once("http://x", 5) == (200, "示例大学")
 
 
 def test_curl_once_without_marker_is_network_failure(monkeypatch):

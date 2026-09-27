@@ -46,7 +46,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-newspaper_auto = ["static/*.html", "static/*.js", "static/*.css"]
+newspaper_auto = ["static/*.html", "static/*.js", "static/*.css", "static/*.svg", "static/*.ico", "static/*.png"]
 
 [tool.setuptools.dynamic]
 version = { attr = "newspaper_auto.__version__" }

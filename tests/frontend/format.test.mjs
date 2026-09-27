@@ -47,7 +47,7 @@ test("geomText 渲染版内位置并容忍旧归档", () => {
 });
 
 test("splitKeywords 去重去空并支持中英文分隔", () => {
-  assert.deepEqual(splitKeywords("广东海洋大学, 海大、广海\n海大"), ["广东海洋大学", "海大", "广海"]);
+  assert.deepEqual(splitKeywords("示例大学, 例大、示大\n例大"), ["示例大学", "例大", "示大"]);
   assert.deepEqual(splitKeywords("   "), []);
 });
 

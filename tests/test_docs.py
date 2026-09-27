@@ -12,7 +12,7 @@ PUBLIC_DOCS = (
     ROOT / "legacy" / "README.md",
     *sorted((ROOT / "docs").glob("*.md")),
 )
-# legacy/ 只保留旧脚本 + 说明；以下产出物可由 gdou_tracker.py 随时重新生成，不应入库。
+# legacy/ 只保留旧脚本 + 说明；以下产出物可由 news_tracker.py 随时重新生成，不应入库。
 LEGACY_GENERATED_ARTIFACTS = ("report.html", "result.csv", "result.json")
 MACHINE_PATH_PATTERNS = {
     "macOS 用户目录": re.compile(r"/Users/"),

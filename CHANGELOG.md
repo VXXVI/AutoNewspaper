@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **品牌图标**：新增 `static/logo.svg`（纸张 + 命中高亮）、`static/logo-small.svg`（小尺寸简化画法）、
+  `static/favicon.ico`（16→256 多尺寸，其中 16/24/32 用简化画法、48 以上用完整版）与
+  `static/apple-touch-icon.png`。看板顶栏品牌位与浏览器标签页改用该图标，Windows exe / 快捷方式
+  也以同一个 `.ico` 作为图标（不再用 PyInstaller 默认图标）。图标已纳入 wheel / sdist 静态资源
+  清单与看板静态白名单。
+
+### Changed
+
+- **仓库去标识化**：源码、文档与测试 fixture 里出现的具体高校 / 机构名统一替换为中性占位
+  （`示例大学` / `示例实验室` 等），示例与回归测试的语义不变；旧脚本 `legacy/gdou_tracker.py`
+  更名为 `legacy/news_tracker.py`，其中写死的关键词默认值与简称表改为可配置。
+
 ## [0.6.0] - 2026-09-27
 
 ### Added
@@ -116,7 +130,7 @@
 
 ### Removed
 
-- `legacy/report.html`、`legacy/result.csv`、`legacy/result.json`——`legacy/gdou_tracker.py`
+- `legacy/report.html`、`legacy/result.csv`、`legacy/result.json`——`legacy/news_tracker.py`
   可随时再生成；保留脚本与 `legacy/README.md`。
 - `run_scan.sh` / `run_scan.ps1` 中的 CLI 选项白名单与「未知选项」拒绝逻辑。
 - `docs/` 的 `export-ignore`（`legacy/**`、`.github/**` 仍忽略）。

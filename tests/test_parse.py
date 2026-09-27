@@ -198,15 +198,15 @@ def test_extract_text_supports_enpcontent():
 
 # ---------------------------------------------------------------- keyword
 def test_make_kw_re_tolerates_tag_split_whitespace():
-    assert parse.make_kw_re("广东海洋大学").search("来自广东 海洋 大学的专家")
+    assert parse.make_kw_re("示例大学").search("来自示例 大 学的专家")
 
 
 def test_make_kw_re_is_case_insensitive():
-    assert parse.make_kw_re("gdou").search("GDOU 校友")
+    assert parse.make_kw_re("demo").search("DEMO 校友")
 
 
 def test_make_kw_re_does_not_match_other_schools():
-    assert parse.make_kw_re("广东海洋大学").search("广东林业大学") is None
+    assert parse.make_kw_re("示例大学").search("示例职业技术学院") is None
 
 
 def test_make_kw_re_normalizes_fullwidth_keyword():

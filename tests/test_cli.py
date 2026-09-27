@@ -9,8 +9,8 @@ import pytest
 
 from newspaper_auto import cli, config, exporter, papers, report, state
 
-ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "广东海洋大学"]
-ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "广东海洋大学"]
+ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "示例大学"]
+ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "示例大学"]
 HIT_FILES = {"content_101.html", "content_102.html", "content_104.html"}
 
 
@@ -220,9 +220,9 @@ def test_duplicate_keywords_are_deduplicated(tmp_path, capsys, site_fetcher, tod
             "--days",
             "1",
             "--kw",
-            "广东海洋大学",
+            "示例大学",
             "--kw",
-            "广东海洋大学",
+            "示例大学",
             "--no-state",
             "--data-dir",
             str(tmp_path),
@@ -231,7 +231,7 @@ def test_duplicate_keywords_are_deduplicated(tmp_path, capsys, site_fetcher, tod
     )
     out, _ = capsys.readouterr()
     assert code == 0
-    assert "关键词：广东海洋大学\n" in out
+    assert "关键词：示例大学\n" in out
 
 
 def test_archive_skips_dirty_rows_and_refreshes_existing_metadata(tmp_path):
@@ -281,7 +281,7 @@ def test_first_run_writes_state_and_reports_then_second_run_reports_zero_new(
     archive = json.loads((tmp_path / "hits" / "archive.json").read_text(encoding="utf-8"))
     assert len(archive) == 3
     seen = json.loads((tmp_path / "state" / "seen.json").read_text(encoding="utf-8"))
-    assert len(seen["广东海洋大学"]) == 3
+    assert len(seen["示例大学"]) == 3
 
 
 def test_seen_is_not_committed_when_report_write_fails(tmp_path, capsys, monkeypatch, site_fetcher, today):
@@ -366,7 +366,7 @@ def test_internal_error_in_one_paper_is_recorded_and_scan_continues(tmp_path, ca
             "--days",
             "1",
             "--kw",
-            "广东海洋大学",
+            "示例大学",
             "--no-state",
             "--data-dir",
             str(tmp_path),
@@ -426,7 +426,7 @@ def test_partial_failure_article_does_not_block_hits(tmp_path, capsys, site_fetc
             "--days",
             "1",
             "--kw",
-            "广东海洋大学",
+            "示例大学",
             "--no-state",
             "--json",
             "--data-dir",

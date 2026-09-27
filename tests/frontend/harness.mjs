@@ -28,8 +28,8 @@ export const RECORDS = [
     title: "中秋非遗活动进校园",
     url: "http://example.test/zj/1",
     text_len: 120,
-    snippets: ["…广东海洋大学…"],
-    matched: ["广东海洋大学"],
+    snippets: ["…示例大学…"],
+    matched: ["示例大学"],
     geometry: { index: 8, total: 11, top: 0.7, basis: "order" },
   },
   {
@@ -62,13 +62,13 @@ export function hitsPayload(records = RECORDS) {
     papers: Object.keys(paperCounts).sort(),
     paper_counts: paperCounts,
     keywords: Array.from(new Set(records.flatMap((r) => r.matched || []))).sort(),
-    seen_counts: { 广东海洋大学: 3 },
+    seen_counts: { 示例大学: 3 },
     date_counts: dateCounts,
     records,
     has_web_config: true,
     default_keywords: ["人工智能"],
     // 看板首屏会聚焦「已配置关键词」；样例两条命中分属两个关键词，故都配置。
-    configured_keywords: ["广东海洋大学", "人工智能"],
+    configured_keywords: ["示例大学", "人工智能"],
   };
 }
 
@@ -88,7 +88,7 @@ export function papersPayload() {
 
 export function configPayload(overrides = {}) {
   return {
-    keywords: ["广东海洋大学"],
+    keywords: ["示例大学"],
     days: 2,
     workers: 8,
     mode: "days",
@@ -124,7 +124,7 @@ export function runningScan(overrides = {}) {
     status: "running",
     task_id: "task-1",
     started_at: "2026-09-24 10:00:00",
-    params: { keywords: ["广东海洋大学"] },
+    params: { keywords: ["示例大学"] },
     progress: { completed: 0, total: 2, percent: 0, current: "" },
     ...overrides,
   };

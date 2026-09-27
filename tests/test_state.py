@@ -35,7 +35,7 @@ def test_load_seen_normalizes_nested_dirty_data(tmp_path):
 
 def test_save_load_roundtrip_and_no_tmp_leftover(tmp_path):
     path = tmp_path / "state" / "seen.json"
-    data = {"广东海洋大学": {"http://x/2026-09/22/content_1.html": 1}}
+    data = {"示例大学": {"http://x/2026-09/22/content_1.html": 1}}
     state.save_seen(path, data)
     assert state.load_seen(path) == data
     assert list(path.parent.glob("*.tmp")) == []

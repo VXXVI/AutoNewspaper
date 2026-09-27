@@ -119,7 +119,7 @@ export const domTests = [
         assert.equal(page.document.querySelectorAll("#papers-list .papers-row").length, 2);
         assert.match(page.document.getElementById("papers-list").textContent, /内置/);
         const chips = [...page.document.querySelectorAll("#keyword-chips .chip")];
-        assert.ok(chips.some((c) => c.textContent.includes("广东海洋大学")));
+        assert.ok(chips.some((c) => c.textContent.includes("示例大学")));
       }),
   },
   {

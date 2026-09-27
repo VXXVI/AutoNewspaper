@@ -4,7 +4,7 @@ include README.md
 include CHANGELOG.md
 include Makefile
 
-recursive-include src/newspaper_auto/static *.html *.css *.js
+recursive-include src/newspaper_auto/static *.html *.css *.js *.svg *.ico *.png
 recursive-include tests *.py *.html
 recursive-include scripts *.sh *.ps1 *.template
 recursive-include packaging *.py *.spec *.cmd *.txt

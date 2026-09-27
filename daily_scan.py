@@ -13,7 +13,7 @@
     单篇文章页   →  含标题 + 正文（<founder-content> 或 <!--enpcontent--> 内）
 
 所以可以直接做到「当日全版面 → 全文章 → 标题 + 正文全文匹配关键词」，
-正文里提一句校名也能命中，不依赖 Google/Bing 的收录与延迟。
+正文里提一句机构名也能命中，不依赖 Google/Bing 的收录与延迟。
 
 六家入口（第 1 版）：
     光明日报   https://epaper.gmw.cn/gmrb/html/layout/{YYYYMM/DD}/node_01.html

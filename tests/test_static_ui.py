@@ -65,6 +65,26 @@ def test_result_and_dashboard_views_have_shared_filter_and_status_surfaces():
     assert parser.attributes_by_id["result-context"].get("aria-live") == "polite"
 
 
+def test_brand_icon_assets_are_present_and_referenced():
+    """品牌图标：文件必须在、index.html 必须引用，且都进了 STATIC_TYPES 白名单。
+
+    回归：图标是二进制资源，漏进白名单时浏览器只会拿到 404（不像 JS 会让整页报错），
+    因此需要独立守护。
+    """
+    from newspaper_auto import web_static
+
+    for name in ("logo.svg", "logo-small.svg", "favicon.ico", "apple-touch-icon.png"):
+        assert (STATIC_DIR / name).is_file(), f"缺少图标资源 static/{name}"
+        assert name in web_static.STATIC_TYPES, f"static/{name} 未登记进 STATIC_TYPES"
+
+    html = _read("index.html")
+    assert 'href="/static/favicon.ico"' in html
+    assert 'href="/static/apple-touch-icon.png"' in html
+    assert 'src="/static/logo.svg"' in html, "顶栏品牌位应使用 logo.svg"
+    # logo.svg 必须是可缩放的矢量（不锁死像素尺寸），否则高 DPI 会糊
+    assert "viewBox=" in _read("logo.svg")
+
+
 def test_index_loads_api_then_single_es_module_entry():
     parser = _ElementCollector()
     parser.feed(_read("index.html"))

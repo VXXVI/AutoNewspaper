@@ -20,8 +20,8 @@ HITS = [
         "title": "=危险公式",
         "url": "http://example.test/content_1.html",
         "text_len": 12,
-        "snippets": ["…广东海洋大学…"],
-        "matched": ["广东海洋大学"],
+        "snippets": ["…示例大学…"],
+        "matched": ["示例大学"],
     }
 ]
 

@@ -8,7 +8,7 @@ import pytest
 
 from newspaper_auto import config, parse, scanner
 
-KW = {"广东海洋大学": parse.make_kw_re("广东海洋大学")}
+KW = {"示例大学": parse.make_kw_re("示例大学")}
 
 
 def _hit_names(hits) -> set[str]:
@@ -28,15 +28,15 @@ def test_happy_path_scan(zhanjiang_paper, fixed_day, site_fetcher):
 
     # 101 正文命中、102 标题命中、104 标签切断后仍命中；103 不命中
     assert _hit_names(hits) == {"content_101.html", "content_102.html", "content_104.html"}
-    assert all(hit["matched"] == ["广东海洋大学"] for hit in hits)
+    assert all(hit["matched"] == ["示例大学"] for hit in hits)
     assert all(hit["snippets"] for hit in hits)
 
 
 def test_hit_matched_in_title_only(read_fixture):
     """content_102 关键词只在标题里，正文不含 —— 验证标题通道独立生效。"""
     html = read_fixture("article_content_102.html")
-    assert "广东海洋大学" in parse.extract_title(html)
-    assert "广东海洋大学" not in parse.extract_text(html)
+    assert "示例大学" in parse.extract_title(html)
+    assert "示例大学" not in parse.extract_text(html)
 
 
 def test_section_name_is_recorded(zhanjiang_paper, fixed_day, site_fetcher):
@@ -113,7 +113,7 @@ def test_article_filter_falls_back_when_date_part_removes_all(fixed_day):
     """版面链接都不含当前日期目录时，不能把整版误判成「无文章」。"""
     paper = {"name": "测试报", "style": "ymd", "tpl": "https://x/{a}/node_1.html"}
     entry = '<a href="https://other.example.com/archive/content_1.html">文章</a>' + "x" * 400
-    article = "<html><body><h1>广东海洋大学发布消息</h1><p>正文内容</p></body></html>" + "x" * 400
+    article = "<html><body><h1>示例大学发布消息</h1><p>正文内容</p></body></html>" + "x" * 400
 
     def fetch(url: str):
         return (200, article) if "content_" in url else (200, entry)
@@ -511,7 +511,7 @@ def test_custom_date_and_link_patterns_drive_scan(fixed_day):
             return 200, '<a href="page-1.html">第一版</a>' + "x" * 400
         if url.endswith("page-1.html"):
             return 200, '<a href="story-7.html">文章</a>' + "x" * 400
-        return 200, "<html><h1>广东海洋大学发布消息</h1><body>正文内容</body></html>" + "x" * 400
+        return 200, "<html><h1>示例大学发布消息</h1><body>正文内容</body></html>" + "x" * 400
 
     hits, articles, stats = scanner.scan_paper(paper, fixed_day, KW, workers=2, fetcher=fetch)
     assert requested[0] == base + "index.html"

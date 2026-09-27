@@ -237,11 +237,11 @@ CSV、互斥、增量两次运行、`--no-state`、`--full`、dry）。
 ### 3.2 脚本行为（不联网）
 
 ```
-./scripts/run_scan.sh --kw 广东海洋大学 --help
-  → 命令：... daily_scan.py --days 1 --no-state --kw 广东海洋大学 --help   （旧 Bug 已修复）
-./scripts/run_scan.sh 广东海洋大学 广海 --help        → --kw 广东海洋大学 --kw 广海
-NEWSPAPER_KW="广东海洋大学, 广海 ;海大" ./scripts/run_scan.sh --help
-  → --kw 广东海洋大学 --kw 广海 --kw 海大
+./scripts/run_scan.sh --kw 示例大学 --help
+  → 命令：... daily_scan.py --days 1 --no-state --kw 示例大学 --help   （旧 Bug 已修复）
+./scripts/run_scan.sh 示例大学 示大 --help        → --kw 示例大学 --kw 示大
+NEWSPAPER_KW="示例大学, 示大 ;例大" ./scripts/run_scan.sh --help
+  → --kw 示例大学 --kw 示大 --kw 例大
 ./scripts/run_scan.sh --bogus
   → 错误：未知选项：--bogus（退出码 2）
 bash -n scripts/*.sh                                  → OK
@@ -253,7 +253,7 @@ bash -n scripts/*.sh                                  → OK
 | 项 | 命令 | 结果 |
 |---|---|---|
 | 入口探测 | `python3 daily_scan.py --days 1 --dry` | 光明 17 / 南方 36 / 羊城 9 / 教育 13 / 湛江 9 版面，五家全 ✓ |
-| 无状态 JSON | `python3 daily_scan.py --days 1 --no-state --json --kw 广东海洋大学 --kw 广海` | `json.loads` 通过，records = 2（均为湛江日报）；stdout 纯 JSON，日志在 stderr |
+| 无状态 JSON | `python3 daily_scan.py --days 1 --no-state --json --kw 示例大学 --kw 示大` | `json.loads` 通过，records = 2（均为湛江日报）；stdout 纯 JSON，日志在 stderr |
 | 无状态证据 | 跑前 → 跑后 | `state/seen.json` md5 恒为 `ef0c2b57b6e512434e6b678e2196ad06`；`hits/` 清单不变 ✓ |
 | 增量兼容 | 以 **v0.1 生成的 540 条旧状态**副本跑 `--data-dir` | 扫 312 篇 / 命中 2 / **新增 0**，无重复误报 ✓ |
 
