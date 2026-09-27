@@ -81,9 +81,9 @@ def test_build_windows_produces_one_exe_and_smokes_the_health_version():
 
     smoke = normalized.split("冒烟测试", 1)[1]
     assert "api/health" in smoke and "static/store.js" in smoke
-    assert (
-        "[regex]::Escape($packageVersion)" in smoke
-    ), "必须断言 /api/health 报出的**包内**版本号（不带 tag 的 v 前缀）"
+    assert "[regex]::Escape($packageVersion)" in smoke, (
+        "必须断言 /api/health 报出的**包内**版本号（不带 tag 的 v 前缀）"
+    )
     # 回归：CI 传的是 tag 名（v0.9.0），直接拿去比 "0.9.0" 会永远匹配不上，v0.9.0 因此挂过
     assert "$packageVersion = $Version -replace '^[vV]', ''" in normalized, "比较前必须去掉 tag 的 v 前缀"
     assert "$sourceVersion -ne $packageVersion" in normalized, "tag 与源码版本必须一致"
