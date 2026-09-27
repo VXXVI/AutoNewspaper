@@ -108,7 +108,6 @@ $stage = Join-Path $ProjectDir ('build\package-{0}' -f $Version)
 if (Test-Path -LiteralPath $stage) { Remove-Item -Recurse -Force -LiteralPath $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item -LiteralPath $exePath -Destination $stage
-Copy-Item -LiteralPath $cliExePath -Destination $stage
 # 只拷贝面向用户的文件：显式列举，避免 Copy-Item 通配把 packaging\windows\ 下的
 # 构建脚本（如 installer.iss）一起装进分发给最终用户的 zip。
 $userFiles = @('README.txt')

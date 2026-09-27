@@ -76,6 +76,9 @@ def test_build_windows_produces_one_exe_and_smokes_the_health_version():
     normalized = text.replace("\r\n", "\n")
 
     assert "NewspaperAuto-CLI" not in normalized, "不应再构建控制台版 exe"
+    # 回归：v0.9.0 里漏删了指向已删变量 $cliExePath 的拷贝行，PowerShell 直到打包阶段
+    # 才报「Cannot bind argument to parameter 'LiteralPath' because it is null」。
+    assert "$cliExePath" not in normalized, "不应再残留指向已删除的控制台版 exe 的变量"
     assert "NEWSPAPERAUTO_CONSOLE" not in normalized, "不应再靠环境变量切换 console 产物"
     assert normalized.count("python -m PyInstaller") == 1, "只应调用一次 PyInstaller"
 
