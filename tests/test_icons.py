@@ -50,7 +50,8 @@ def test_check_tolerates_a_windows_crlf_checkout(icons, monkeypatch, tmp_path):
     """
     for name in ("favicon.ico", "apple-touch-icon.png"):
         (tmp_path / name).write_bytes((icons.STATIC / name).read_bytes())
-    svg = (icons.STATIC / "logo.svg").read_bytes().replace(b"\n", b"\r\n")
+    # 先归一成 LF 再转 CRLF：在 Windows 上源文件本来就是 CRLF，直接替换会得到 \r\r\n
+    svg = (icons.STATIC / "logo.svg").read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
     (tmp_path / "logo.svg").write_bytes(svg)
 
     monkeypatch.setattr(icons, "STATIC", tmp_path)
