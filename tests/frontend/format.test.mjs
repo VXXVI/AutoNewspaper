@@ -16,6 +16,8 @@ import {
   splitKeywords,
   todayIso,
 } from "../../src/newspaper_auto/static/format.js";
+import { pct } from "../../src/newspaper_auto/static/render.js";
+import { escapeHtml } from "../../src/newspaper_auto/static/dom.js";
 
 test("shiftDate 跨月/跨年并保持 ISO 补零", () => {
   assert.equal(shiftDate("2026-03-01", -1), "2026-02-28");
@@ -59,4 +61,21 @@ test("parseInt10 只接受整数", () => {
 
 test("todayIso 形如 YYYY-MM-DD", () => {
   assert.match(todayIso(), ISO_DATE_RE);
+});
+
+test("pct 守卫非有限值并按 0~100% 夹取", () => {
+  assert.equal(pct(0.5), "50.00%");
+  assert.equal(pct(0), "0.00%");
+  assert.equal(pct(2), "100.00%");
+  assert.equal(pct(-1), "0.00%");
+  assert.equal(pct(undefined), "0%");
+  assert.equal(pct(null), "0%");
+  assert.equal(pct(NaN), "0%");
+  assert.equal(pct(Infinity), "0%");
+});
+
+test("escapeHtml 转义危险字符（零 innerHTML 策略下的兜底工具）", () => {
+  assert.equal(escapeHtml('<a href="x">&\'</a>'), "&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;");
+  assert.equal(escapeHtml(null), "");
+  assert.equal(escapeHtml(undefined), "");
 });

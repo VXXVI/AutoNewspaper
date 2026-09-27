@@ -3,10 +3,16 @@
  * 唯一变更入口是 store.dispatch(action)：reducer(state, action) 计算**新的** state，
  * 再通知订阅者重渲染。reducer 是纯函数（不读写外部变量，Set 一律产生新实例），
  * 因此可以脱离 DOM 单独测试。零框架、零构建、零第三方依赖；供 app.js 使用。
+ *
+ * 除 reducer 外，这里还放**纯选择器**（selectFiltered/selectSorted/...）：把
+ * 「state → 视图数据」的推导集中在一处，render 只负责把数据画成 DOM。
  */
+
+import { splitKeywords } from "./format.js";
 
 export var INITIAL_ROWS = 50;
 export var ROW_STEP = 50;
+export var MAX_SCAN_LOG_LINES = 300;
 
 // action 类型常量：避免散落的字符串字面量拼错。
 export var A = {
@@ -19,9 +25,33 @@ export var A = {
   CLEAR_LINKED: "CLEAR_LINKED",
   TOGGLE_PAPER: "TOGGLE_PAPER",
   TOGGLE_KEYWORD: "TOGGLE_KEYWORD",
+  SET_KEYWORDS: "SET_KEYWORDS",
   SHOW_ALL_HISTORY: "SHOW_ALL_HISTORY",
   RESET_VIEW: "RESET_VIEW",
-  LOAD_MORE: "LOAD_MORE"
+  LOAD_MORE: "LOAD_MORE",
+  // 扫描运行状态（含进度、日志、本次可选报社）
+  SCAN_SET_PAPERS: "SCAN_SET_PAPERS",
+  SCAN_CONFIG_ONLY: "SCAN_CONFIG_ONLY",
+  SCAN_TOGGLE_PAPER: "SCAN_TOGGLE_PAPER",
+  SCAN_RUNNING: "SCAN_RUNNING",
+  SCAN_CANCELLING: "SCAN_CANCELLING",
+  SCAN_STATUS: "SCAN_STATUS",
+  SCAN_PROGRESS: "SCAN_PROGRESS",
+  SCAN_RESET_LOG: "SCAN_RESET_LOG",
+  SCAN_INGEST: "SCAN_INGEST",
+  SCAN_HISTORY: "SCAN_HISTORY",
+  // 报社管理
+  PAPERS_VIEW: "PAPERS_VIEW",
+  PAPERS_STATUS: "PAPERS_STATUS",
+  PAPERS_HINT: "PAPERS_HINT",
+  PAPERS_EDITING: "PAPERS_EDITING",
+  // 导出对话框
+  EXPORT_BUSY: "EXPORT_BUSY",
+  EXPORT_STATUS: "EXPORT_STATUS",
+  // 头部服务状态 / 数据新鲜度
+  SYSTEM_LOADING: "SYSTEM_LOADING",
+  SYSTEM_ERROR: "SYSTEM_ERROR",
+  SYSTEM_HEALTH: "SYSTEM_HEALTH"
 };
 
 export function createInitialState() {
@@ -36,7 +66,43 @@ export function createInitialState() {
     to: "",
     sort: "date-desc",
     preset: "all",
-    visibleRows: INITIAL_ROWS
+    visibleRows: INITIAL_ROWS,
+    // 扫描面板：运行标志、可选/已选报社、进度、日志、历史
+    scan: {
+      running: false,
+      cancelling: false,
+      paperNames: [],
+      selected: null,
+      pendingOnly: null,
+      logLines: [],
+      logCursor: 0,
+      taskId: null,
+      status: { text: "准备就绪", tone: "idle" },
+      progress: null,
+      history: null
+    },
+    // 报社管理面板（filter 用的 papers 是 Set，见上方）
+    papersPanel: {
+      view: null,
+      status: "—",
+      tone: "idle",
+      hint: "",
+      editing: null
+    },
+    // 导出对话框
+    exportDialog: {
+      busy: false,
+      status: "",
+      tone: ""
+    },
+    // 头部系统状态
+    system: {
+      loading: false,
+      error: "",
+      ok: null,
+      version: "",
+      checkedAt: ""
+    }
   };
 }
 
@@ -44,10 +110,28 @@ function withPatch(state, patch) {
   return Object.assign({}, state, patch);
 }
 
+function slicePatch(state, key, patch) {
+  var next = {};
+  next[key] = Object.assign({}, state[key], patch);
+  return withPatch(state, next);
+}
+
 function toggledSet(source, name, on) {
   var next = new Set(source);
   if (on) next.add(name); else next.delete(name);
   return next;
+}
+
+// 把配置里的 only（逗号分隔）套用到可选报社上：无显式选择返回 null（全选），
+// 有显式选择但交集为空返回空 Set（保留空集合，绝不静默扩大为全选）。
+function applyOnly(names, onlyText) {
+  var wanted = splitKeywords(onlyText || "");
+  if (!wanted.length) return null;
+  var selected = new Set();
+  wanted.forEach(function (name) {
+    if (names.indexOf(name) !== -1) selected.add(name);
+  });
+  return selected;
 }
 
 export function reducer(state, action) {
@@ -105,7 +189,15 @@ export function reducer(state, action) {
         keywords: toggledSet(state.keywords, action.name, action.on),
         focusKeywords: null
       });
+    case A.SET_KEYWORDS:
+      return withPatch(state, {
+        keywords: new Set(action.names || []),
+        focusKeywords: null,
+        linkedFilter: null,
+        visibleRows: INITIAL_ROWS
+      });
     case A.SHOW_ALL_HISTORY:
+      if (!state.data) return state;
       return withPatch(state, {
         focusKeywords: null,
         keywords: new Set(state.data.keywords),
@@ -125,9 +217,227 @@ export function reducer(state, action) {
     }
     case A.LOAD_MORE:
       return withPatch(state, { visibleRows: state.visibleRows + ROW_STEP });
+
+    /* ---------------------------------------------------------- 扫描状态 */
+    case A.SCAN_SET_PAPERS: {
+      var names = (action.names || []).slice();
+      var pending = state.scan.pendingOnly;
+      var selected;
+      if (pending !== null) {
+        selected = applyOnly(names, pending);
+        pending = null;
+      } else if (state.scan.selected) {
+        selected = new Set(names.filter(function (name) { return state.scan.selected.has(name); }));
+      } else {
+        selected = null;
+      }
+      return slicePatch(state, "scan", { paperNames: names, selected: selected, pendingOnly: pending });
+    }
+    case A.SCAN_CONFIG_ONLY: {
+      var only = typeof action.only === "string" ? action.only : "";
+      if (state.scan.paperNames.length) {
+        return slicePatch(state, "scan", {
+          selected: applyOnly(state.scan.paperNames, only),
+          pendingOnly: null
+        });
+      }
+      return slicePatch(state, "scan", { pendingOnly: only });
+    }
+    case A.SCAN_TOGGLE_PAPER: {
+      var base = state.scan.selected ? new Set(state.scan.selected) : new Set(state.scan.paperNames);
+      if (action.on) base.add(action.name); else base.delete(action.name);
+      return slicePatch(state, "scan", { selected: base, pendingOnly: null });
+    }
+    case A.SCAN_RUNNING:
+      return slicePatch(state, "scan", { running: Boolean(action.running), cancelling: false });
+    case A.SCAN_CANCELLING:
+      return slicePatch(state, "scan", { cancelling: Boolean(action.cancelling) });
+    case A.SCAN_STATUS:
+      return slicePatch(state, "scan", {
+        status: { text: String(action.text || ""), tone: action.tone || "idle" }
+      });
+    case A.SCAN_PROGRESS:
+      return slicePatch(state, "scan", { progress: action.progress || null });
+    case A.SCAN_RESET_LOG:
+      return slicePatch(state, "scan", { logLines: [], logCursor: 0, progress: null });
+    case A.SCAN_INGEST: {
+      var scan = state.scan;
+      var task = action.task || {};
+      var replace = action.replace === true;
+      var taskId = scan.taskId;
+      var cursor = scan.logCursor;
+      if (task.task_id && taskId && task.task_id !== taskId) { replace = true; cursor = 0; }
+      if (task.task_id) taskId = task.task_id;
+      var lines = replace || task.logs_truncated ? [] : scan.logLines;
+      if (Array.isArray(task.log) && task.log.length) {
+        lines = lines.concat(task.log).slice(-MAX_SCAN_LOG_LINES);
+      }
+      if (typeof task.log_cursor === "number") cursor = task.log_cursor;
+      return slicePatch(state, "scan", {
+        taskId: taskId,
+        logLines: lines,
+        logCursor: cursor,
+        progress: task.progress === undefined ? scan.progress : task.progress
+      });
+    }
+    case A.SCAN_HISTORY:
+      return slicePatch(state, "scan", {
+        history: Array.isArray(action.tasks) ? action.tasks.slice() : []
+      });
+
+    /* ---------------------------------------------------------- 报社管理 */
+    case A.PAPERS_VIEW:
+      return slicePatch(state, "papersPanel", { view: action.view || null });
+    case A.PAPERS_STATUS:
+      return slicePatch(state, "papersPanel", {
+        status: String(action.text === undefined ? "" : action.text),
+        tone: action.tone || "idle"
+      });
+    case A.PAPERS_HINT:
+      return slicePatch(state, "papersPanel", { hint: String(action.text || "") });
+    case A.PAPERS_EDITING:
+      return slicePatch(state, "papersPanel", { editing: action.name || null });
+
+    /* ---------------------------------------------------------- 导出对话框 */
+    case A.EXPORT_BUSY:
+      return slicePatch(state, "exportDialog", { busy: Boolean(action.busy) });
+    case A.EXPORT_STATUS:
+      return slicePatch(state, "exportDialog", {
+        status: String(action.text || ""),
+        tone: action.tone || ""
+      });
+
+    /* ---------------------------------------------------------- 系统状态 */
+    case A.SYSTEM_LOADING:
+      return slicePatch(state, "system", { loading: Boolean(action.loading) });
+    case A.SYSTEM_ERROR:
+      return slicePatch(state, "system", { error: String(action.message || "") });
+    case A.SYSTEM_HEALTH:
+      return slicePatch(state, "system", {
+        ok: action.ok === undefined ? null : Boolean(action.ok),
+        version: String(action.version || ""),
+        checkedAt: String(action.checkedAt || "")
+      });
     default:
       return state;
   }
+}
+
+/* ===================================================================
+ * 纯选择器：state → 视图数据（不触碰 DOM，可脱离 jsdom 单测）
+ * =================================================================== */
+
+/** 解析「仅扫描选中报社」的实际名单；selected=null 视为全选。 */
+export function selectScanNames(scan) {
+  if (!scan) return [];
+  if (!scan.selected) return (scan.paperNames || []).slice();
+  return scan.paperNames.filter(function (name) { return scan.selected.has(name); });
+}
+
+export function selectFiltered(state) {
+  if (!state || !state.data) return [];
+  var q = state.q.trim().toLowerCase();
+  return state.data.records.filter(function (r) {
+    if (!state.papers.has(r.paper)) return false;
+    if (!state.keywords.size || !(r.matched || []).some(function (k) { return state.keywords.has(k); })) return false;
+    if (state.from && (!r.date || r.date < state.from)) return false;
+    if (state.to && (!r.date || r.date > state.to)) return false;
+    if (q) {
+      var hay = (r.title + " " + r.section + " " + (r.snippets || []).join(" ")).toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    if (state.linkedFilter) {
+      var f = state.linkedFilter;
+      if (f.type === "date" && r.date !== f.date) return false;
+      if (f.type === "cell" && (r.date !== f.date || r.paper !== f.paper)) return false;
+      if (f.type === "layout" && !f.urls.has(r.url)) return false;
+    }
+    return true;
+  });
+}
+
+function byDateDesc(a, b) {
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+  return a.url < b.url ? 1 : (a.url > b.url ? -1 : 0);
+}
+
+export function selectSorted(state) {
+  var list = selectFiltered(state);
+  var cmp = {
+    "date-desc": byDateDesc,
+    "date-asc": function (a, b) { return -byDateDesc(a, b); },
+    "paper": function (a, b) { return a.paper.localeCompare(b.paper, "zh") || byDateDesc(a, b); },
+    "title": function (a, b) { return a.title.localeCompare(b.title, "zh"); }
+  }[state.sort] || byDateDesc;
+  return list.slice().sort(cmp);
+}
+
+/** 导出用的受控筛选（与列表/图表保持一致；图表关联筛选优先于日期输入）。 */
+export function selectExportFilters(state) {
+  var f = state.linkedFilter;
+  var papers = Array.from(state.papers);
+  var from = state.from;
+  var to = state.to;
+  var urls = null;
+  if (f && f.type === "date") { from = f.date; to = f.date; }
+  if (f && f.type === "layout") urls = Array.from(f.urls);
+  if (f && f.type === "cell") { papers = [f.paper]; from = f.date; to = f.date; }
+  return {
+    papers: papers,
+    keywords: Array.from(state.keywords),
+    urls: urls,
+    from: from,
+    to: to,
+    query: state.q.trim(),
+    sort: state.sort
+  };
+}
+
+/** 全量归档的报社命中共计排名（后端 paper_counts，按命中数倒序）。 */
+export function paperRanking(data) {
+  if (!data || !data.paper_counts) return [];
+  return Object.keys(data.paper_counts).map(function (name) {
+    return { name: name, count: data.paper_counts[name] };
+  }).sort(function (a, b) {
+    return b.count - a.count || a.name.localeCompare(b.name, "zh");
+  });
+}
+
+/** 当前筛选结果内，各命中关键词的报道数排名。 */
+export function keywordRanking(records) {
+  var counts = {};
+  (records || []).forEach(function (r) {
+    (r.matched || []).forEach(function (k) { counts[k] = (counts[k] || 0) + 1; });
+  });
+  return Object.keys(counts).map(function (name) {
+    return { name: name, count: counts[name] };
+  }).sort(function (a, b) {
+    return b.count - a.count || a.name.localeCompare(b.name, "zh");
+  });
+}
+
+export var HEATMAP_KEY_SEP = "\u0001";
+
+/** 日期 × 报社 命中矩阵：行取命中最多的 N 家报社，列取最近的 N 天。 */
+export function heatmap(records, maxPapers, maxDates) {
+  var cellCounts = {};
+  var paperTotals = {};
+  var dateSet = {};
+  (records || []).forEach(function (r) {
+    if (!r.paper || !r.date) return;
+    var key = r.paper + HEATMAP_KEY_SEP + r.date;
+    cellCounts[key] = (cellCounts[key] || 0) + 1;
+    paperTotals[r.paper] = (paperTotals[r.paper] || 0) + 1;
+    dateSet[r.date] = true;
+  });
+  var papers = Object.keys(paperTotals).sort(function (a, b) {
+    return paperTotals[b] - paperTotals[a] || a.localeCompare(b, "zh");
+  }).slice(0, maxPapers || 8);
+  var dates = Object.keys(dateSet).sort();
+  if (maxDates && dates.length > maxDates) dates = dates.slice(dates.length - maxDates);
+  var max = 0;
+  Object.keys(cellCounts).forEach(function (key) { if (cellCounts[key] > max) max = cellCounts[key]; });
+  return { papers: papers, dates: dates, cells: cellCounts, max: max || 1 };
 }
 
 export function createStore(reduce, initialState) {

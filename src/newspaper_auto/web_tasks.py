@@ -187,7 +187,3 @@ class ScanTask:
                 "error": self.error,
                 "cancel_requested": self.cancel_requested,
             }
-
-    def to_dict(self) -> dict[str, Any]:
-        """兼容旧调用；新代码优先使用 :meth:`snapshot`。"""
-        return self.snapshot()

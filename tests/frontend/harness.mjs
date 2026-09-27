@@ -145,6 +145,7 @@ export function defaultRoutes(path, init) {
   const method = (init?.method || "GET").toUpperCase();
   if (method === "GET") {
     if (path.startsWith("/api/hits")) return { body: hitsPayload() };
+    if (path === "/api/health") return { body: { ok: true, version: "0.0.0-stub" } };
     if (path === "/api/config") return { body: configPayload() };
     if (path === "/api/papers") return { body: papersPayload() };
     if (path.startsWith("/api/scan/history")) return { body: { tasks: [] } };
@@ -204,6 +205,8 @@ export async function boot(options = {}) {
   const appUrl = new URL("src/newspaper_auto/static/app.js", ROOT).href + `?boot=${++bootSeq}`;
   await import(appUrl);
   await flush();
+  // app 现在统一经 store.subscribe 防抖渲染（140ms）；等首屏渲染落地后再断言。
+  await settle();
 
   return {
     dom,

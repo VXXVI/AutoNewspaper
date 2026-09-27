@@ -4,10 +4,16 @@ import assert from "node:assert/strict";
 
 import {
   A,
+  HEATMAP_KEY_SEP,
   INITIAL_ROWS,
   ROW_STEP,
   createInitialState,
+  heatmap,
+  keywordRanking,
+  paperRanking,
   reducer,
+  selectFiltered,
+  selectScanNames,
 } from "../../src/newspaper_auto/static/store.js";
 
 function sampleData() {
@@ -138,3 +144,161 @@ test("未知 action：原样返回同一引用", () => {
   const s0 = createInitialState();
   assert.equal(reducer(s0, { type: "NOT_A_REAL_ACTION" }), s0);
 });
+
+/* ----------------------------- 新增切片：scan / papersPanel / exportDialog / system ----------------------------- */
+
+test("初始状态含 scan/papersPanel/exportDialog/system 切片且 filter.papers 仍是 Set", () => {
+  const s = createInitialState();
+  assert.ok(s.papers instanceof Set, "filter 用的 papers 必须是 Set");
+  assert.equal(s.scan.running, false);
+  assert.equal(s.scan.selected, null);
+  assert.equal(s.scan.pendingOnly, null);
+  assert.deepEqual(s.scan.logLines, []);
+  assert.equal(s.scan.history, null);
+  assert.equal(s.papersPanel.view, null);
+  assert.equal(s.exportDialog.busy, false);
+  assert.equal(s.system.ok, null);
+});
+
+test("SCAN_CONFIG_ONLY：报社未到位先暂存，到位后套用（空交集保留空集合）", () => {
+  let s = reducer(createInitialState(), { type: A.SCAN_CONFIG_ONLY, only: "光明日报" });
+  assert.equal(s.scan.pendingOnly, "光明日报");
+  s = reducer(s, { type: A.SCAN_SET_PAPERS, names: ["光明日报", "南方日报"] });
+  assert.deepEqual([...s.scan.selected], ["光明日报"]);
+  assert.equal(s.scan.pendingOnly, null);
+
+  // 显式配置但交集为空：保留空 Set，不得静默回落成“全选”
+  let s2 = reducer(createInitialState(), { type: A.SCAN_CONFIG_ONLY, only: "不存在的报" });
+  s2 = reducer(s2, { type: A.SCAN_SET_PAPERS, names: ["光明日报"] });
+  assert.ok(s2.scan.selected instanceof Set);
+  assert.equal(s2.scan.selected.size, 0);
+});
+
+test("SCAN_SET_PAPERS：保留仍存在的已选报社，且不修改旧 Set", () => {
+  const s0 = reducer(createInitialState(), { type: A.SCAN_SET_PAPERS, names: ["A", "B", "C"] });
+  assert.equal(s0.scan.selected, null, "无显式选择时 selected=null 表示全选");
+  const s1 = reducer(s0, { type: A.SCAN_TOGGLE_PAPER, name: "B", on: false });
+  const s2 = reducer(s1, { type: A.SCAN_SET_PAPERS, names: ["A", "C", "D"] });
+  assert.deepEqual([...s2.scan.selected].sort(), ["A", "C"]);
+  assert.notEqual(s1.scan.selected, s2.scan.selected);
+  assert.deepEqual([...s1.scan.selected].sort(), ["A", "C"], "旧 state 的 Set 不得被就地修改");
+});
+
+test("SCAN_TOGGLE_PAPER：selected=null 时从全量起算", () => {
+  const base = reducer(createInitialState(), { type: A.SCAN_SET_PAPERS, names: ["A", "B"] });
+  const s = reducer(base, { type: A.SCAN_TOGGLE_PAPER, name: "A", on: false });
+  assert.deepEqual([...s.scan.selected], ["B"]);
+});
+
+test("SCAN_INGEST：追加日志、变更任务重置换行、上限 300 行", () => {
+  const long = Array.from({ length: 301 }, (_, i) => "L" + i);
+  let s = reducer(createInitialState(), { type: A.SCAN_INGEST, task: { task_id: "t1", log: long, log_cursor: 10, progress: { total: 3 } } });
+  assert.equal(s.scan.taskId, "t1");
+  assert.equal(s.scan.logLines.length, 300);
+  assert.equal(s.scan.logCursor, 10);
+  assert.deepEqual(s.scan.progress, { total: 3 });
+
+  s = reducer(s, { type: A.SCAN_INGEST, task: { task_id: "t2", log: ["new"], log_cursor: 2 } });
+  assert.equal(s.scan.taskId, "t2");
+  assert.deepEqual(s.scan.logLines, ["new"]);
+  assert.equal(s.scan.logCursor, 2);
+  const base = createInitialState();
+  reducer(base, { type: A.SCAN_INGEST, task: { task_id: "x", log: ["a"] } });
+  assert.deepEqual(base.scan.logLines, [], "reducer 不得就地修改原 state");
+});
+
+test("SCAN_RUNNING / SCAN_CANCELLING / SCAN_STATUS / SCAN_HISTORY", () => {
+  let s = reducer(createInitialState(), { type: A.SCAN_RUNNING, running: true });
+  assert.equal(s.scan.running, true);
+  s = reducer(s, { type: A.SCAN_CANCELLING, cancelling: true });
+  assert.equal(s.scan.cancelling, true);
+  s = reducer(s, { type: A.SCAN_RUNNING, running: false });
+  assert.equal(s.scan.cancelling, false);
+  s = reducer(s, { type: A.SCAN_STATUS, text: "扫描完成", tone: "success" });
+  assert.deepEqual(s.scan.status, { text: "扫描完成", tone: "success" });
+  s = reducer(s, { type: A.SCAN_HISTORY, tasks: [{ task_id: "a" }] });
+  assert.equal(s.scan.history.length, 1);
+});
+
+test("SET_KEYWORDS：整组替换关键词并清关联筛选", () => {
+  const base = Object.assign(createInitialState(), { linkedFilter: { type: "date", date: "x" } });
+  const s = reducer(base, { type: A.SET_KEYWORDS, names: ["k2"] });
+  assert.deepEqual([...s.keywords], ["k2"]);
+  assert.equal(s.linkedFilter, null);
+});
+
+test("papersPanel 与 exportDialog / system 切片 reducer", () => {
+  let s = reducer(createInitialState(), { type: A.PAPERS_VIEW, view: { items: [1] } });
+  assert.deepEqual(s.papersPanel.view.items, [1]);
+  s = reducer(s, { type: A.PAPERS_STATUS, text: "已保存", tone: "success" });
+  assert.equal(s.papersPanel.status, "已保存");
+  assert.equal(s.papersPanel.tone, "success");
+  s = reducer(s, { type: A.PAPERS_HINT, text: "试抓中…" });
+  assert.equal(s.papersPanel.hint, "试抓中…");
+  s = reducer(s, { type: A.PAPERS_EDITING, name: "光明日报" });
+  assert.equal(s.papersPanel.editing, "光明日报");
+
+  s = reducer(s, { type: A.EXPORT_BUSY, busy: true });
+  assert.equal(s.exportDialog.busy, true);
+  s = reducer(s, { type: A.EXPORT_STATUS, text: "错了", tone: "error" });
+  assert.equal(s.exportDialog.status, "错了");
+  assert.equal(s.exportDialog.tone, "error");
+
+  s = reducer(s, { type: A.SYSTEM_LOADING, loading: true });
+  assert.equal(s.system.loading, true);
+  s = reducer(s, { type: A.SYSTEM_ERROR, message: "boom" });
+  assert.equal(s.system.error, "boom");
+  s = reducer(s, { type: A.SYSTEM_HEALTH, ok: true, version: "9.9.9" });
+  assert.equal(s.system.ok, true);
+  assert.equal(s.system.version, "9.9.9");
+});
+
+/* ----------------------------- 纯选择器 ----------------------------- */
+
+test("selectScanNames：null=全选，Set=子集，空集=空", () => {
+  assert.deepEqual(selectScanNames({ paperNames: ["A", "B"], selected: null }), ["A", "B"]);
+  assert.deepEqual(selectScanNames({ paperNames: ["A", "B"], selected: new Set(["B"]) }), ["B"]);
+  assert.deepEqual(selectScanNames({ paperNames: ["A", "B"], selected: new Set() }), []);
+});
+
+test("paperRanking / keywordRanking 按命中数倒序", () => {
+  assert.deepEqual(paperRanking({ paper_counts: { A: 2, B: 5 } }).map((x) => x.name), ["B", "A"]);
+  const rank = keywordRanking([
+    { matched: ["k1", "k2"] },
+    { matched: ["k1"] },
+  ]);
+  assert.deepEqual(rank, [{ name: "k1", count: 2 }, { name: "k2", count: 1 }]);
+});
+
+test("heatmap：行列裁剪与计数", () => {
+  const records = [
+    { paper: "A", date: "2026-01-02" },
+    { paper: "A", date: "2026-01-02" },
+    { paper: "B", date: "2026-01-01" },
+  ];
+  const h = heatmap(records, 8, 14);
+  assert.deepEqual(h.papers, ["A", "B"]);
+  assert.deepEqual(h.dates, ["2026-01-01", "2026-01-02"]);
+  assert.equal(h.cells["A" + HEATMAP_KEY_SEP + "2026-01-02"], 2);
+  assert.equal(h.max, 2);
+});
+
+test("selectFiltered：支持按日期/版面/单元格关联筛选，并容忍缺失 snippets", () => {
+  const base = Object.assign(createInitialState(), {
+    data: {
+      papers: ["A"], keywords: ["k"], date_counts: {},
+      records: [
+        { paper: "A", date: "2026-01-01", title: "t1", section: "", url: "u1", matched: ["k"], snippets: undefined },
+        { paper: "A", date: "2026-01-02", title: "t2", section: "", url: "u2", matched: ["k"], snippets: ["s"] },
+      ],
+    },
+    papers: new Set(["A"]),
+    keywords: new Set(["k"]),
+  });
+  assert.equal(selectFiltered(base).length, 2, "缺失 snippets 不应抛错");
+  const cell = Object.assign(base, { linkedFilter: { type: "cell", key: "x", paper: "A", date: "2026-01-02" } });
+  assert.deepEqual(selectFiltered(cell).map((r) => r.url), ["u2"]);
+  const layout = Object.assign(base, { linkedFilter: { type: "layout", key: "x", urls: new Set(["u1"]) } });
+  assert.deepEqual(selectFiltered(layout).map((r) => r.url), ["u1"]);
+});
+

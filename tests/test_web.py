@@ -77,13 +77,28 @@ def test_build_dashboard_corrupt_archive(tmp_path):
 def test_build_dashboard_cache_hit_and_invalidation(tmp_path):
     _write_archive(tmp_path, ARCHIVE)
     first = web.build_dashboard(tmp_path)
-    # 文件未变 → 命中缓存，返回同一对象（省去全量解析与排序）
-    assert web.build_dashboard(tmp_path) is first
+    # 文件未变 → 命中缓存：返回等值但互相独立的对象（深拷贝，避免调用方污染缓存）
+    assert web.build_dashboard(tmp_path) == first
     # 归档内容变化 → 指纹变化 → 重新装配
     _write_archive(tmp_path, [*ARCHIVE, {**ARCHIVE[0], "url": "http://x/new", "title": "新"}])
     second = web.build_dashboard(tmp_path)
     assert second is not first
     assert second["count"] == first["count"] + 1
+
+
+def test_build_dashboard_cache_returns_independent_copy(tmp_path):
+    """调用方改动返回值不得污染缓存；后续请求仍拿到完整、独立的数据。"""
+    _write_archive(tmp_path, ARCHIVE)
+    first = web.build_dashboard(tmp_path)
+    assert web.build_dashboard(tmp_path) is not first
+
+    poisoned = web.build_dashboard(tmp_path)
+    poisoned["records"].clear()
+    poisoned["count"] = -1
+
+    fresh = web.build_dashboard(tmp_path)
+    assert fresh["count"] == first["count"]
+    assert len(fresh["records"]) == first["count"]
 
 
 def test_build_dashboard_now_argument_bypasses_cache(tmp_path):
@@ -354,6 +369,20 @@ def test_create_server_normalizes_ipv6_loopback(tmp_path):
 def test_create_server_rejects_non_loopback(tmp_path):
     with pytest.raises(ValueError):
         web.create_server(tmp_path, "0.0.0.0", 0)
+
+
+def test_dashboard_server_direct_construction_rejects_non_loopback(tmp_path):
+    """直接构造 DashboardServer 也必须走环回校验（factory 之外的第二道门）。"""
+    with pytest.raises(ValueError, match="只允许监听"):
+        web.DashboardServer(("0.0.0.0", 0), tmp_path)
+
+
+def test_dashboard_server_direct_construction_normalizes_ipv6(tmp_path):
+    server = web.DashboardServer(("::1", 0), tmp_path)
+    try:
+        assert server.server_address[0] == "127.0.0.1"
+    finally:
+        server.server_close()
 
 
 def test_security_headers_on_success_and_error(base_url):
@@ -712,10 +741,80 @@ def test_scan_only_invalid_element_returns_400(tmp_path):
 
 
 def test_scan_body_too_large_returns_413(tmp_path):
+    """声明的 Content-Length 超限即 413；用原始套接字只发头，避免大 body 与服务端提前关闭的竞态。"""
+    import socket
+
     with _serve(tmp_path, _noop_runner) as url:
-        status, body = _request("POST", url + "/api/scan", {"keywords": ["x"], "pad": "y" * 20000})
-        assert status == 413
-        assert json.loads(body)["error"]
+        host, _, port = url[len("http://") :].partition(":")
+        request = (
+            "POST /api/scan HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {web.MAX_BODY_BYTES + 1}\r\n"
+            "\r\n"
+        )
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            sock.sendall(request.encode("ascii"))
+            raw = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                raw += chunk
+
+    assert b" 413 " in raw.split(b"\r\n", 1)[0], raw
+    assert b"error" in raw
+
+
+def test_scan_rejects_transfer_encoding_with_content_length(tmp_path):
+    """同时声明 Transfer-Encoding 与 Content-Length 会产生请求走私歧义，直接 400。"""
+    import socket
+
+    with _serve(tmp_path, _noop_runner) as url:
+        host, _, port = url[len("http://") :].partition(":")
+        request = (
+            "POST /api/scan HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: 2\r\n"
+            "Transfer-Encoding: chunked\r\n"
+            "\r\n"
+            "{}"
+        )
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            sock.sendall(request.encode("ascii"))
+            raw = b""
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                raw += chunk
+
+    assert b" 400 " in raw.split(b"\r\n", 1)[0], raw
+    assert b"Transfer-Encoding" in raw
+
+
+def test_post_unknown_route_returns_404_without_falling_through_to_export(tmp_path):
+    """未知 POST 路径必须 404：旧实现的 else 会把未登记的路径当作导出处理。"""
+    import socket
+
+    export_dir = tmp_path / "exports"
+    body = json.dumps({"directory": str(export_dir), "format": "json"}).encode("utf-8")
+    with _serve(tmp_path) as url:
+        host, _, port = url[len("http://") :].partition(":")
+        request = (
+            "POST /api/not-a-route HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            "\r\n"
+        ).encode("ascii") + body
+        with socket.create_connection((host, int(port)), timeout=5) as sock:
+            sock.sendall(request)
+            raw = sock.recv(4096)
+
+    assert b" 404 " in raw.split(b"\r\n", 1)[0], raw
+    assert not export_dir.exists()
 
 
 # ---------------------------------------------------------------- 导出：POST /api/export
@@ -1456,6 +1555,54 @@ def test_accepts_gzip_parsing():
     assert web._accepts_gzip("deflate, gzip;q=0.8") is True
     assert web._accepts_gzip("gzip;q=0") is False
     assert web._accepts_gzip("identity") is False
+
+
+def test_etag_matches_parsing():
+    """If-None-Match 解析：容忍逗号列表、通配 *，并按弱比较忽略两端 W/ 前缀。"""
+    etag = 'W/"123-456"'
+    assert web._etag_matches(etag, etag) is True
+    assert web._etag_matches('"123-456"', etag) is True  # 弱比较忽略 ETag 自身的 W/
+    assert web._etag_matches('"abc", W/"123-456"', etag) is True  # 候选列表
+    assert web._etag_matches('  W/"123-456"  ', etag) is True  # 两端空白
+    assert web._etag_matches("*", etag) is True  # 通配
+    assert web._etag_matches('"other"', etag) is False
+    assert web._etag_matches('"123-456", "other"', etag) is True
+    assert web._etag_matches(None, etag) is False
+    assert web._etag_matches("", etag) is False
+
+
+def test_static_not_modified_keeps_security_headers(base_url):
+    """304 响应也必须带上与 200 相同的安全头，gzip 资源再附 Vary。"""
+    with _open(base_url + "/static/app.js") as resp:
+        etag = resp.headers.get("ETag")
+        assert etag
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _open(base_url + "/static/app.js", {"If-None-Match": etag})
+    assert exc.value.code == 304
+    headers = exc.value.headers
+    assert "style-src 'self' 'unsafe-inline'" in headers["Content-Security-Policy"]
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["Referrer-Policy"] == "no-referrer"
+    assert headers["X-Frame-Options"] == "DENY"
+    assert headers["Permissions-Policy"] == "camera=(), geolocation=(), microphone=()"
+    assert "Accept-Encoding" in (headers.get("Vary") or "")
+
+
+def test_static_etag_uses_nanosecond_mtime(tmp_path, monkeypatch):
+    """ETag 由 st_mtime_ns 派生，同秒同体积改写也能被识别（不再停留在秒级）。"""
+    import newspaper_auto.web_server as web_server
+
+    static = tmp_path / "static"
+    static.mkdir()
+    target = static / "app.js"
+    target.write_text("x" * 2000, encoding="utf-8")
+    monkeypatch.setattr(web_server, "STATIC_DIR", static)
+
+    with _serve(tmp_path) as url, _open(url + "/static/app.js") as resp:
+        etag = resp.headers.get("ETag")
+
+    stat = target.stat()
+    assert etag == f'W/"{stat.st_mtime_ns}-{stat.st_size}"'
 
 
 # ---------------------------------------------------------------- 取消 / 历史 / SSE

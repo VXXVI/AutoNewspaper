@@ -137,4 +137,113 @@ export const domTests = [
       });
     },
   },
+  {
+    name: "图形看板：报社/关键词排名由数据渲染，零 innerHTML",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        const paperRows = [...doc.querySelectorAll("#paper-rank .rank-row")];
+        assert.equal(paperRows.length, 2, "两家报社各一行");
+        assert.ok(paperRows.some((r) => r.textContent.includes("湛江日报")));
+        assert.ok(paperRows.every((r) => r.querySelector(".rank-bar")), "每行都有仪表条");
+        assert.ok(paperRows.every((r) => r.getAttribute("aria-label")));
+
+        const kwRows = [...doc.querySelectorAll("#keyword-rank .rank-row")];
+        assert.equal(kwRows.length, 2);
+        assert.ok(kwRows.some((r) => r.textContent.includes("人工智能")));
+      }),
+  },
+  {
+    name: "关键词排名点击后仅保留该关键词",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const btn = [...page.document.querySelectorAll("#keyword-rank .rank-row-button")]
+          .find((b) => b.textContent.includes("人工智能"));
+        assert.ok(btn, "应有「人工智能」排名项");
+        btn.click();
+        await settle();
+        assert.equal(rows(page.document).length, 1);
+        assert.match(rows(page.document)[0].textContent, /光明日报/);
+      }),
+  },
+  {
+    name: "热力图：每格有 aria-label，点击可按报社×日期筛选",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        const cells = [...doc.querySelectorAll("#heatmap .heatmap-cell")];
+        assert.ok(cells.length >= 4, "2 报社 × 2 日期 应至少有 4 格");
+        assert.ok(cells.every((c) => c.getAttribute("aria-label")));
+
+        const active = cells.find((c) => !c.disabled && Number(c.textContent) > 0);
+        assert.ok(active, "应存在非零可点击格");
+        active.click();
+        await settle();
+        assert.equal(rows(doc).length, 1, "单元格筛选后只剩该报社该日期的命中");
+        assert.ok(doc.getElementById("result-context").hidden === false);
+      }),
+  },
+  {
+    name: "扫描历史面板：消费 /api/scan/history 并渲染任务摘要",
+    fn: () => {
+      const routes = (path, init) => {
+        if ((init?.method || "GET").toUpperCase() === "GET" && path === "/api/scan/history") {
+          return {
+            body: {
+              tasks: [
+                {
+                  task_id: "h1",
+                  status: "done",
+                  started_at: "2026-09-24 09:00:00",
+                  finished_at: "2026-09-24 09:02:00",
+                  duration_seconds: 120,
+                  exit_code: 0,
+                  keywords: ["人工智能"],
+                  only: "光明日报",
+                  summary: { hits: 3, new_hits: 1 },
+                  error: null,
+                },
+              ],
+            },
+          };
+        }
+        return defaultRoutes(path, init);
+      };
+      return withPage({ routes }, async (page) => {
+        const box = page.document.getElementById("scan-history");
+        assert.match(box.textContent, /命中 3 篇/);
+        assert.match(box.textContent, /人工智能/);
+        assert.match(box.textContent, /光明日报/);
+      });
+    },
+  },
+  {
+    name: "扫描历史面板空态带 role=status",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const empty = page.document.querySelector("#scan-history [role=status]");
+        assert.ok(empty, "空历史应有 role=status 提示");
+      }),
+  },
+  {
+    name: "头部健康度来自 /api/health（替换硬编码「本地运行」）",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        assert.match(page.text("health-text"), /服务正常/);
+        assert.match(page.text("health-text"), /0\.0\.0-stub/);
+        assert.equal(page.document.getElementById("health").getAttribute("data-state"), "ok");
+      }),
+  },
+  {
+    name: "扫描报社 chip 的 aria-pressed 由 state 推导（dispatch 后重建）",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const find = (name) =>
+          [...page.document.querySelectorAll("#scan-papers .chip")].find((c) => c.textContent.includes(name));
+        assert.equal(find("光明日报").getAttribute("aria-pressed"), "true");
+        find("光明日报").click();
+        await settle();
+        assert.equal(find("光明日报").getAttribute("aria-pressed"), "false");
+      }),
+  },
 ];
