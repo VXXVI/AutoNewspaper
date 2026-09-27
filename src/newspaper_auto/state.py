@@ -144,6 +144,109 @@ def compute_new_hits(
 
 
 # ---------------------------------------------------------------- 命中归档
+# 归档文件格式版本：
+#   v1 = 顶层是记录数组，layout 逐条挂在记录上（旧格式，仍可读）
+#   v2 = {"version": 2, "layouts": {版面键: 布局}, "records": [...]}
+# 同一版面的 layout 会被写到该版**每一条**命中上；逐条存等于把同一份坐标重复 N 次
+# （一个 40 篇文章的版面 ≈ 重复 40 次）。v2 把它提到顶层按版面只存一份。
+ARCHIVE_VERSION = 2
+LAYOUT_KEY_SEP = "\u0001"
+
+
+def layout_key(record: dict[str, Any]) -> str:
+    """版面分组的键：``paper␁date␁section_no␁section``。
+
+    取值口径必须与前端 ``render.js`` 的 ``layoutKeyOf`` 一致（前端据此从顶层
+    ``layouts`` 表取回本版的布局）。
+    """
+    return LAYOUT_KEY_SEP.join(
+        [
+            str(record.get("paper") or ""),
+            str(record.get("date") or ""),
+            str(record.get("section_no") or ""),
+            str(record.get("section") or "") or "—",
+        ]
+    )
+
+
+def _pick_layout(layouts: dict[str, Any], key: str, layout: Any) -> None:
+    """并入一份版面布局；同一版面出现多份时保留项数最多的那份。"""
+    if not isinstance(layout, dict) or not isinstance(layout.get("items"), list) or not layout["items"]:
+        return
+    current = layouts.get(key)
+    if current is None or len(layout["items"]) > len(current.get("items") or []):
+        layouts[key] = layout
+
+
+def split_archive(raw: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """把归档文件内容收敛成 ``(records, layouts)``，兼容 v1 与 v2。
+
+    v1 记录上挂着的 ``layout`` 会被抽到 ``layouts`` 里按版面去重，记录本身不再携带，
+    因此读侧只需处理「记录 + 顶层布局表」一种形状。
+    """
+    if isinstance(raw, dict):
+        raw_records = raw.get("records")
+        raw_layouts = raw.get("layouts")
+    elif isinstance(raw, list):
+        raw_records, raw_layouts = raw, None
+    else:
+        return [], {}
+
+    records: list[dict[str, Any]] = []
+    legacy_layouts: list[tuple[dict[str, Any], Any]] = []
+    for item in raw_records if isinstance(raw_records, list) else []:
+        normalized = normalize_archive_item(item)
+        if normalized is None:
+            continue
+        legacy = normalized.pop("layout", None)
+        if legacy is not None:
+            legacy_layouts.append((normalized, legacy))
+        records.append(normalized)
+
+    layouts: dict[str, Any] = {}
+    if isinstance(raw_layouts, dict):
+        for key, layout in raw_layouts.items():
+            if isinstance(key, str):
+                _pick_layout(layouts, key, layout)
+    for record, layout in legacy_layouts:
+        _pick_layout(layouts, layout_key(record), layout)
+    return records, layouts
+
+
+def drop_orphan_layouts(records: list[dict[str, Any]], layouts: dict[str, Any]) -> dict[str, Any]:
+    """丢掉不再被任何记录引用的版面布局（例如被 ``keep_days`` 剪掉的那些日期）。"""
+    if not layouts:
+        return {}
+    alive = {layout_key(record) for record in records}
+    return {key: layout for key, layout in layouts.items() if key in alive}
+
+
+def read_archive(data_dir: os.PathLike[str] | str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """读取归档，返回 ``(records, layouts)``；文件缺失或损坏时返回空。"""
+    try:
+        with open(paths.archive_file(data_dir), encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, ValueError):
+        return [], {}
+    return split_archive(raw)
+
+
+def save_archive(
+    data_dir: os.PathLike[str] | str,
+    records: list[dict[str, Any]],
+    layouts: dict[str, Any],
+) -> None:
+    """原子写入 v2 归档。"""
+    write_text(
+        paths.archive_file(data_dir),
+        json.dumps(
+            {"version": ARCHIVE_VERSION, "layouts": layouts, "records": records},
+            ensure_ascii=False,
+            indent=1,
+        ),
+    )
+
+
 def update_archive(
     data_dir: os.PathLike[str] | str,
     all_hits: list[dict[str, Any]],
@@ -152,48 +255,44 @@ def update_archive(
     now: datetime | None = None,
     log: Callable[..., None] | None = None,
 ) -> list[dict[str, Any]]:
-    """把本次命中并入 ``archive.json``，返回合并（并按需修剪）后的归档。
+    """把本次命中并入 ``archive.json``，返回合并（并按需修剪）后的记录列表。
 
     旧归档中的局部脏数据会被跳过；同 URL 再次命中时更新标题、版面与
     几何信息，并对 ``matched`` 取有序并集，避免新关键词永远不进看板。
 
+    写入的是 v2 归档：版面布局按 :func:`layout_key` 去重后放在顶层 ``layouts``，
+    记录只保留自身很小的 ``geometry``；读取时仍兼容旧版数组格式。
+
     ``keep_days > 0`` 时顺带丢弃 ``date`` 早于该天数的条目（见 :func:`prune_archive`），
     默认 ``0`` 表示归档只增不删，保留完整审计历史。
     """
-    archive_path = paths.archive_file(data_dir)
-    try:
-        with open(archive_path, encoding="utf-8") as handle:
-            raw_archive = json.load(handle)
-    except (OSError, ValueError):
-        raw_archive = []
-    archive = (
-        [item for raw in raw_archive if (item := normalize_archive_item(raw)) is not None]
-        if isinstance(raw_archive, list)
-        else []
-    )
-    by_url = {item["url"]: index for index, item in enumerate(archive)}
+    records, layouts = read_archive(data_dir)
+    by_url = {item["url"]: index for index, item in enumerate(records)}
     for hit in all_hits:
         normalized_hit = normalize_archive_item(hit)
         if normalized_hit is None:
             continue
+        # 本次命中的版面布局先并入顶层表；记录本身不再逐条携带
+        _pick_layout(layouts, layout_key(normalized_hit), normalized_hit.pop("layout", None))
         url = normalized_hit["url"]
         if url not in by_url:
-            by_url[url] = len(archive)
-            archive.append(normalized_hit)
+            by_url[url] = len(records)
+            records.append(normalized_hit)
             continue
         index = by_url[url]
-        previous = archive[index]
+        previous = records[index]
         merged = {**previous, **normalized_hit}
         merged["matched"] = list(
             dict.fromkeys([*(previous.get("matched") or []), *(normalized_hit.get("matched") or [])])
         )
-        archive[index] = merged
+        records[index] = merged
 
-    archive, dropped = prune_archive(archive, keep_days, now)
-    write_text(archive_path, json.dumps(archive, ensure_ascii=False, indent=1))
+    records, dropped = prune_archive(records, keep_days, now)
+    layouts = drop_orphan_layouts(records, layouts)
+    save_archive(data_dir, records, layouts)
     if dropped and log:
         log(f"  （已清理 {dropped} 条早于最近 {keep_days} 天的归档记录）")
-    return archive
+    return records
 
 
 def prune_archive(

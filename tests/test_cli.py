@@ -279,7 +279,8 @@ def test_first_run_writes_state_and_reports_then_second_run_reports_zero_new(
     assert "新增 0 篇" in out2
 
     archive = json.loads((tmp_path / "hits" / "archive.json").read_text(encoding="utf-8"))
-    assert len(archive) == 3
+    assert archive["version"] == state.ARCHIVE_VERSION, "归档应为 v2（layout 提到顶层去重）"
+    assert len(archive["records"]) == 3
     seen = json.loads((tmp_path / "state" / "seen.json").read_text(encoding="utf-8"))
     assert len(seen["示例大学"]) == 3
 
@@ -755,7 +756,9 @@ def test_update_archive_with_keep_days_prunes_old_entries(tmp_path):
 
     assert [item["url"] for item in merged] == ["new"]
     on_disk = json.loads((hits_dir / "archive.json").read_text(encoding="utf-8"))
-    assert [item["url"] for item in on_disk] == ["new"]
+    assert [item["url"] for item in on_disk["records"]] == ["new"]
+    # 被 keep_days 剪掉的日期，其版面布局也不该作为孤儿留在顶层表里
+    assert on_disk["layouts"] == {}
 
 
 def test_update_archive_default_keeps_full_history(tmp_path):

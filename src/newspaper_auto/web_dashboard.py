@@ -15,18 +15,27 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, config, paths, report, state
+from .state import layout_key
 from .web_static import MAX_KEYWORDS
 from .web_validate import _parse_iso_date, _valid_days, _valid_workers
 
 
 # ---------------------------------------------------------------- 数据装配
-def _read_archive(path: Path) -> list[Any]:
+def _read_archive(path: Path) -> tuple[list[Any], dict[str, Any]]:
+    """读取归档，返回 ``(records, layouts)``；同时兼容 v1 数组与 v2 对象。"""
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
-        return []
-    return data if isinstance(data, list) else []
+        return [], {}
+    if isinstance(data, dict):
+        records = data.get("records")
+        layouts = data.get("layouts")
+        return (
+            records if isinstance(records, list) else [],
+            layouts if isinstance(layouts, dict) else {},
+        )
+    return (data if isinstance(data, list) else []), {}
 
 
 _GEOMETRY_NUMERIC_KEYS = (
@@ -104,26 +113,6 @@ def _normalize_layout(raw: Any) -> dict[str, Any] | None:
     }
 
 
-LAYOUT_KEY_SEP = "\u0001"
-
-
-def layout_key(record: dict[str, Any]) -> str:
-    """版面分组的键：取值口径必须与前端 ``render.js`` 的 ``layoutKeyOf`` 完全一致。
-
-    归档会把同一版面的 ``layout`` 写到该版**每一条**记录上。若逐条下发，一个 40 篇文章
-    的版面就会把同一份坐标重复 40 次（实测可占响应体的 90%）。``build_dashboard`` 因此把
-    layout 抽到顶层按本键去重，只发一份。
-    """
-    return LAYOUT_KEY_SEP.join(
-        [
-            str(record.get("paper") or ""),
-            str(record.get("date") or ""),
-            str(record.get("section_no") or ""),
-            str(record.get("section") or "") or "—",
-        ]
-    )
-
-
 def _normalize(item: Any) -> dict[str, Any] | None:
     """把归档条目收敛成前端需要的形状；丢弃无 URL 的脏数据。"""
     if not isinstance(item, dict) or not item.get("url"):
@@ -187,18 +176,24 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
                 return deepcopy(cached[1])
 
     now = now or datetime.now()
-    records = [rec for rec in (_normalize(item) for item in _read_archive(archive_path)) if rec]
-    # layout 抽到顶层按版面去重：同一版面所有文章共享一份坐标，逐条下发会把响应体撑大数十倍。
+    raw_records, raw_layouts = _read_archive(archive_path)
+    records = [rec for rec in (_normalize(item) for item in raw_records) if rec]
+    # 版面布局一律走顶层共享表下发（v2 归档本就只存一份；v1 记录里逐条挂着的在这里抽出来去重）。
+    # 同一版面所有文章共享一份坐标，逐条下发会把响应体撑大数十倍。
     layouts: dict[str, dict[str, Any]] = {}
+    for key, raw_layout in raw_layouts.items():
+        layout = _normalize_layout(raw_layout)
+        if layout:
+            layouts[key] = layout
     for rec in records:
-        layout = rec.pop("layout", None)
-        if not layout:
+        legacy_layout = rec.pop("layout", None)
+        if not legacy_layout:
             continue
         key = layout_key(rec)
         current = layouts.get(key)
-        # 与前端原有语义一致：同一版面出现多份 layout 时保留项数最多的那份。
-        if current is None or len(layout["items"]) > len(current["items"]):
-            layouts[key] = layout
+        # 与 state._pick_layout 同一语义：同一版面多份时保留项数最多的那份。
+        if current is None or len(legacy_layout["items"]) > len(current.get("items") or []):
+            layouts[key] = legacy_layout
     records.sort(key=lambda r: (r["date"], r["paper"], r["url"]), reverse=True)
 
     seen = state.load_seen(paths.state_file(data_dir))

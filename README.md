@@ -124,7 +124,7 @@ python3 daily_scan.py --version        # 版本号
 |---|---|
 | `hits/<时间戳>.md` | 每次运行的报告（各家扫描情况 + 新增命中 + 上下文） |
 | `hits/index.html` | 历史全部命中汇总，可直接浏览 |
-| `hits/archive.json` | 命中归档（结构化，默认只增不删，可用 `--archive-keep-days N` 裁剪） |
+| `hits/archive.json` | 命中归档（v2：记录 + 顶层布局表，版面坐标按版面只存一份；默认只增不删，可用 `--archive-keep-days N` 裁剪） |
 | `state/seen.json` | 增量状态（已判定过的文章 URL），保证只报新增 |
 | `logs/scan-YYYY-MM-DD.log` | 定时任务运行日志 |
 | `exports/newspaper-hits-<时间戳>-<随机标识>.<格式>` | 可选 CSV / JSON 导出（目录可自定义） |

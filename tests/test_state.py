@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -90,6 +91,97 @@ def test_record_hits_marks_each_matched_keyword():
     hits = [{"url": "u1", "matched": ["甲", "乙"]}, {"url": "u2", "matched": ["甲"]}]
     state.record_hits(seen, hits)
     assert seen == {"甲": {"u1": 1, "u2": 1}, "乙": {"u1": 1}}
+
+
+# ---------------------------------------------------------------- 归档 v2
+def _layout(items: int) -> dict:
+    return {
+        "basis": "area",
+        "aspect_ratio": 0.72,
+        "items": [
+            {"url": f"http://x/{i}", "left": 0.1, "top": i / items, "right": 0.4, "bottom": (i + 1) / items}
+            for i in range(items)
+        ],
+    }
+
+
+def test_layout_key_matches_frontend_contract():
+    """分组键口径必须与前端 render.js 的 layoutKeyOf 一致。"""
+    record = {"paper": "甲报", "date": "2026-09-23", "section_no": "第02版", "section": "第2版：要闻"}
+    assert state.layout_key(record) == "甲报\u00012026-09-23\u0001第02版\u0001第2版：要闻"
+    # 缺失字段：版面名回落 "—"，section_no 回落空串
+    assert state.layout_key({"paper": "A", "date": "2026-01-01"}) == "A\u00012026-01-01\u0001\u0001—"
+
+
+def test_update_archive_writes_v2_and_dedupes_shared_layout(tmp_path):
+    """同一版面多条命中在**磁盘上**只存一份 layout（回归：曾逐条重复，占体积 90%）。"""
+    layout = _layout(5)
+    hits = [
+        {
+            "url": f"http://x/{i}",
+            "paper": "甲报",
+            "date": "2026-09-23",
+            "section": "第2版：要闻",
+            "section_no": "第02版",
+            "layout": layout,
+            "matched": ["k"],
+        }
+        for i in range(5)
+    ]
+    state.update_archive(tmp_path, hits)
+
+    on_disk = json.loads((tmp_path / "hits" / "archive.json").read_text(encoding="utf-8"))
+    assert on_disk["version"] == state.ARCHIVE_VERSION
+    assert len(on_disk["records"]) == 5
+    assert all("layout" not in rec for rec in on_disk["records"]), "记录不再逐条携带 layout"
+    assert len(on_disk["layouts"]) == 1, "同一版面只存一份"
+    assert len(next(iter(on_disk["layouts"].values()))["items"]) == 5
+
+    # 读回来仍是 (records, layouts)，形状与写入一致
+    records, layouts = state.read_archive(tmp_path)
+    assert len(records) == 5 and len(layouts) == 1
+    assert all("layout" not in rec for rec in records)
+
+
+def test_split_archive_accepts_legacy_v1_records(tmp_path):
+    """v1（顶层数组、layout 逐条挂）仍可读：布局被抽到顶层并按版面去重。"""
+    layout = _layout(3)
+    legacy = [
+        {"url": "u1", "paper": "甲报", "date": "2026-09-23", "section_no": "第02版", "layout": layout},
+        {"url": "u2", "paper": "甲报", "date": "2026-09-23", "section_no": "第02版", "layout": layout},
+    ]
+    records, layouts = state.split_archive(legacy)
+    assert [rec["url"] for rec in records] == ["u1", "u2"]
+    assert all("layout" not in rec for rec in records)
+    assert len(layouts) == 1
+    assert len(next(iter(layouts.values()))["items"]) == 3
+
+
+def test_split_archive_rejects_garbage():
+    assert state.split_archive("不是列表也不是对象") == ([], {})
+    assert state.split_archive({"records": "坏了", "layouts": []}) == ([], {})
+    # 缺 url 的记录被丢弃，损坏的 layout 被忽略
+    records, layouts = state.split_archive({"records": [{"title": "无 url"}], "layouts": {"k": "坏了"}})
+    assert records == [] and layouts == {}
+
+
+def test_drop_orphan_layouts_removes_unreferenced_sections():
+    records = [{"url": "u1", "paper": "甲报", "date": "2026-09-23", "section": "要闻"}]
+    key = state.layout_key(records[0])
+    layouts = {key: _layout(2), "别的\u0001版面\u0001\u0001—": _layout(2)}
+    assert set(state.drop_orphan_layouts(records, layouts)) == {key}
+    assert state.drop_orphan_layouts(records, {}) == {}
+
+
+def test_archive_layout_is_refreshed_when_a_scan_brings_a_better_one(tmp_path):
+    """同一版面后续扫到项数更多的布局时，顶层表应更新为更完整的那份。"""
+    section = {"paper": "甲报", "date": "2026-09-23", "section": "第2版：要闻", "section_no": "第02版"}
+    state.update_archive(tmp_path, [{**section, "url": "u1", "layout": _layout(2), "matched": ["k"]}])
+    state.update_archive(tmp_path, [{**section, "url": "u2", "layout": _layout(6), "matched": ["k"]}])
+
+    _records, layouts = state.read_archive(tmp_path)
+    assert len(layouts) == 1
+    assert len(next(iter(layouts.values()))["items"]) == 6
 
 
 def test_compute_new_hits_presence_based():

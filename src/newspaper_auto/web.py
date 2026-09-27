@@ -41,18 +41,17 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__, cli, exporter, paths, web_daemon, web_static
+from .state import LAYOUT_KEY_SEP, layout_key
 from .web_dashboard import (
     _DASHBOARD_CACHE,
     _DASHBOARD_CACHE_LOCK,
     _GEOMETRY_NUMERIC_KEYS,
-    LAYOUT_KEY_SEP,
     _file_stamp,
     _normalize,
     _normalize_geometry,
     _normalize_layout,
     _read_archive,
     build_dashboard,
-    layout_key,
     load_web_config,
     save_web_config,
 )
