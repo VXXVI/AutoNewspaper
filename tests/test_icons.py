@@ -42,6 +42,21 @@ def test_committed_icons_match_the_generator(icons):
     assert icons.check() == 0
 
 
+def test_check_tolerates_a_windows_crlf_checkout(icons, monkeypatch, tmp_path):
+    """Windows 上 ``core.autocrlf=true`` 会把文本资源签出成 CRLF。
+
+    回归：``check()`` 曾经拿 ``logo.svg`` 的**原始字节**与生成结果比较，于是 Windows CI
+    稳定误报「图标与几何不一致」。行尾不该参与图标内容的比较。
+    """
+    for name in ("favicon.ico", "apple-touch-icon.png"):
+        (tmp_path / name).write_bytes((icons.STATIC / name).read_bytes())
+    svg = (icons.STATIC / "logo.svg").read_bytes().replace(b"\n", b"\r\n")
+    (tmp_path / "logo.svg").write_bytes(svg)
+
+    monkeypatch.setattr(icons, "STATIC", tmp_path)
+    assert icons.check() == 0
+
+
 def test_every_ico_frame_is_a_square_png_of_the_expected_size(icons):
     frames = icons.read_ico()
     assert sorted(frames) == list(icons.ICO_SIZES)

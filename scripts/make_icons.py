@@ -333,8 +333,12 @@ def check() -> int:
     elif rgba != render_rgba(APPLE_TOUCH_SIZE, square_bg=True):
         problems.append("apple-touch-icon.png 与几何不一致")
 
-    expected_svg = render_svg().encode("utf-8")
-    if (STATIC / "logo.svg").read_bytes() != expected_svg:
+    expected_svg = render_svg()
+    # 行尾不参与比较：SVG 是文本资源，Windows 上 core.autocrlf 会把它签出成 CRLF，
+    # 与生成结果逐字节比较会误报。本仓库刻意不为 .svg 加 eol 规则（见 .gitattributes：
+    # 「这些文件本来就是 LF，加了只是噪声」），所以这里自己做归一化。
+    committed_svg = (STATIC / "logo.svg").read_text(encoding="utf-8").replace("\r\n", "\n")
+    if committed_svg != expected_svg:
         problems.append("logo.svg 与几何不一致")
 
     for problem in problems:
