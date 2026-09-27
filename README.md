@@ -188,13 +188,13 @@ Shell 启动脚本语法检查；Windows job 另外验证 PowerShell 解析与 U
   目录（别放 `C:\Program Files`），双击 `NewspaperAuto.exe` 就会在后台起看板并自动打开
   浏览器 —— 不会弹出命令行黑窗口。不需要 Python、不需要管理员权限、不写注册表，
   整个文件夹可整体拷到 U 盘/别的电脑继续用。
-- 包里有**两个** exe：`NewspaperAuto.exe`（无窗口，双击即用）与
-  `NewspaperAuto-CLI.exe`（带控制台，`scan` / `dashboard` / `--help` 等命令行用法一律用它，
-  否则看不到任何输出）。
+- 包里**只有一个** exe：`NewspaperAuto.exe`。双击即用；命令行（`scan` / `dashboard --stop` /
+  `--help`）也能用，但它是无窗口程序，Windows 的 shell 不会等它跑完、`>` 重定向也拿不到
+  内容 —— 每次 `scan` 都会自己把输出写进 `logs\scan-<日期>.log`，定时任务看它即可。
 - 也可在仓库 **Actions → build-windows → Run workflow** 手动构建并下载，无需打 tag。
 - **安装包是可选项**：`NewspaperAuto-<tag>-setup.exe` 只是给「想要开始菜单/桌面快捷方式」
   的人用的便捷壳子，装到 `%LOCALAPPDATA%\Programs` 且同样免管理员权限；不装安装包也能用。
-  它的开始菜单「打开看板」直接指向无窗口版，双击同样不弹终端。
+  它的开始菜单「打开看板」直接指向这个 exe，双击同样不弹终端。
 - **源码 / Python 用户**：`portable.zip`（含 docs，解压即用）或
   `.whl` / `.tar.gz`（`pip install <whl>`）。
 

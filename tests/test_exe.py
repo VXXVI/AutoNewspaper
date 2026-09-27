@@ -159,7 +159,7 @@ def test_entry_py_is_valid_python():
     compile((ROOT / "packaging" / "entry.py").read_text(encoding="utf-8"), "entry.py", "exec")
 
 
-def _run_spec(monkeypatch, *, console: bool) -> dict[str, object]:
+def _run_spec() -> dict[str, object]:
     """用桩符号执行 spec，返回捕获到的关键字参数。"""
     spec = ROOT / "packaging" / "NewspaperAuto.spec"
     captured: dict[str, object] = {}
@@ -183,11 +183,6 @@ def _run_spec(monkeypatch, *, console: bool) -> dict[str, object]:
             captured["exe_console"] = kwargs.get("console")
             captured["exe_icon"] = kwargs.get("icon")
 
-    if console:
-        monkeypatch.setenv("NEWSPAPERAUTO_CONSOLE", "1")
-    else:
-        monkeypatch.delenv("NEWSPAPERAUTO_CONSOLE", raising=False)
-
     exec(
         compile(spec.read_text(encoding="utf-8"), str(spec), "exec"),
         {"SPECPATH": str(spec.parent), "Analysis": _Analysis, "PYZ": _PYZ, "EXE": _EXE},
@@ -195,34 +190,68 @@ def _run_spec(monkeypatch, *, console: bool) -> dict[str, object]:
     return captured
 
 
-def test_pyinstaller_spec_wires_entry_and_static(monkeypatch):
+def test_pyinstaller_spec_wires_entry_and_static():
     """用桩符号执行 spec，校验入口与静态资源路径。
 
     注意 PyInstaller 注入的 ``SPECPATH`` 是 spec **所在目录**（不是文件本身）——
     这里按同样语义注入，守护「路径算错一级」这类只在打包时才暴露的错误。
     """
-    captured = _run_spec(monkeypatch, console=False)
+    captured = _run_spec()
 
     assert captured["scripts"] == [str(ROOT / "packaging" / "entry.py")]
     assert captured["pathex"] == [str(ROOT / "src")]
     assert captured["datas"] == [(str(ROOT / "src" / "newspaper_auto" / "static"), "newspaper_auto/static")]
     assert (ROOT / "src" / "newspaper_auto" / "static").is_dir()
-    assert captured["exe_name"] == "NewspaperAuto"
-    assert captured["exe_console"] is False, "默认产物必须是无窗口版，否则双击会弹终端"
+    assert captured["exe_icon"] == str(ROOT / "src" / "newspaper_auto" / "static" / "favicon.ico")
 
 
-def test_pyinstaller_spec_builds_a_console_variant(monkeypatch):
-    """同一个 spec 靠 NEWSPAPERAUTO_CONSOLE 出控制台版，供全部命令行用法使用。
+def test_pyinstaller_spec_builds_exactly_one_windowed_exe():
+    """只出一个**无窗口** exe。
 
-    回归：用户要求「便携版别弹终端」，但 CLI 不能因此丢掉输出能力 ——
-    两个 exe 必须来自同一份 Analysis 配置，避免静态资源/图标两处漂移。
+    回归：曾经拆成「无窗口版 + 控制台版」两个 exe，包体积翻倍、用户还要猜该双击哪个。
+    现在只留无窗口版（双击即用），命令行侧靠 AttachConsole 回显 + scan 自己写日志兜底。
+    这里的断言是硬契约：一旦有人把 ``console`` 改成 True，双击就会弹黑窗口。
     """
-    windowed = _run_spec(monkeypatch, console=False)
-    console = _run_spec(monkeypatch, console=True)
+    captured = _run_spec()
 
-    assert console["exe_name"] == "NewspaperAuto-CLI"
-    assert console["exe_console"] is True
-    # 除名字与 console 外，其余（入口 / 数据文件 / 图标）必须逐项相同
-    for key in ("scripts", "pathex", "datas", "exe_icon"):
-        assert windowed[key] == console[key], f"两个 exe 的 {key} 必须一致"
-    assert console["exe_icon"] == str(ROOT / "src" / "newspaper_auto" / "static" / "favicon.ico")
+    assert captured["exe_name"] == "NewspaperAuto"
+    assert captured["exe_console"] is False, "双击不能弹终端（console 必须为 False）"
+
+
+# ---------------------------------------------------------------- scan 日志
+def test_run_scan_tees_output_into_the_daily_log(monkeypatch, tmp_path):
+    """``scan`` 把输出同时写进 ``logs/scan-YYYY-MM-DD.log``。
+
+    这是无窗口版唯一的输出通道：双击或任务计划程序启动时 stdout 会消失，
+    没有这份日志就无法回溯「今天扫到了什么」，也正因如此包里不再需要 .cmd 包装。
+    """
+    monkeypatch.setattr(exe.paths, "app_dir", lambda: tmp_path)
+    monkeypatch.setattr(exe.cli, "main", lambda argv, default_data_dir=None: print("命中 3 条") or 0)
+    before = (sys.stdout, sys.stderr)
+
+    assert exe._run_scan(["--days", "2"]) == 0
+
+    log = exe.paths.scan_log_file(tmp_path, exe.datetime.date.today().isoformat())
+    text = log.read_text(encoding="utf-8")
+    assert "=== 开始监测扫描" in text
+    assert "命令：NewspaperAuto scan --days 2" in text
+    assert "命中 3 条" in text, "cli 的输出必须被同时写进日志"
+    assert "=== 扫描结束" in text and "退出码：0" in text
+    assert (sys.stdout, sys.stderr) == before, "退出时必须还原标准流"
+
+
+def test_run_scan_survives_unwritable_log_dir(monkeypatch, tmp_path):
+    """日志写不了（只读目录等）不该让扫描失败 —— 退回「只在控制台输出」并继续。"""
+    monkeypatch.setattr(exe.paths, "app_dir", lambda: tmp_path)
+
+    def boom(*args, **kwargs):
+        raise OSError("只读文件系统")
+
+    monkeypatch.setattr(exe.paths, "scan_log_file", boom)
+    monkeypatch.setattr(exe.cli, "main", lambda argv, default_data_dir=None: 3)
+    assert exe._run_scan(["--days", "1"]) == 3
+
+
+def test_scan_log_paths_match_the_shell_scripts():
+    """入口写的日志与 run_scan.sh / run_scan.ps1 必须同名同位置，否则两套路径会分叉。"""
+    assert paths.scan_log_file(Path("/tmp/x"), "2026-09-27") == Path("/tmp/x/logs/scan-2026-09-27.log")

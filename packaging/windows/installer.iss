@@ -79,18 +79,14 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式（打开看板）"; GroupDescription: "附加任务："; Flags: unchecked
 
 [Files]
-; 两个 exe：无窗口版负责双击即用，控制台版负责全部命令行用法（.cmd 启动器调它）。
 Source: "{#SourceDir}\NewspaperAuto.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\NewspaperAuto-CLI.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\Start-Dashboard.cmd"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\Run-Scan.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; 「打开看板」直接指向无窗口版 exe：双击零控制台窗口（用户明确要求别弹终端）。
+; 「打开看板」指向唯一的 exe：它是无窗口版，双击零控制台窗口。
+; 不再提供「扫描一次」快捷方式：无窗口版从一个快捷方式跑 scan 不会给任何可见反馈，
+; 扫描统一从看板页面里点（每次 scan 的输出都会落到 logs\scan-<日期>.log）。
 Name: "{group}\打开看板"; Filename: "{app}\NewspaperAuto.exe"; WorkingDir: "{app}"; IconFilename: "{app}\NewspaperAuto.exe"
-; 「扫描一次」需要看进度，走 .cmd（它调控制台版，自带窗口）。
-Name: "{group}\扫描一次"; Filename: "{app}\Run-Scan.cmd"; WorkingDir: "{app}"; IconFilename: "{app}\NewspaperAuto-CLI.exe"
 Name: "{group}\使用说明"; Filename: "{app}\README.txt"
 Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\打开看板"; Filename: "{app}\NewspaperAuto.exe"; WorkingDir: "{app}"; IconFilename: "{app}\NewspaperAuto.exe"; Tasks: desktopicon
@@ -111,10 +107,7 @@ var
   StopExe: String;
   ResultCode: Integer;
 begin
-  { 优先用控制台版：无窗口版同样支持 dashboard --stop，留作兜底（旧版本可能只有它） }
-  StopExe := AppDir + '\NewspaperAuto-CLI.exe';
-  if not FileExists(StopExe) then
-    StopExe := AppDir + '\NewspaperAuto.exe';
+  StopExe := AppDir + '\NewspaperAuto.exe';
   if not FileExists(StopExe) then
     Exit;
   { 停掉后台看板并等它退出：否则 exe 被占用，装不上/也卸不干净 }

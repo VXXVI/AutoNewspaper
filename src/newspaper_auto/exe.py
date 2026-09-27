@@ -7,17 +7,18 @@
     NewspaperAuto.exe dashboard [dashboard.py 的参数...]   # --detach / --stop / --status
     NewspaperAuto.exe --version
 
-Windows 包里有**两个** exe，源码只有这一份：
+Windows 包里**只有一个** exe：``NewspaperAuto.exe``，PyInstaller ``console=False``，
+双击**零控制台窗口**，直接起看板并打开浏览器。
 
-- ``NewspaperAuto.exe``：PyInstaller ``console=False``，双击**零控制台窗口**，
-  直接起看板并打开浏览器；
-- ``NewspaperAuto-CLI.exe``：``console=True``，承载全部命令行用法（``scan`` /
-  ``dashboard`` / ``--help`` / ``--version``），也是 ``packaging/windows/*.cmd``
-  调用的那一个。
+为什么不拆成「无窗口版 + 控制台版」两个 exe：PE 文件的 ``Subsystem`` 字段只能二选一
+（``GUI`` 双击不弹窗但 shell 不等它；``CUI`` 终端里正常但双击必弹窗），一个 exe 做不到
+两全。取舍见下面 :data:`_USAGE` 里的说明：主路径是双击看板，命令行作为次要路径保留，
+并用 :func:`_run_scan` 自己写 ``logs/scan-YYYY-MM-DD.log`` 补上「无控制台就拿不到输出」
+这个短板 —— 定时任务因此不再需要任何 ``.cmd`` 包装。
 
-无窗口版没有控制台，``sys.stdout`` / ``sys.stderr`` 可能是 ``None``，任何 ``print``
-都会 ``AttributeError``。:func:`_ensure_console_streams` 负责把它们接回来
-（从 cmd 调用时还能显示输出）或指向 ``os.devnull``，所以两个 exe 共用同一套代码路径。
+无窗口版的 ``sys.stdout`` / ``sys.stderr`` 可能是 ``None``，任何 ``print`` 都会
+``AttributeError``。:func:`_ensure_console_streams` 负责把它们接回来
+（从 cmd 调用时还能显示输出）或指向 ``os.devnull``。
 
 冻结（PyInstaller 单文件 exe）运行时，默认数据目录与 ``papers.custom.json`` 跟随
 **可执行文件所在目录**（便携），而不是临时解包目录或当前工作目录；因此把一个
@@ -28,6 +29,7 @@ Windows 包里有**两个** exe，源码只有这一份：
 
 from __future__ import annotations
 
+import datetime
 import os
 import sys
 from collections.abc import Sequence
@@ -54,11 +56,14 @@ _USAGE = f"""\
 scan / dashboard 后面的参数与 daily_scan.py / dashboard.py 完全一致（详见 README）。
 数据（state/、hits/）与 papers.custom.json 默认放在本 exe 所在目录。
 
-看板默认在**后台**运行：关掉命令行窗口不会停止它，停止请用 dashboard --stop。
+看板默认在**后台**运行：关掉任何窗口都不会停止它，停止请用 dashboard --stop。
 
-注意: Windows 包里还有一个带控制台的命令行版 NewspaperAuto-CLI.exe。
-      无窗口版（NewspaperAuto.exe）双击即用，但**看不到任何命令行输出**；
-      要看输出/排查问题，请改用 NewspaperAuto-CLI.exe。
+命令行注意: 本 exe 是没有控制台窗口的 GUI 程序，Windows 的 shell 不会等它跑完，
+`>` 重定向也拿不到内容。所以：
+
+  - 每次 scan 都会把输出**同时**追加到 logs/scan-YYYY-MM-DD.log，定时任务看它即可
+    （任务计划程序里直接填 `NewspaperAuto.exe scan --days 2`，不需要任何 .cmd 包装）；
+  - 想在终端里等它跑完，用:  start /wait "" NewspaperAuto.exe scan --days 2
 """
 
 _SCAN_COMMANDS = frozenset({"scan", "daily_scan", "daily"})
@@ -67,6 +72,75 @@ _DASHBOARD_COMMANDS = frozenset({"dashboard", "web"})
 # Windows 常量：AttachConsole 的父进程标识；MessageBoxW 的图标/按钮样式
 _ATTACH_PARENT_PROCESS = -1
 _MB_ICONERROR = 0x10
+
+
+class _Tee:
+    """把写往某条流的内容**同时**落到日志文件。
+
+    只实现 ``write`` / ``flush``，其余属性（``fileno`` / ``encoding`` / ``isatty`` …）
+    一律透传给被包装的流，避免某处代码因缺属性而炸。
+    """
+
+    def __init__(self, stream, handle) -> None:
+        self._stream = stream
+        self._handle = handle
+
+    def write(self, text: str) -> int:
+        self._handle.write(text)
+        return self._stream.write(text)
+
+    def flush(self) -> None:
+        self._handle.flush()
+        self._stream.flush()
+
+    def __getattr__(self, name: str):
+        return getattr(self._stream, name)
+
+
+def _open_scan_log():
+    """打开当天的扫描日志；写不了（只读目录等）返回 ``None`` 而不是让扫描失败。"""
+    try:
+        directory = paths.app_dir() / "logs"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = paths.scan_log_file(directory.parent, datetime.date.today().isoformat())
+        return open(path, "a", encoding="utf-8")
+    except OSError as exc:
+        print(f"提示：无法写入扫描日志（{exc}），本次只在控制台输出。", file=sys.stderr)
+        return None
+
+
+def _run_scan(args: Sequence[str]) -> int:
+    """``scan`` 子命令：把本次运行的输出**同时**追加到 ``logs/scan-YYYY-MM-DD.log``。
+
+    为什么必须自己写：Windows 便携包里没有 ``run_scan.sh`` / ``run_scan.ps1``
+    （那两个脚本用 ``tee`` 写这份日志），而无窗口版 exe 一旦由任务计划程序或双击启动，
+    输出就无处可去 —— 没有这份日志就完全无法回溯「今天到底扫到了什么」。
+    有了它，定时任务不再需要任何 ``.cmd`` 包装。
+
+    放在入口层而不是 ``cli.py``：源码用户走 ``run_scan.*`` 时由脚本自己 tee，
+    两边都写同一个文件会互相覆盖。
+    """
+    handle = _open_scan_log()
+    if handle is None:
+        return cli.main(args, default_data_dir=paths.app_dir())
+
+    started = datetime.datetime.now()
+    handle.write(f"=== 开始监测扫描：{started:%Y-%m-%d %H:%M:%S} ===\n")
+    handle.write("命令：NewspaperAuto scan " + " ".join(args) + "\n")
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = _Tee(original_stdout, handle), _Tee(original_stderr, handle)
+    code = 0
+    try:
+        code = int(cli.main(args, default_data_dir=paths.app_dir()) or 0)
+    except BaseException:
+        code = code or 1
+        raise
+    finally:
+        sys.stdout, sys.stderr = original_stdout, original_stderr
+        finished = datetime.datetime.now()
+        handle.write(f"=== 扫描结束：{finished:%Y-%m-%d %H:%M:%S}，退出码：{code} ===\n")
+        handle.close()
+    return code
 
 
 def _ensure_console_streams() -> None:
@@ -129,7 +203,7 @@ def _report_fatal(exc: BaseException) -> None:
             None,
             f"{type(exc).__name__}: {exc}\n\n"
             f"详细日志见程序目录下的 logs/。\n"
-            f"需要命令行输出请改用 NewspaperAuto-CLI.exe。",
+            f"也可以在终端里执行 `NewspaperAuto.exe --help` 查看用法。",
             f"NewspaperAuto {__version__} 启动失败",
             _MB_ICONERROR,
         )
@@ -170,7 +244,7 @@ def _dispatch(argv: Sequence[str] | None = None) -> int:
 
     command, rest = args[0], args[1:]
     if command in _SCAN_COMMANDS:
-        return cli.main(rest, default_data_dir=paths.app_dir())
+        return _run_scan(rest)
     if command in _DASHBOARD_COMMANDS:
         return web.main(rest, default_data_dir=paths.app_dir())
 

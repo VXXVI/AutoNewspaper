@@ -88,8 +88,9 @@ function renderHealth(state) {
 
 /* 服务不可用时给一条自助恢复路径：解释原因 + 一键重连，而不是只留一句「请确认看板仍在运行」。 */
 var SERVICE_TIP =
-  "看板服务已停止或已断开（关掉命令行窗口会停止前台看板）。请重新运行 NewspaperAuto.exe" +
-  "（或双击 Start-Dashboard.cmd），然后点右侧按钮重连。";
+  "看板服务已停止或已断开（关掉命令行窗口会停止前台看板）。请重新启动看板" +
+  "（Windows 双击 NewspaperAuto.exe；macOS 双击 dashboard.command；" +
+  "源码运行用 scripts/dashboard.cmd），然后点右侧按钮重连。";
 function renderServiceTip(state) {
   var tip = $("service-tip"), text = $("service-tip-text");
   if (!tip) return;

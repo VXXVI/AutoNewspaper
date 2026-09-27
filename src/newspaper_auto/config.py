@@ -94,6 +94,9 @@ DASHBOARD_FILENAME = "dashboard.json"
 # 后台看板的运行日志目录（随数据目录走，已被 .gitignore 忽略）
 LOGS_DIRNAME = "logs"
 DASHBOARD_LOG_FILENAME = "dashboard.log"
+# 扫描日志前缀：`logs/scan-YYYY-MM-DD.log`。源码路径由 run_scan.sh / run_scan.ps1 用 tee 写，
+# 打包版没有那两个脚本，改由 `newspaper_auto.exe` 自己 tee（见 exe._run_scan）。
+SCAN_LOG_PREFIX = "scan-"
 # 自定义报社配置文件名：位于**项目根**（非数据目录），随代码一起提交才进 CI
 CUSTOM_PAPERS_FILENAME = "papers.custom.json"
 ARCHIVE_FILENAME = "archive.json"

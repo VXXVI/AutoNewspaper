@@ -92,6 +92,15 @@ def dashboard_log_file(data_dir: Path) -> Path:
     return data_dir / config.LOGS_DIRNAME / config.DASHBOARD_LOG_FILENAME
 
 
+def scan_log_file(data_dir: Path, day: str) -> Path:
+    """扫描日志：``logs/scan-YYYY-MM-DD.log``。
+
+    与 ``scripts/run_scan.sh`` / ``run_scan.ps1`` 用 ``tee`` 写的**同一个命名与位置**；
+    打包版没有那两个脚本，改由 :func:`newspaper_auto.exe._run_scan` 自己写。
+    """
+    return data_dir / config.LOGS_DIRNAME / f"{config.SCAN_LOG_PREFIX}{day}.log"
+
+
 def archive_file(data_dir: Path) -> Path:
     return hits_dir(data_dir) / config.ARCHIVE_FILENAME
 

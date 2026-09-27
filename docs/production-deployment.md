@@ -23,8 +23,8 @@
 **是否需要打包 exe：源码分发不需要；Windows 用户可选。** 项目**零第三方运行时依赖**，
 有 Python 环境时直接跑源码即可。但把工具发给**没装 Python 的 Windows 用户**时，单文件
 exe 最省事：CI 在打 `v*` tag 时构建 `NewspaperAuto-<tag>-windows-x64.zip`（内含
-`NewspaperAuto.exe`（无窗口，双击即用）+ `NewspaperAuto-CLI.exe`（控制台，命令行用）
-+ 两个双击启动器），也可在仓库 Actions 手动触发 `build-windows` 构建并下载。
+`NewspaperAuto.exe`（无窗口，双击即用；命令行也走它）），
+也可在仓库 Actions 手动触发 `build-windows` 构建并下载。
 exe 只捆绑标准库，**运行时仍零第三方依赖**。
 
 > exe 解决不了「谁每天来触发」——它自己不会定时启动；本机定时仍需 Windows 任务计划程序
@@ -67,10 +67,9 @@ exe 只捆绑标准库，**运行时仍零第三方依赖**。
 
 1. **Windows 便携版（默认推荐，点击即用、无需安装）**：打 `v*` tag 后，
    `.github/workflows/release.yml` 会在 `windows-latest` 上构建并挂出
-   `NewspaperAuto-<tag>-windows-x64.zip`（内含两个 exe、`Run-Scan.cmd`、
-   `Start-Dashboard.cmd` 与使用说明）。**解压到任意可写目录，双击 `NewspaperAuto.exe`
-   即可**（起后台看板 + 自动开浏览器）——**不会弹出命令行黑窗口**；
-   不需要 Python、不需要管理员权限、不写注册表，
+   `NewspaperAuto-<tag>-windows-x64.zip`（内含 `NewspaperAuto.exe` 与使用说明）。
+   **解压到任意可写目录，双击 `NewspaperAuto.exe` 即可**（起后台看板 + 自动开浏览器）
+   ——**不会弹出命令行黑窗口**；不需要 Python、不需要管理员权限、不写注册表，
    整个文件夹可整体拷贝换机（数据默认写在 exe 旁边）。勿放 `C:\Program Files`（无写权限）。
    也可在仓库 **Actions → build-windows → Run workflow** 手动构建并下载 artifact，无需打 tag。
    本机自行构建：在 Windows 上执行 `scripts\build_windows.ps1`
@@ -78,11 +77,11 @@ exe 只捆绑标准库，**运行时仍零第三方依赖**。
 2. **Windows 安装包（可选的便捷壳子）**：同一份构建产出的
    `NewspaperAuto-<tag>-setup.exe`，双击安装，装到
    `%LOCALAPPDATA%\Programs\NewspaperAuto`（**用户可写**，无需管理员权限），
-   自动创建开始菜单快捷方式（打开看板 / 扫描一次 / 使用说明 / 卸载）与可选的桌面快捷方式，
+   自动创建开始菜单快捷方式（打开看板 / 使用说明 / 卸载）与可选的桌面快捷方式，
    装完可直接开看板。它只是给「想要开始菜单/桌面快捷方式」的人用的；
-   **不装安装包一样能用上面的便携 zip**。卸载**不删除** `state/`、`hits/`（扫描数据是用户资产）。
-   便携 zip 与安装包共用同一份 spec 产出的两个 exe；exe、快捷方式与 `setup.exe` 自身
-   都使用 `src/newspaper_auto/static/favicon.ico` 这一份品牌图标
+   **不装安装包一样能用上面的便携 zip**。卸载**不删除** `state/`、`hits/`、`logs/`
+   （扫描数据是用户资产）。便携 zip 与安装包共用同一个 exe；exe、快捷方式与 `setup.exe`
+   自身都使用 `src/newspaper_auto/static/favicon.ico` 这一份品牌图标
    （`NewspaperAuto.spec` 的 `icon=` 与 `installer.iss` 的 `SetupIconFile`）。
    构建需要 Inno Setup（CI 由 chocolatey 安装）；缺 Inno 时脚本只跳过 `setup.exe`，
    便携 zip 照常产出。
@@ -96,28 +95,40 @@ exe 只捆绑标准库，**运行时仍零第三方依赖**。
 5. **便携 Python（无 Python 环境、又不想用 exe）**：Windows 用官方 *embeddable* Python 解压到
    项目内 + 一个启动脚本；macOS 用 python.org 安装包。
 
-**Windows 包里的两个 exe**：
+**Windows 包里的 exe（只有一个）**：
 
 | 文件 | 控制台 | 用途 |
 |---|---|---|
-| `NewspaperAuto.exe` | 无 | **双击即用**：起后台看板 + 自动开浏览器，零窗口。 |
-| `NewspaperAuto-CLI.exe` | 有 | **全部命令行用法**：`scan` / `dashboard` / `--help` / `--version`，以及 `Run-Scan.cmd`、`Start-Dashboard.cmd` 两个启动器。 |
+| `NewspaperAuto.exe` | 无（GUI 子系统） | **双击即用**：起后台看板 + 自动开浏览器，零窗口。命令行的 `scan` / `dashboard` / `--help` 也走它。 |
 
-两个 exe 来自同一个 `packaging/NewspaperAuto.spec`，只由环境变量 `NEWSPAPERAUTO_CONSOLE`
-切换 `console` 属性 —— 静态资源、图标、排除项只有一处真相。
+为什么不做「无窗口版 + 控制台版」两个 exe：PE 文件的 `Subsystem` 字段只能二选一 ——
+`GUI` 双击不弹窗但 shell 不会等它、`>` 重定向也拿不到内容；`CUI` 终端里一切正常但双击必弹
+一个黑窗口。**一个 exe 做不到两全**，取舍是优先双击即用（主路径）。
+
+命令行侧的短板由两件事补上，所以定时任务不需要任何 `.cmd` 包装：
+
+1. 入口用 `AttachConsole(ATTACH_PARENT_PROCESS)` 把输出接回父控制台（从 cmd 调用能打印）；
+2. `scan` 自己把本次输出**同时**追加到 `logs/scan-YYYY-MM-DD.log`
+   （与 `scripts/run_scan.sh` / `run_scan.ps1` 用 `tee` 写的同名同位置）。
 
 看板服务默认**后台运行**，关掉任何窗口都不会停止它：停止用
-`NewspaperAuto-CLI.exe dashboard --stop`，查状态用 `dashboard --status`。
-命令行还可用 `NewspaperAuto-CLI.exe scan --days 7`、`dashboard --port 9000 --open`
-（`--help` 查看全部子命令）。`state/`、`hits/` 与 `papers.custom.json`
-默认写在 **exe 所在目录**，整个文件夹可整体拷贝换机。
+`NewspaperAuto.exe dashboard --stop`，查状态用 `dashboard --status`。
+`state/`、`hits/`、`logs/` 与 `papers.custom.json` 默认写在 **exe 所在目录**，
+整个文件夹可整体拷贝换机。
 
 > 无窗口版（`console=False`）的 `sys.stdout/stderr` 可能是 `None`，任何 `print` 都会
 > `AttributeError` 把进程打崩。`newspaper_auto.exe._ensure_console_streams()` 负责兜底：
 > 从 cmd 调用时 `AttachConsole` 接回父控制台（照样能打印），否则指向 `os.devnull`；
 > 启动失败则用 `MessageBoxW` 弹原生对话框，避免「双击没反应」无从排查。
-> 构建脚本的冒烟测试因此必须断言 `NewspaperAuto-CLI.exe --version` **真的打印了版本号**
-> —— 只看退出码会让「无窗口版打不出字」变成假绿。
+
+> **无窗口进程还会给每个控制台子进程弹窗**：Windows 上，自身没有控制台的进程派生
+> `curl` 这类控制台子系统程序时，系统会为每个子进程新建一个控制台窗口 —— 而抓取层的
+> curl 兜底是**按请求**调用的（默认 8 并发）。所以运行时每一处 `subprocess` 派生都必须
+> 带上 `procutil.hidden_console()` / `detached_console()`；`tests/test_procutil.py` 用 AST
+> 扫描整个包守住这条不变量。
+
+> 构建脚本的冒烟测试断言 `/api/health` 报出的 `version` 与源码版本号一致（而不是看
+> `--version` 的字符串输出 —— 无窗口版 stdout 是 `None`，打不出字也会显示「绿」）。
 
 > 为什么把看板放到后台：早先 `dashboard --open` 跑在前台控制台里，用户扫完一次就把黑窗口
 > 关掉 —— 那正是服务进程本体，于是浏览器里再点「开始扫描」只会看到「无法连接本地服务」。

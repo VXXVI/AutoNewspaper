@@ -5,19 +5,13 @@
 
     pyinstaller --clean --noconfirm packaging/NewspaperAuto.spec
 
-产物：``dist/NewspaperAuto.exe``（无控制台窗口）。
+产物：``dist/NewspaperAuto.exe`` —— **无控制台窗口**（``console=False``）。
 
-Windows 包需要**两个** exe，源码只有这一份 spec —— 由环境变量
-``NEWSPAPERAUTO_CONSOLE`` 选择：
-
-- 不设置（默认）：``console=False`` → ``NewspaperAuto.exe``，双击零窗口，
-  起看板 + 开浏览器；
-- ``NEWSPAPERAUTO_CONSOLE=1``：``console=True`` → ``NewspaperAuto-CLI.exe``，
-  承载全部命令行用法（scan / dashboard / --help / --version）。
-
-``scripts/build_windows.ps1`` 会连着跑两遍（这也是 CI 的路径）。两遍共用同一份
-Analysis 配置：静态资源、图标、排除项只有一处真相，不会因为「改了一个忘了另一个」
-而漂移。
+为什么只有一个 exe：PE 文件的 ``Subsystem`` 字段只能二选一，一个文件做不到
+「双击不弹窗」+「终端里 shell 会等它」。取舍是**优先双击即用**（主路径），
+命令行作为次要路径保留：入口用 ``AttachConsole`` 把输出接回父控制台，
+并让 ``scan`` 自己写 ``logs/scan-YYYY-MM-DD.log``，因此定时任务也不需要任何 .cmd 包装。
+详见 ``src/newspaper_auto/exe.py`` 的模块文档。
 
 设计要点：
 
@@ -30,7 +24,6 @@ Analysis 配置：静态资源、图标、排除项只有一处真相，不会�
 兜底（接回父控制台或指向 devnull），不需要在 spec 里额外处理。
 """
 
-import os
 from pathlib import Path
 
 # PyInstaller 在执行 spec 时注入 SPECPATH = spec 所在目录（不是文件本身）。
@@ -38,10 +31,6 @@ SPEC_DIR = Path(SPECPATH).resolve()  # packaging/
 PROJECT = SPEC_DIR.parent  # 仓库根
 SRC = PROJECT / "src"
 STATIC = SRC / "newspaper_auto" / "static"
-
-# 控制台版：带窗口的完整命令行；否则是无窗口的「双击即用」版。
-CONSOLE_BUILD = os.environ.get("NEWSPAPERAUTO_CONSOLE") == "1"
-EXE_NAME = "NewspaperAuto-CLI" if CONSOLE_BUILD else "NewspaperAuto"
 
 a = Analysis(
     [str(SPEC_DIR / "entry.py")],
@@ -64,7 +53,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name=EXE_NAME,
+    name="NewspaperAuto",
     # 应用图标复用看板的 favicon.ico（16→256 多尺寸，同一套画法）。
     # 同一个文件既是浏览器标签图标也是 exe/快捷方式图标，避免两处漂移。
     icon=str(STATIC / "favicon.ico"),
@@ -74,7 +63,7 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=CONSOLE_BUILD,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

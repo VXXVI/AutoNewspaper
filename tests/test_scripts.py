@@ -62,51 +62,49 @@ def test_build_windows_zip_copies_explicit_user_files():
     assert "packaging\\windows\\*" not in text, "打包 zip 不应再用通配拷贝 packaging\\windows\\"
 
     zip_block = text.split("组装 zip", 1)[1]
-    for name in ("README.txt", "Run-Scan.cmd", "Start-Dashboard.cmd"):
-        assert name in zip_block, f"zip 组装段应显式包含 {name}"
+    assert "README.txt" in zip_block, "zip 组装段应显式包含 README.txt"
 
 
-def test_build_windows_produces_and_smokes_both_exes():
-    """两个 exe 都要构建 + 冒烟：无窗口版（双击即用）与控制台版（命令行）。
+def test_build_windows_produces_one_exe_and_smokes_the_health_version():
+    """只构建一个 exe，且冒烟测试断言 ``/api/health`` 报告了正确版本。
 
-    回归：控制台版一旦漏掉构建，``.cmd`` 启动器与所有命令行用法会直接失效；
-    而只看 ``--version`` 的退出码又会让「无窗口版打不出字」变成假绿，
-    所以这里同时要求断言**输出版本号**、且两个 exe 都要过 /api/health。
+    回归一：曾经出两个 exe（无窗口 + 控制台），包体积翻倍还要用户猜双击哪个；
+    回归二：冒烟测试曾经只看 ``--version`` 的退出码 —— 无窗口版 stdout 是 None、
+    打不出字也会显示「绿」。现在改看 /api/health 里的 version，比字符串输出更硬。
     """
     text = (ROOT / "scripts/build_windows.ps1").read_text(encoding="utf-8")
-    assert "NEWSPAPERAUTO_CONSOLE" in text, "构建脚本应通过环境变量切换 console 产物"
-    assert "Invoke-PyInstaller 'NewspaperAuto'\n" in text.replace("\r\n", "\n")
-    assert "Invoke-PyInstaller 'NewspaperAuto-CLI' -Console" in text.replace("\r\n", "\n")
-    assert "$cliExePath" in text and "Copy-Item -LiteralPath $cliExePath -Destination $stage" in text
+    normalized = text.replace("\r\n", "\n")
 
-    smoke = text.split("冒烟测试", 1)[1]
-    assert "NewspaperAuto-CLI.exe --version 失败" in smoke
-    assert "没有输出版本号" in smoke, "必须断言 --version 真的打印了内容（否则是假绿）"
+    assert "NewspaperAuto-CLI" not in normalized, "不应再构建控制台版 exe"
+    assert "NEWSPAPERAUTO_CONSOLE" not in normalized, "不应再靠环境变量切换 console 产物"
+    assert normalized.count("python -m PyInstaller") == 1, "只应调用一次 PyInstaller"
+
+    smoke = normalized.split("冒烟测试", 1)[1]
     assert "api/health" in smoke and "static/store.js" in smoke
-    for label in ("NewspaperAuto-CLI", "NewspaperAuto"):
-        assert f"Label = '{label}'" in smoke, f"冒烟测试应覆盖 {label}"
+    assert "[regex]::Escape($Version)" in smoke, "必须断言 /api/health 报出的版本与源码一致"
+    # 无窗口版打不出字：不能再有任何「跑 --version 看输出」的调用
+    assert "& $exePath --version" not in smoke and "& $cliExePath --version" not in smoke
 
 
-def test_windows_launchers_and_installer_use_the_right_exe():
-    """启动器与安装包必须把自己指向正确的那个 exe。
-
-    - 需要看输出的（扫描、起看板排障）→ 控制台版 ``NewspaperAuto-CLI.exe``；
-    - 「双击即用」的入口 → 无窗口版 ``NewspaperAuto.exe``，不然又弹出黑窗口。
-    """
-    for name in ("Run-Scan.cmd", "Start-Dashboard.cmd"):
-        script = (ROOT / "packaging" / "windows" / name).read_text(encoding="utf-8-sig")
-        assert "NewspaperAuto-CLI.exe" in script, f"{name} 应调用控制台版 exe"
+def test_windows_installer_ships_exactly_one_exe():
+    """安装包只装一个 exe，且快捷方式指向它（不再有 .cmd 启动器与「扫描一次」）。"""
+    assert not (ROOT / "packaging" / "windows" / "Run-Scan.cmd").exists(), "启动器应已删除"
+    assert not (ROOT / "packaging" / "windows" / "Start-Dashboard.cmd").exists()
 
     iss = (ROOT / "packaging" / "windows" / "installer.iss").read_text(encoding="utf-8")
-    assert r"{#SourceDir}\NewspaperAuto-CLI.exe" in iss, "安装包必须同时装上控制台版"
     assert r"{#SourceDir}\NewspaperAuto.exe" in iss
-    # 「打开看板」直接指向无窗口版：用户明确要求双击别弹终端
+    assert "NewspaperAuto-CLI" not in iss, "安装包不应再引用控制台版"
+    assert ".cmd" not in iss, "安装包不应再引用 .cmd 启动器"
+    # 「打开看板」指向唯一的 exe：双击零控制台窗口
     assert r'Name: "{group}\打开看板"; Filename: "{app}\NewspaperAuto.exe"' in iss
     assert "SetupIconFile={#IconFile}" in iss, "安装包自身的品牌图标不能丢"
 
     readme = (ROOT / "packaging" / "windows" / "README.txt").read_text(encoding="utf-8")
-    for name in ("NewspaperAuto.exe", "NewspaperAuto-CLI.exe"):
-        assert name in readme, f"使用说明未提到 {name}"
+    assert "NewspaperAuto.exe" in readme
+    assert "NewspaperAuto-CLI" not in readme, "使用说明不应再提控制台版"
+    # 无窗口版的输出只有日志这一条通道，说明里必须写清楚
+    assert "logs\\scan-" in readme or "logs/scan-" in readme
+    assert "任务计划程序" in readme, "说明里要给出不依赖 .cmd 的定时任务写法"
 
 
 def _make_isolated_project(tmp_path: Path) -> tuple[Path, Path]:

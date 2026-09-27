@@ -67,6 +67,12 @@ NEWSPAPER_TIMES="10:00,12:30" ./scripts/install_launchd.sh install
 
 ## 定时任务（Windows 任务计划程序）
 
+> **用打包好的 `NewspaperAuto.exe` 的话，不需要下面这一节**：它是无窗口程序，
+> 在任务计划程序里直接填
+> `程序: <目录>\NewspaperAuto.exe`、`参数: scan --days 2 --no-state`
+> 就行 —— 不需要任何 `.cmd` 包装（也就不会闪黑窗口），扫描日志由程序自己写到
+> `logs\scan-YYYY-MM-DD.log`。下面这一节讲的是**源码用户**的路径（需要本机装 Python）。
+
 Windows 上有一对标脚本，行为与 macOS 侧一致（同样无状态、同样写 `logs\scan-YYYY-MM-DD.log`）：
 
 - `scripts\run_scan.ps1`：启动脚本（对标 `run_scan.sh`，参数透传、环境变量、退出码一致）
