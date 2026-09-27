@@ -6,6 +6,39 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-27
+
+### Added
+
+- **Windows 安装包**：`NewspaperAuto-<版本>-setup.exe`。双击安装到
+  `%LOCALAPPDATA%\Programs\NewspaperAuto`（用户可写，**不需要管理员权限**），自动创建
+  开始菜单快捷方式（打开看板 / 扫描一次 / 使用说明 / 卸载）与可选的桌面快捷方式；
+  卸载**不会删除** `state/`、`hits/` 里的扫描数据。
+- **双击即用**：直接双击 `NewspaperAuto.exe`（不带参数）就会打开看板并自动打开浏览器；
+  以前无参数只打印帮助，双击后窗口一闪而过，容易被当成「程序坏了」。
+- **看板后台运行**：新增 `dashboard --detach` / `--stop` / `--status`。服务脱离控制台运行，
+  运行状态（host/port/pid）记录在 `state/dashboard.json`，重复启动会**复用**已在运行的实例。
+- **安装/升级/卸载不再被"看板正在运行"挡住**：安装包会在替换文件前自动停掉后台看板
+  （`--stop` 也会等到 exe 的文件句柄真正释放），不必让用户先手动关闭。
+- **页面自助恢复**：连不上服务时，页面给出明确的恢复指引，并提供「重新连接看板」按钮，
+  不再只提示「请确认看板仍在运行」。
+
+### Changed
+
+- **看板默认后台运行**：双击启动器（`Start-Dashboard.cmd` / `dashboard.command` / `dashboard.cmd`）
+  与 `NewspaperAuto.exe` 都走 `--detach`。此前 `dashboard --open` 跑在**前台控制台**里，
+  用户扫完一次就把黑窗口关掉 —— 那正是服务进程本体，于是浏览器里再点「开始扫描」只会看到
+  「无法连接本地服务」。现在关掉窗口不会停止服务，停止请用 `dashboard --stop`。
+  源码模式下 `make web` / `make start` 仍为前台（开发/排障场景，属预期行为）。
+- **端口回退更利索**：改为启动前先探测端口，被占用时立即改用系统分配的空闲端口，
+  不再白等一个就绪超时；实际地址以启动输出与 `state/dashboard.json` 为准。
+
+### Fixed
+
+- Windows 上 `dashboard --stop` 在需要强制结束进程时会因 `signal.SIGKILL` 不存在而报错
+  （Windows 无该信号，现退回 `SIGTERM`）。
+- 后台运行时日志 `logs/dashboard.log` 改为行缓冲，排障时不再「什么都没有」。
+
 ## [0.4.0] - 2026-09-27
 
 ### Added
