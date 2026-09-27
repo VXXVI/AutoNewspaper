@@ -78,6 +78,7 @@ export function papersPayload() {
     builtin: ["光明日报", "南方日报"],
     custom: [],
     disabled: [],
+    removed: [],
     effective: ["光明日报", "南方日报"],
     items: [
       { name: "光明日报", source: "builtin", enabled: true, config },

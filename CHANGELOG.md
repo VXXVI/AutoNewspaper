@@ -6,6 +6,28 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows 便携版收拢成一个 `NewspaperAuto.exe`**。上一版分了「无窗口版 + 控制台版」两个
+  exe，包体积翻倍，用户还要猜该双击哪个。现在只有一个**无窗口** exe：双击零窗口起看板 +
+  自动开浏览器。代价是 PE 的子系统字段只能二选一（GUI 双击不弹窗，但 Windows 的 shell
+  不会等它跑完、`>` 重定向也拿不到内容），所以命令行侧补了两件事：入口把输出接回父控制台；
+  `scan` 把本次输出**同时**追加到 `logs/scan-<日期>.log`（与 `run_scan.sh` / `run_scan.ps1`
+  同名同位置）。因此**任务计划程序里直接填 `NewspaperAuto.exe scan --days 2 --no-state`
+  即可**，不再需要任何 `.cmd` 包装，也不会闪黑窗口。
+  `Run-Scan.cmd` / `Start-Dashboard.cmd` 两个启动器与安装包的「扫描一次」快捷方式一并删除。
+- **内置六家与自定义报社一视同仁**：都能改抓取规则（保存后生成可撤销的「覆盖」）、停用
+  （可随时恢复），以及**彻底删除**。删除写进 `papers.custom.json` 的新字段 `removed`，
+  删后不再出现在列表里、也不再有恢复入口（要恢复得手工编辑该文件）；删除时会一并清掉同名
+  覆盖与停用记录，避免残留的覆盖把这家报社又「复活」。删掉内置后若又想自己加一家同名报社，
+  直接新增即可 —— 新增时会把名字自动从 `removed` 里摘掉。
+
+### Added
+
+- `papers.custom.json` 的新字段 `removed`（可选，旧文件兼容）与
+  `POST /api/papers/remove`（彻底删除，内置也可删）；`GET /api/papers` 新增 `removed` 字段，
+  已删除的报社不再出现在 `items` 里。
+
 ### Fixed
 
 - **扫描时弹出大量控制台窗口**（v0.8.0 引入的回归）：Windows 便携版 exe 改成无控制台窗口

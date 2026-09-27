@@ -13,13 +13,18 @@ from . import config, papers
 
 
 def build_papers_view(root: Path | str) -> dict[str, Any]:
-    """组装报社目录；保留旧字段，并提供前端可直接渲染的结构化 ``items``。"""
+    """组装报社目录；保留旧字段，并提供前端可直接渲染的结构化 ``items``。
+
+    **已彻底删除（``removed``）的内置报社不会出现在 ``items`` 里** —— 用户删掉它之后
+    就不该再看到它，也没有「恢复」入口（要恢复得手工编辑 ``papers.custom.json``）。
+    """
     root = Path(root)
     settings = papers.load_settings(root)
     custom = list(settings.custom)
     disabled = set(settings.disabled)
-    catalog = papers.merge_papers(config.PAPERS, custom)
-    effective = papers.merge_papers(config.PAPERS, custom, disabled)
+    removed = set(settings.removed)
+    catalog = papers.merge_papers(config.PAPERS, custom, removed=removed)
+    effective = papers.merge_papers(config.PAPERS, custom, disabled, removed)
     builtin_names = {paper["name"] for paper in config.PAPERS}
     custom_names = {paper["name"] for paper in custom}
     items = []
@@ -44,6 +49,7 @@ def build_papers_view(root: Path | str) -> dict[str, Any]:
         "custom": custom,
         "effective": [paper["name"] for paper in effective],
         "disabled": [paper["name"] for paper in catalog if paper["name"] in disabled],
+        "removed": [paper["name"] for paper in config.PAPERS if paper["name"] in removed],
         "items": items,
     }
 

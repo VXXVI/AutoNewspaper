@@ -494,7 +494,7 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .paper-src.src-custom { border-color: #b7c9ff; background: var(--primary-soft); color: var(--primary); }
 .paper-state { flex: 0 0 auto; color: var(--muted); font-size: 10.5px; }
 .paper-state.is-on { color: #13795b; }
-.paper-actions { display: flex; flex: 0 0 auto; gap: 5px; margin-left: auto; }
+.paper-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 5px; margin-left: auto; }
 .paper-actions .danger { color: var(--danger); }
 .paper-actions .enable { color: #13795b; }
 .papers-feedback { min-height: 18px; margin: -7px 0 12px; color: var(--muted); font-size: 12px; }

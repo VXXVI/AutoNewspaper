@@ -131,9 +131,11 @@ make start                                # 打开看板 + 按上次页面设置
 - **筛选卡片里的两个日期框**（`#from` / `#to`）**只筛选已抓到的命中列表，不影响扫描范围**，
   这一点最容易误解，故界面上已标注「仅筛选已抓到列表」。
 - **报社管理**：页面底部「报社与抓取规则」默认折叠，列出内置 / 自定义 / 覆盖三类来源；
-  展开后可新增、编辑、试抓、停用、恢复和删除，扫描期间暂时锁定修改。内置报社不能被
-  破坏性删除：可安全停用，或在编辑生成覆盖配置后再「恢复默认」；纯自定义报社才会真正删除，
-  详见 [custom-papers.md](custom-papers.md)。存在自定义 / 覆盖报社时，卡片会显示
+  展开后可新增、编辑、试抓、停用、恢复和删除，扫描期间暂时锁定修改。
+  **内置六家与自定义报社一视同仁**：都能改抓取规则（保存后生成可撤销的「覆盖」）、
+  停用（可随时恢复），以及**彻底删除**（删后从列表消失、不参与扫描、没有恢复入口，
+  要恢复得手工编辑 `papers.custom.json` 里的 `removed`）。详见
+  [custom-papers.md](custom-papers.md)。存在自定义 / 覆盖 / 已停用 / 已删除的报社时，卡片会显示
   「复制提交命令」按钮，命令会先同步 `origin/main`，再只提交 `papers.custom.json`，推送后
   读取远端主干便于复核。该快捷命令为 macOS/Linux Shell 语法；Windows 请按本节相同顺序在
   PowerShell 逐条执行。剪贴板不可用时会回退为选中命令文本、提示手动复制。
@@ -161,14 +163,20 @@ make start                                # 打开看板 + 按上次页面设置
   - `POST /api/export`：接收指定目录、`csv|json` 格式和受控筛选条件；服务端只从
     `hits/archive.json` 重新筛选，不接收前端上传的任意记录。`201` 返回实际文件路径、条数和格式；
     参数非法返回 `400`，写入失败返回 `500`。相对目录以数据目录为基准。
-  - `GET /api/papers`：保留 `builtin` / `custom` / `effective`，并返回 `disabled` 与统一的
-    `items`；每个 item 含 `name`、`source`（`builtin|custom|override`）、`enabled` 和完整
-    `config`。`effective` 只含当前启用报社，旧客户端仍可继续读取。
+  - `GET /api/papers`：保留 `builtin` / `custom` / `effective`，并返回 `disabled`、`removed`
+    与统一的 `items`；每个 item 含 `name`、`source`（`builtin|custom|override`）、`enabled`
+    和完整 `config`。**已被彻底删除（`removed`）的内置不会出现在 `items` 里**；
+    `effective` 只含当前启用报社，旧客户端仍可继续读取。
   - `POST /api/papers`：新增或**同名覆盖**一条自定义报社，返回新的列表；非法 → `400`。
+    名字若在 `removed` 里会被摘掉 —— 「删掉内置后自己再加一家同名报社」因此可用。
   - `POST /api/papers/status`：body `{"name":"…", "enabled":false}` 停用，改为 `true`
-    即恢复；重复提交幂等，不删除规则或历史记录。
+    即恢复；重复提交幂等，不删除规则或历史记录。已彻底删除的报社 → `404`。
   - `POST /api/papers/delete`：body `{"name":"…"}`；删除纯自定义报社，或删除同名覆盖以
-    恢复内置默认；**内置且未被覆盖 → `400`**，不存在 → `404`，成功 → `200` + 新列表。
+    恢复内置默认；**内置且未被覆盖 → `400`**（要删内置请用下面的 `remove`），
+    不存在 → `404`，成功 → `200` + 新列表。
+  - `POST /api/papers/remove`：body `{"name":"…"}`；**彻底删除**一家报社（**内置也可以**）——
+    写进 `removed` 名单，并清掉同名覆盖与停用记录，成功 → `200` + 新列表（其中不再包含它）；
+    不存在 → `404`。
   - `POST /api/papers/test`：body 为一条 paper（或只给内置/已有报社的 `{"name":"…"}`）→
     最多读取入口与一个样例版面，返回入口 URL、HTTP 状态、版面数、样例文章数和说明；
     不抓正文、不写文件。

@@ -68,10 +68,17 @@ class CustomPapersError(ValueError):
 
 @dataclass(frozen=True)
 class PaperSettings:
-    """``papers.custom.json`` 的规范化内容。"""
+    """``papers.custom.json`` 的规范化内容。
+
+    - ``custom``：自定义报社（与内置同名即覆盖内置）；
+    - ``disabled``：**停用**的报社名 —— 不参与扫描，但界面仍然列出、可随时恢复；
+    - ``removed``：**彻底删除**的报社名 —— 内置预置也可以被删掉，删后不再出现；
+      内置定义只存在于代码里，靠这个名单持久化「这家被删了」。
+    """
 
     custom: tuple[dict[str, Any], ...] = ()
     disabled: tuple[str, ...] = ()
+    removed: tuple[str, ...] = ()
 
 
 def _custom_path(root: Path) -> Path:
@@ -221,6 +228,36 @@ def format_date_path(paper: dict[str, Any], day: Any) -> str:
     return day.strftime(date_format)
 
 
+def _parse_names(raw: Any, *, field: str, strict: bool, path_name: str) -> list[str]:
+    """解析 ``disabled`` / ``removed`` 这类「报社名数组」字段。
+
+    两个字段的容错/严格语义完全一致，抽出来避免两份实现漂移（错误信息里保留字段名，
+    便于用户对着文件定位）。
+    """
+    if not isinstance(raw, list):
+        message = f"{field} 字段必须是字符串数组"
+        if strict:
+            raise CustomPapersError(f"{path_name} 的 {message}")
+        _warn(f"{message}，已忽略该字段")
+        return []
+    names: list[str] = []
+    for index, value in enumerate(raw, 1):
+        name, error = _clean_name(value)
+        if error:
+            if strict:
+                raise CustomPapersError(f"{path_name} {field} 第 {index} 项无效：{error}")
+            _warn(f"{field} 第 {index} 项无效（{error}），已跳过")
+            continue
+        assert name is not None
+        if name in names:
+            if strict:
+                raise CustomPapersError(f"{path_name} {field} 第 {index} 项名称重复：{name}")
+            _warn(f"{field} 第 {index} 项名称重复（{name}），已跳过")
+            continue
+        names.append(name)
+    return names
+
+
 def _parse_settings(data: Any, *, strict: bool, path_name: str) -> PaperSettings:
     """解析配置；只读扫描容错，写接口严格拒绝歧义配置。"""
     if not isinstance(data, dict):
@@ -264,29 +301,9 @@ def _parse_settings(data: Any, *, strict: bool, path_name: str) -> PaperSettings
         names.add(paper["name"])
         custom.append(paper)
 
-    raw_disabled = data.get("disabled", [])
-    if not isinstance(raw_disabled, list):
-        message = "disabled 字段必须是字符串数组"
-        if strict:
-            raise CustomPapersError(f"{path_name} 的 {message}")
-        _warn(f"{message}，已忽略该字段")
-        raw_disabled = []
-    disabled: list[str] = []
-    for index, value in enumerate(raw_disabled, 1):
-        name, error = _clean_name(value)
-        if error:
-            if strict:
-                raise CustomPapersError(f"{path_name} disabled 第 {index} 项无效：{error}")
-            _warn(f"disabled 第 {index} 项无效（{error}），已跳过")
-            continue
-        assert name is not None
-        if name in disabled:
-            if strict:
-                raise CustomPapersError(f"{path_name} disabled 第 {index} 项名称重复：{name}")
-            _warn(f"disabled 第 {index} 项名称重复（{name}），已跳过")
-            continue
-        disabled.append(name)
-    return PaperSettings(tuple(custom), tuple(disabled))
+    disabled = _parse_names(data.get("disabled", []), field="disabled", strict=strict, path_name=path_name)
+    removed = _parse_names(data.get("removed", []), field="removed", strict=strict, path_name=path_name)
+    return PaperSettings(tuple(custom), tuple(disabled), tuple(removed))
 
 
 def load_settings(root: Path) -> PaperSettings:
@@ -334,14 +351,22 @@ def merge_papers(
     builtin: Sequence[dict[str, Any]],
     custom: Iterable[dict[str, Any]],
     disabled: Iterable[str] = (),
+    removed: Iterable[str] = (),
 ) -> list[dict[str, Any]]:
-    """把内置与自定义合并，再排除停用项：同名覆盖、不重复则追加。
+    """把内置与自定义合并，再排除停用/已删除项：同名覆盖、不重复则追加。
+
+    - ``disabled``：**停用**，排除在内置与自定义之外，可随时恢复；
+    - ``removed``：**彻底删除**，只作用于**内置预置** —— 这一版内置也允许被删掉，而内置
+      定义只存在于代码里，所以用这个名单持久化「这家被删了」。同名自定义也会被一起隐去：
+      这防的是「删掉内置之后，一个残留的覆盖又把它复活」。用户想删了再自己加回来是**可用**的
+      —— 写接口在新增同名报社时会把名字摘出 ``removed``（见 ``_handle_paper_add``）。
 
     内置原有顺序在前；纯新增按 ``custom`` 的给出顺序追加在后。返回的是「浅拷贝」，
     调用方修改结果不会影响入参。
     """
     custom_list = list(custom)
     disabled_names = set(disabled)
+    hidden_builtin = disabled_names | set(removed)
     custom_by_name: dict[str, dict[str, Any]] = {}
     for paper in custom_list:
         custom_by_name.setdefault(paper["name"], paper)
@@ -352,7 +377,7 @@ def merge_papers(
         name = paper["name"]
         seen.add(name)
         override = custom_by_name.get(name)
-        if name not in disabled_names:
+        if name not in hidden_builtin:
             merged.append(dict(override if override is not None else paper))
     for paper in custom_list:
         name = paper["name"]
@@ -368,6 +393,7 @@ def save_settings(
     root: Path,
     custom_papers: Iterable[dict[str, Any]],
     disabled: Iterable[str] = (),
+    removed: Iterable[str] = (),
 ) -> None:
     """原子写回完整设置（缩进 JSON，用户可直接手编）。"""
     normalized_papers: list[dict[str, Any]] = []
@@ -382,16 +408,28 @@ def save_settings(
         seen_names.add(paper["name"])
         normalized_papers.append(paper)
 
-    normalized_disabled: list[str] = []
-    for index, value in enumerate(disabled, 1):
-        name, error = _clean_name(value)
-        if error:
-            raise CustomPapersError(f"待保存的 disabled 第 {index} 项无效：{error}")
-        assert name is not None
-        if name not in normalized_disabled:
-            normalized_disabled.append(name)
+    normalized_disabled = _normalize_names(disabled, field="disabled")
+    normalized_removed = _normalize_names(removed, field="removed")
 
     path = _custom_path(root)
-    payload = {"version": 1, "papers": normalized_papers, "disabled": normalized_disabled}
+    payload = {
+        "version": 1,
+        "papers": normalized_papers,
+        "disabled": normalized_disabled,
+        "removed": normalized_removed,
+    }
     text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     write_text(path, text)
+
+
+def _normalize_names(values: Iterable[str], *, field: str) -> list[str]:
+    """校验并去重写出的「报社名数组」（``disabled`` / ``removed`` 共用）。"""
+    names: list[str] = []
+    for index, value in enumerate(values, 1):
+        name, error = _clean_name(value)
+        if error:
+            raise CustomPapersError(f"待保存的 {field} 第 {index} 项无效：{error}")
+        assert name is not None
+        if name not in names:
+            names.append(name)
+    return names

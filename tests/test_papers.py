@@ -258,20 +258,73 @@ def test_load_settings_for_update_strictly_validates_disabled(tmp_path, disabled
 
 
 # ---------------------------------------------------------------- save_settings
+def test_merge_papers_removed_builtin_disappears_with_its_override():
+    """彻底删除的内置不再出现；同名覆盖也被一起隐去（防「删了又复活」）。"""
+    builtin = [{"name": "甲"}, {"name": "乙"}]
+    custom = [{"name": "甲", "tpl": "https://a.test/{a}"}, {"name": "丙"}]
+
+    merged = papers.merge_papers(builtin, custom, removed=["甲"])
+
+    assert [paper["name"] for paper in merged] == ["乙", "丙"]
+
+
+def test_merge_papers_removed_only_targets_builtin_presets():
+    """``removed`` 只作用于内置预置：名字与内置不冲突的自定义报社不受影响。"""
+    builtin = [{"name": "甲"}]
+    custom = [{"name": "丙"}]
+
+    merged = papers.merge_papers(builtin, custom, removed=["不存在的报"])
+
+    assert [paper["name"] for paper in merged] == ["甲", "丙"]
+
+
+def test_load_settings_legacy_file_without_removed_is_compatible(tmp_path):
+    """旧版 version=1 文件没有 removed，宽松/严格读取都视为「没删过任何内置」。"""
+    entry = _valid(name="甲报")
+    (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
+        json.dumps({"version": 1, "papers": [entry], "disabled": []}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert papers.load_settings(tmp_path).removed == ()
+    assert papers.load_settings_for_update(tmp_path).removed == ()
+
+
+@pytest.mark.parametrize(
+    "removed",
+    [
+        "甲报",
+        [1],
+        [""],
+        ["甲报", " 甲报 "],
+    ],
+)
+def test_load_settings_for_update_strictly_validates_removed(tmp_path, removed):
+    (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
+        json.dumps({"version": 1, "papers": [], "removed": removed}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(papers.CustomPapersError, match="removed"):
+        papers.load_settings_for_update(tmp_path)
+
+
 def test_save_settings_roundtrip(tmp_path):
     entries = [_valid(name="甲报", timeout=20)]
-    papers.save_settings(tmp_path, entries, [" 光明日报 ", "甲报", "光明日报"])
+    papers.save_settings(tmp_path, entries, [" 光明日报 ", "甲报", "光明日报"], [" 人民日报 ", "人民日报"])
 
     settings = papers.load_settings_for_update(tmp_path)
     assert settings == papers.PaperSettings(
         custom=tuple(entries),
         disabled=("光明日报", "甲报"),
+        removed=("人民日报",),
     )
     raw = json.loads((tmp_path / config.CUSTOM_PAPERS_FILENAME).read_text(encoding="utf-8"))
     assert raw == {
         "version": 1,
         "papers": entries,
         "disabled": ["光明日报", "甲报"],
+        "removed": ["人民日报"],
     }
 
 

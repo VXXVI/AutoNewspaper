@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 
-import { RECORDS, boot, defaultRoutes, hitsPayload, runningScan, settle } from "./harness.mjs";
+import { RECORDS, boot, defaultRoutes, hitsPayload, papersPayload, runningScan, settle } from "./harness.mjs";
 
 /** 与后端 web_dashboard.layout_key / render.js layoutKeyOf 同一口径（\u0001 分隔）。 */
 function layoutKey(record) {
@@ -139,6 +139,44 @@ export const domTests = [
         assert.equal(badge.hidden, false);
         assert.equal(badge.textContent, "1", "搜索框算一项筛选");
       }),
+  },
+  {
+    name: "内置报社也能彻底删除：行内有「删除」按钮，POST /api/papers/remove",
+    fn: () => {
+      const seen = [];
+      const routes = (path, init) => {
+        const method = (init?.method || "GET").toUpperCase();
+        if (method === "POST" && path === "/api/papers/remove") {
+          seen.push(init.body ? JSON.parse(init.body) : null);
+          const view = papersPayload();
+          view.removed = ["光明日报"];
+          view.effective = ["南方日报"];
+          view.items = view.items.filter((item) => item.name !== "光明日报");
+          return { body: view };
+        }
+        return defaultRoutes(path, init);
+      };
+      return withPage({ routes }, async (page) => {
+        const doc = page.document;
+        const row = doc.querySelector('#papers-list [data-paper-name="光明日报"]');
+        assert.ok(row, "应渲染出内置报社行");
+        assert.match(row.textContent, /内置/, "该行应标注为内置");
+
+        const del = [...row.querySelectorAll("button")].find((btn) => btn.textContent === "删除");
+        assert.ok(del, "内置报社行必须有「删除」按钮 —— 内置也要能彻底删除");
+
+        page.window.confirm = () => true; // jsdom 未实现 confirm，直接放行
+        del.click();
+        await settle();
+
+        assert.deepEqual(seen, [{ name: "光明日报" }], "应调用彻底删除接口");
+        assert.equal(
+          doc.querySelector('#papers-list [data-paper-name="光明日报"]'),
+          null,
+          "删除后不应再出现在列表里（也没有恢复入口）"
+        );
+      });
+    },
   },
   {
     name: "报社列表与关键词 chips 由接口数据渲染（零 innerHTML）",

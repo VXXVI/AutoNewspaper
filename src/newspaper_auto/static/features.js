@@ -330,6 +330,19 @@ export function createPapersController(ctx) {
       setStatus(restoring ? "已恢复「" + name + "」的内置默认规则" : "已删除「" + name + "」");
     }).catch(function (err) { setStatus("删除失败：" + err.message); });
   }
+  /* 彻底删除：内置六家也能删，删后从列表消失且没有恢复入口。 */
+  function removePaper(name) {
+    var question = "彻底删除报社「" + name + "」？\n\n" +
+      "· 它将不再出现在列表里，也不再参与扫描；\n" +
+      "· 没有「恢复」按钮，要恢复得手工编辑 papers.custom.json；\n" +
+      "· 已有的历史报道不会被删除。";
+    if (!window.confirm(question)) return;
+    setStatus("正在删除…");
+    ctx.api.post("/api/papers/remove", { name: name }).then(function (data) {
+      applyView(data);
+      setStatus("已彻底删除「" + name + "」");
+    }).catch(function (err) { setStatus("删除失败：" + err.message); });
+  }
   function runTest(paper) {
     setHint("试抓中…（会真实联网抓取入口页）");
     ctx.api.post("/api/papers/test", paper, { timeout: 150000 }).then(function (data) {
@@ -362,6 +375,7 @@ export function createPapersController(ctx) {
   return {
     load: load, add: add, clearForm: clearForm, showCreate: showCreate, fillForm: fillForm,
     updateStyleUI: updateStyleUI, setEnabled: setEnabled, deletePaper: remove,
+    removePaper: removePaper,
     testForm: testForm, runTest: runTest, copyCommitCommand: copyCommitCommand,
   };
 }

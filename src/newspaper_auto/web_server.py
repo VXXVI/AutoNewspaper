@@ -50,6 +50,7 @@ _POST_ROUTES: dict[str, str] = {
     "/api/scan/cancel": "_handle_scan_cancel",
     "/api/papers": "_handle_paper_add",
     "/api/papers/delete": "_handle_paper_delete",
+    "/api/papers/remove": "_handle_paper_remove",
     "/api/papers/status": "_handle_paper_status",
     "/api/papers/test": "_handle_paper_test",
     "/api/export": "_handle_export",
@@ -101,7 +102,9 @@ class DashboardServer(ThreadingHTTPServer):
         """计算预计的“报社 × 日期”工作单元数，供前端显示真实总体进度。"""
         with self.papers_lock:
             settings = papers.load_settings(self.papers_root)
-            effective = papers.merge_papers(config.PAPERS, settings.custom, settings.disabled)
+            effective = papers.merge_papers(
+                config.PAPERS, settings.custom, settings.disabled, settings.removed
+            )
         selected = {name.strip() for name in str(params.get("only") or "").split(",") if name.strip()}
         paper_count = sum(1 for paper in effective if not selected or paper["name"] in selected)
         if params.get("since") and params.get("until"):
@@ -119,7 +122,9 @@ class DashboardServer(ThreadingHTTPServer):
             settings = papers.load_settings(self.papers_root)
             known = {
                 paper["name"]
-                for paper in papers.merge_papers(config.PAPERS, settings.custom, settings.disabled)
+                for paper in papers.merge_papers(
+                    config.PAPERS, settings.custom, settings.disabled, settings.removed
+                )
             }
         if not known:
             return "没有已启用的报社，请先在“报社与抓取规则”中恢复或添加报社"

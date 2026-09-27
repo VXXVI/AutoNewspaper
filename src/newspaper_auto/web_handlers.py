@@ -261,14 +261,20 @@ class _ApiHandlersMixin:
                 if paper["name"] in known_before
                 else tuple(item for item in settings.disabled if item != paper["name"])
             )
-            papers.save_settings(root, updated, disabled)
+            # 新增同名报社会把它从「已彻底删除」里摘出来：删掉内置之后又想自己加回来时，
+            # 不能让一条陈旧的 removed 记录把新加的报社吃掉。
+            removed = tuple(item for item in settings.removed if item != paper["name"])
+            papers.save_settings(root, updated, disabled, removed)
 
         if not self._with_papers_write(root, mutate, conflict="报社配置未保存", failure="报社配置保存失败"):
             return
         self._send_json(200, build_papers_view(root))
 
     def _handle_paper_delete(self, payload: Any) -> None:
-        """删除一条自定义报社；内置且未被覆盖的不可删（400），不存在的报 404。"""
+        """移除一条**自定义/覆盖**条目（内置本身保留，故也是「恢复默认」）。
+
+        要删掉内置报社请用 :meth:`_handle_paper_remove`（``/api/papers/remove``）。
+        """
         if not isinstance(payload, dict):
             self._error_json(400, "请求体必须是 JSON 对象")
             return
@@ -284,7 +290,7 @@ class _ApiHandlersMixin:
             if all(existing["name"] != name for existing in current):
                 builtin_names = {paper["name"] for paper in config.PAPERS}
                 if name in builtin_names:
-                    raise _PapersWriteAbort(400, "内置报社不可删除（可在自定义中同名覆盖其配置）")
+                    raise _PapersWriteAbort(400, "内置报社没有可移除的自定义配置；要删掉它请用「彻底删除」")
                 raise _PapersWriteAbort(404, f"未找到报社「{name}」")
             builtin_names = {paper["name"] for paper in config.PAPERS}
             disabled = (
@@ -292,9 +298,45 @@ class _ApiHandlersMixin:
                 if name in builtin_names
                 else tuple(item for item in settings.disabled if item != name)
             )
-            papers.save_settings(root, [p for p in current if p["name"] != name], disabled)
+            papers.save_settings(root, [p for p in current if p["name"] != name], disabled, settings.removed)
 
         if not self._with_papers_write(root, mutate, conflict="报社配置未删除", failure="报社配置删除失败"):
+            return
+        self._send_json(200, build_papers_view(root))
+
+    def _handle_paper_remove(self, payload: Any) -> None:
+        """**彻底删除**一家报社（内置也可以）；删后不再出现在列表里，也没有恢复入口。
+
+        与 ``/api/papers/delete`` 的区别：那个只摘掉自定义/覆盖那一层（内置本身还在，
+        所以同时充当「恢复默认」）。内置定义只存在于代码里，所以「删掉」记为
+        ``papers.custom.json`` 的 ``removed`` 名单，并顺手清掉同名的自定义覆盖与停用记录 ——
+        否则一个残留的覆盖会把这家报社又「复活」出来。
+        """
+        if not isinstance(payload, dict):
+            self._error_json(400, "请求体必须是 JSON 对象")
+            return
+        name = payload.get("name")
+        if not isinstance(name, str) or not name.strip():
+            self._error_json(400, "name 必须是非空字符串")
+            return
+        name = name.strip()
+        root = self.server.papers_root
+
+        def mutate(settings: Any) -> None:
+            catalog = papers.merge_papers(config.PAPERS, settings.custom, removed=settings.removed)
+            if name not in {paper["name"] for paper in catalog}:
+                raise _PapersWriteAbort(404, f"未找到报社「{name}」")
+            removed = list(settings.removed)
+            if name not in removed:
+                removed.append(name)
+            papers.save_settings(
+                root,
+                [paper for paper in settings.custom if paper["name"] != name],
+                tuple(item for item in settings.disabled if item != name),
+                removed,
+            )
+
+        if not self._with_papers_write(root, mutate, conflict="报社未删除", failure="报社删除失败"):
             return
         self._send_json(200, build_papers_view(root))
 
@@ -319,7 +361,7 @@ class _ApiHandlersMixin:
         root = self.server.papers_root
 
         def mutate(settings: Any) -> None:
-            catalog = papers.merge_papers(config.PAPERS, settings.custom)
+            catalog = papers.merge_papers(config.PAPERS, settings.custom, removed=settings.removed)
             if name not in {paper["name"] for paper in catalog}:
                 raise _PapersWriteAbort(404, f"未找到报社「{name}」")
             disabled = list(settings.disabled)
@@ -327,7 +369,7 @@ class _ApiHandlersMixin:
                 disabled = [item for item in disabled if item != name]
             elif name not in disabled:
                 disabled.append(name)
-            papers.save_settings(root, settings.custom, disabled)
+            papers.save_settings(root, settings.custom, disabled, settings.removed)
 
         if not self._with_papers_write(root, mutate, conflict="报社状态未保存", failure="报社状态保存失败"):
             return

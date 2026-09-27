@@ -304,12 +304,16 @@ export function renderPapersPanel(ctx, state) {
           enabled ? "chip danger" : "chip enable");
         toggleBtn.setAttribute("role", "switch");
         toggleBtn.setAttribute("aria-checked", enabled ? "true" : "false");
-        if (item.source === "custom" || item.source === "override") {
-          var deleteLabel = item.source === "override" ? "恢复默认" : "删除";
-          paperButton(actions, deleteLabel, deleteLabel + name, function () {
+        if (item.source === "override") {
+          // 覆盖层可以单独摘掉：摘掉后回到内置默认规则（内置本身还在）
+          paperButton(actions, "恢复默认", "恢复" + name + "的内置默认规则", function () {
             ctx.features.papers.deletePaper(name, item.source);
-          }, item.source === "override" ? "chip" : "chip danger");
+          });
         }
+        // 所有报社（含内置六家）都能**彻底删除**：删后从本列表消失、没有恢复入口。
+        paperButton(actions, "删除", "彻底删除" + name, function () {
+          ctx.features.papers.removePaper(name);
+        }, "chip danger");
       });
     }
   }

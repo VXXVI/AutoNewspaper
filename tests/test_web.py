@@ -1421,6 +1421,70 @@ def test_papers_delete_override_reverts_to_builtin(tmp_path):
         assert json.loads(body)["custom"] == []
 
 
+def test_papers_remove_builtin_is_permanent(tmp_path):
+    """内置也可以被**彻底删除**：从列表消失、不再参与扫描、也不留「已停用」痕迹。"""
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/papers/remove", {"name": BUILTIN_FIRST})
+        view = json.loads(body)
+
+        assert status == 200
+        assert BUILTIN_FIRST in view["removed"]
+        assert BUILTIN_FIRST not in view["effective"], "删掉的内置不应再参与扫描"
+        assert BUILTIN_FIRST not in [item["name"] for item in view["items"]], "不应再出现在列表里"
+        assert BUILTIN_FIRST not in view["disabled"], "彻底删除不是「停用」"
+
+
+def test_papers_remove_builtin_drops_its_override_and_disabled_record(tmp_path):
+    """删内置时顺手清掉同名覆盖与停用记录 —— 否则残留的覆盖会把它复活。"""
+    with _serve(tmp_path) as url:
+        assert _request("POST", url + "/api/papers", _paper_entry(name=BUILTIN_FIRST))[0] == 200
+        assert (
+            _request("POST", url + "/api/papers/status", {"name": BUILTIN_FIRST, "enabled": False})[0] == 200
+        )
+
+        status, body = _request("POST", url + "/api/papers/remove", {"name": BUILTIN_FIRST})
+        view = json.loads(body)
+
+        assert status == 200
+        assert view["custom"] == [], "同名覆盖应被一并清掉"
+        assert view["disabled"] == []
+        assert BUILTIN_FIRST not in [item["name"] for item in view["items"]]
+
+
+def test_papers_remove_then_add_same_name_revives_it(tmp_path):
+    """删掉内置之后自己再加一家同名报社应该可用：新增时会把名字摘出 ``removed``。"""
+    with _serve(tmp_path) as url:
+        assert _request("POST", url + "/api/papers/remove", {"name": BUILTIN_FIRST})[0] == 200
+
+        status, body = _request("POST", url + "/api/papers", _paper_entry(name=BUILTIN_FIRST))
+        view = json.loads(body)
+
+        assert status == 200
+        assert BUILTIN_FIRST in view["effective"]
+        assert BUILTIN_FIRST not in view["removed"]
+
+
+def test_papers_remove_custom_success_and_unknown_404(tmp_path):
+    with _serve(tmp_path) as url:
+        assert _request("POST", url + "/api/papers", _paper_entry())[0] == 200
+        status, body = _request("POST", url + "/api/papers/remove", {"name": "测试报"})
+        assert status == 200
+        assert json.loads(body)["custom"] == []
+
+        status, body = _request("POST", url + "/api/papers/remove", {"name": "不存在的报社"})
+        assert status == 404
+        assert json.loads(body)["error"]
+
+
+def test_papers_status_on_removed_builtin_returns_404(tmp_path):
+    """已被彻底删除的报社不能再用 status 接口「恢复」——它已经不在目录里了。"""
+    with _serve(tmp_path) as url:
+        assert _request("POST", url + "/api/papers/remove", {"name": BUILTIN_FIRST})[0] == 200
+        status, body = _request("POST", url + "/api/papers/status", {"name": BUILTIN_FIRST, "enabled": True})
+        assert status == 404
+        assert json.loads(body)["error"]
+
+
 def test_papers_status_disables_and_enables_builtin_and_custom(tmp_path):
     custom_name = "自定义日报"
     with _serve(tmp_path) as url:
