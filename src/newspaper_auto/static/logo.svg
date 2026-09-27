@@ -1,68 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <!-- 1. 核心高亮发光滤镜 (使琥珀色块更生动) -->
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#fef08a" flood-opacity="0.3"/>
-    </filter>
-
-    <!-- 2. 白色纸张柔和阴影滤镜 -->
-    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#121820" flood-opacity="0.1"/>
-    </filter>
-  </defs>
-
-  <!-- ======= 1. 白色纸张基底与折角 ======= -->
-  <g filter="url(#softShadow)">
-    <rect x="80" y="80" width="864" height="864" rx="80" fill="#ffffff" />
-
-    <!-- 折角痕迹与背面 -->
-    <path d="M 944 80 L 800 80 Q 864 80 864 144 L 864 224 L 944 80 Z" fill="#e2e8f0" opacity="0.4"/> <!-- 折痕柔和区域 -->
-    <path d="M 864 80 L 944 224 H 864 Z" fill="#b1b9c7" /> <!-- 折叠背面 -->
-  </g>
-
-  <!-- ======= 2. 报头与常规排版 (淡灰蓝线条 #cbd5e1) ======= -->
-  <!-- 项目品牌主蓝报头行 #2855d9 -->
-  <rect x="160" y="160" width="600" height="24" rx="12" fill="#2855d9"/>
-
-  <g fill="#cbd5e1"> <!-- 淡灰蓝线条 -->
-    <rect x="160" y="210" width="280" height="16" rx="8"/>
-    <rect x="460" y="210" width="280" height="16" rx="8"/>
-    <rect x="760" y="210" width="100" height="16" rx="8"/>
-
-    <rect x="160" y="250" width="600" height="16" rx="8"/>
-    <rect x="160" y="290" width="500" height="16" rx="8"/>
-
-    <!-- 命中区域旁常规线条 -->
-    <rect x="160" y="340" width="220" height="16" rx="8"/>
-    <rect x="160" y="380" width="220" height="16" rx="8"/>
-    <rect x="160" y="420" width="220" height="16" rx="8"/>
-    <rect x="160" y="460" width="220" height="16" rx="8"/>
-    <rect x="160" y="500" width="220" height="16" rx="8"/>
-    <rect x="160" y="540" width="220" height="16" rx="8"/>
-
-    <!-- 底部线条 -->
-    <rect x="160" y="600" width="280" height="16" rx="8"/>
-    <rect x="460" y="600" width="280" height="16" rx="8"/>
-    <rect x="760" y="600" width="100" height="16" rx="8"/>
-    <rect x="160" y="640" width="600" height="16" rx="8"/>
-    <rect x="160" y="680" width="500" height="16" rx="8"/>
-  </g>
-
-  <!-- ======= 3. 【核心命中靶心和聚焦块】 ======= -->
-  <g filter="url(#glow)">
-    <!-- 命中琥珀高亮色块 #fef08a -->
-    <rect x="420" y="340" width="440" height="230" rx="40" fill="#fef08a"/>
-
-    <!-- 命中深棕文本行 (鞍棕色 #8B4513) -->
-    <rect x="460" y="415" width="360" height="28" rx="14" fill="#8B4513"/>
-    <rect x="460" y="475" width="360" height="28" rx="14" fill="#8B4513"/>
-  </g>
-
-  <!-- 对角靶心聚焦框 (由四个 #2855d9 L-形外部角标构成) -->
-  <g stroke="#2855d9" stroke-width="12" fill="none" stroke-linecap="round">
-    <path d="M 400 340 V 300 H 440" /> <!-- 左上 -->
-    <path d="M 840 300 H 880 V 340" /> <!-- 右上 -->
-    <path d="M 880 540 V 580 H 840" /> <!-- 右下 -->
-    <path d="M 440 580 H 400 V 540" /> <!-- 左下 -->
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="数字报监测中心">
+  <title>数字报监测中心</title>
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="#2855d9"/>
+  <rect x="176" y="128" width="672" height="768" rx="72" fill="#ffffff"/>
+  <rect x="256" y="224" width="464" height="56" rx="28" fill="#c9d3e4"/>
+  <rect x="256" y="312" width="336" height="56" rx="28" fill="#c9d3e4"/>
+  <rect x="240" y="432" width="544" height="320" rx="64" fill="#ffc53d"/>
+  <rect x="328" y="508" width="368" height="64" rx="32" fill="#7a3e12"/>
+  <rect x="328" y="612" width="368" height="64" rx="32" fill="#7a3e12"/>
+  <rect x="256" y="800" width="464" height="56" rx="28" fill="#c9d3e4"/>
 </svg>

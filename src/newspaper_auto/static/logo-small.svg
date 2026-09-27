@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- favicon 专用简化版：完整 logo 在 16px 下纸面会糊成一团，这里只保留
-       「品牌蓝底 + 黄色命中块 + 深棕命中行」，色值全部取自 logo.svg。 -->
-  <rect width="1024" height="1024" rx="224" fill="#2855d9"/>
-  <rect x="192" y="232" width="640" height="560" rx="80" fill="#fef08a"/>
-  <rect x="272" y="368" width="480" height="112" rx="56" fill="#8B4513"/>
-  <rect x="272" y="544" width="480" height="112" rx="56" fill="#8B4513"/>
-</svg>

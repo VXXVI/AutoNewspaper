@@ -33,11 +33,10 @@ def _static_dir(source_file: str | Path | None = None) -> Path:
 STATIC_DIR = _static_dir()
 STATIC_TYPES = {
     "index.html": "text/html; charset=utf-8",
-    # 品牌图标：ico 是按尺寸混编的多尺寸图标，svg 供看板与文档引用
+    # 品牌图标：ico 是按尺寸混编的多尺寸图标，svg 供顶栏内联使用
     "favicon.ico": "image/x-icon",
     "apple-touch-icon.png": "image/png",
     "logo.svg": "image/svg+xml",
-    "logo-small.svg": "image/svg+xml",
     "api.js": "application/javascript; charset=utf-8",
     "app.js": "application/javascript; charset=utf-8",
     "dom.js": "application/javascript; charset=utf-8",
