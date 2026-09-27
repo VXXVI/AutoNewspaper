@@ -93,6 +93,9 @@ python3 daily_scan.py --version        # 版本号
 - `--no-state`：不读写 `state/seen.json`、不产 `hits/*`，只扫描并输出；可与 `--json` / `--csv`
   叠加（此时人类可读日志分流到 stderr，保证 stdout 纯净）。
 - 数据目录优先级：`--data-dir` > 环境变量 `NEWSPAPER_DATA_DIR` > 自动探测项目根。
+- 自定义报社配置 `papers.custom.json` 跟随**项目根**（源码入口 `daily_scan.py` /
+  `dashboard.py` 钉死为脚本目录，可用环境变量 `NEWSPAPER_APP_DIR` 覆盖），与
+  `--data-dir` 无关。
 - 命中会给出「第几版 + 版名」与**版内位置**（`版内 k/m`，有坐标时附 `上版 xx%`）。
 
 更完整的用法（无状态、数据目录、导出、看板、自定义报社）见

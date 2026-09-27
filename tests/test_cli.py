@@ -758,3 +758,42 @@ def test_archive_keep_days_rejects_negative_before_network():
         cli.main(["--archive-keep-days", "-1"], fetcher=lambda url: calls.append(url) or (404, ""))
     assert exc.value.code == 2
     assert calls == []
+
+
+def test_custom_papers_follow_app_dir_not_cwd(tmp_path, monkeypatch):
+    """回归：源码入口从仓库外调用时，自定义报社按「项目根」而非 cwd 解析。
+
+    修复前 ``paths.app_dir()`` 从 cwd 找项目根，``--only`` 指向自定义报社会因
+    「未匹配到任何报社」以 ``parser.error`` 中止（``SystemExit(2)``）；
+    修复后能读到 ``NEWSPAPER_APP_DIR`` 指向目录下的 ``papers.custom.json``。
+    """
+    app_root = tmp_path / "app"
+    app_root.mkdir()
+    (app_root / "papers.custom.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "papers": [
+                    {"name": "测试报", "style": "ymd", "tpl": "https://example.invalid/{a}/node_01.html"}
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setenv("NEWSPAPER_APP_DIR", str(app_root))
+    calls: list[str] = []
+
+    try:
+        code = cli.main(
+            ["--only", "测试报", "--dry", "--data-dir", str(tmp_path / "data")],
+            fetcher=lambda url: calls.append(url) or (404, ""),
+        )
+    except SystemExit as exc:  # 修复前：--only 未匹配 → SystemExit(2)
+        code = exc.code
+
+    assert code == 1, f"应从 app 目录读到自定义报社（--dry 下入口 404 即退出码 1），实际 {code}"
+    assert calls, "应尝试抓取自定义报社的入口"

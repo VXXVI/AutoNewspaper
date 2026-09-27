@@ -38,3 +38,14 @@ def test_file_helpers(tmp_path):
     assert paths.hits_dir(tmp_path) == tmp_path / "hits"
     assert paths.archive_file(tmp_path) == tmp_path / "hits" / "archive.json"
     assert paths.index_file(tmp_path) == tmp_path / "hits" / "index.html"
+
+
+def test_app_dir_honors_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("NEWSPAPER_APP_DIR", str(tmp_path / "root"))
+    assert paths.app_dir() == (tmp_path / "root").resolve()
+
+
+def test_app_dir_ignores_blank_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("NEWSPAPER_APP_DIR", "   ")
+    monkeypatch.setattr(paths, "find_project_root", lambda: tmp_path)
+    assert paths.app_dir() == tmp_path

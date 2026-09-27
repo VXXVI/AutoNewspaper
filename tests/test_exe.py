@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------- 冻结路径
 def test_app_dir_uses_project_root_when_not_frozen(monkeypatch, tmp_path):
     monkeypatch.delattr(paths.sys, "frozen", raising=False)
+    monkeypatch.delenv("NEWSPAPER_APP_DIR", raising=False)
     monkeypatch.setattr(paths, "find_project_root", lambda: tmp_path)
     assert paths.app_dir() == tmp_path
 

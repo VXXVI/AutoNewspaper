@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **从仓库外调用时读不到自定义报社**：`daily_scan.py` / `dashboard.py` 现在把「项目根」
+  钉死为脚本所在目录（内部设置环境变量 `NEWSPAPER_APP_DIR`，后台看板子进程一并继承），
+  `papers.custom.json` 不再跟随当前工作目录解析。此前从仓库外执行（如
+  `python3 /path/AutoNewspaper/daily_scan.py`）会静默忽略仓库里已提交的自定义报社，
+  看板新增报社时也会写回错误的目录。
+
 ## [0.5.0] - 2026-09-27
 
 ### Added

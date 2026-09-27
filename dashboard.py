@@ -16,6 +16,11 @@ _SRC = os.path.join(_HERE, "src")
 if os.path.isdir(_SRC) and _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
+# 与 daily_scan.py 对齐：把「项目根」（配置层）钉死为本文件所在目录。否则从仓库外
+# 启动看板时 papers.custom.json 会跟随 cwd 解析/写回，找错位置；后台看板子进程
+# （dashboard --detach）会继承该环境变量，同样落到这里。
+os.environ.setdefault("NEWSPAPER_APP_DIR", _HERE)
+
 from newspaper_auto.web import main  # noqa: E402  (需先补 sys.path)
 
 if __name__ == "__main__":

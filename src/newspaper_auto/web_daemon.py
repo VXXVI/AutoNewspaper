@@ -275,7 +275,8 @@ def spawn(data_dir: str | os.PathLike[str], host: str, port: int, *, scan: bool 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = open(log_path, "a", encoding="utf-8")  # noqa: SIM115  交给子进程持有
 
-    # cwd 有意继承父进程：papers.custom.json 要按「项目根」解析，换成数据目录会找错地方
+    # cwd 有意继承父进程；「项目根」另由 NEWSPAPER_APP_DIR 显式传给子进程（见 paths.app_dir），
+    # 因此父进程即使不是从项目根启动的，子进程也能找到正确的 papers.custom.json。
     kwargs: dict = {
         "stdin": subprocess.DEVNULL,
         "stdout": log_file,

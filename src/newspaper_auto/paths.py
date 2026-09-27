@@ -32,12 +32,21 @@ def find_project_root(start: Path | None = None) -> Path:
 def app_dir() -> Path:
     """运行根目录（配置层与默认数据落点）。
 
-    - **冻结运行**（PyInstaller 单文件 exe）：返回可执行文件所在目录，做到「解压即用、
-      配置与数据跟随 exe」，而不是落到临时解包目录或当前 cwd；
-    - **源码运行**：与 :func:`find_project_root` 一致（向上找 ``.git`` / ``pyproject.toml``）。
+    解析优先级：
+
+    1. **冻结运行**（PyInstaller 单文件 exe）：返回可执行文件所在目录，做到「解压即用、
+       配置与数据跟随 exe」，而不是落到临时解包目录或当前 cwd；
+    2. 环境变量 ``NEWSPAPER_APP_DIR``：供 ``daily_scan.py`` / ``dashboard.py`` 等源码入口把
+       「项目根」钉死为**脚本所在目录**。否则从仓库外调用（如
+       ``python3 /path/AutoNewspaper/daily_scan.py``）时 ``papers.custom.json`` 会跟随 cwd
+       解析，静默忽略仓库里已提交的自定义报社；后台看板子进程继承该变量，同样受益。
+    3. 否则与 :func:`find_project_root` 一致（从 cwd 向上找 ``.git`` / ``pyproject.toml``）。
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
+    override = os.environ.get("NEWSPAPER_APP_DIR", "")
+    if override.strip():
+        return Path(override).expanduser().resolve()
     return find_project_root()
 
 

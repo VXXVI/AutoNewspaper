@@ -5,10 +5,19 @@
 除内置六家外，可**在看板「报社与抓取规则」里新增自定义报社**，也可直接手编配置文件。
 如果手编后的 JSON 损坏，界面的保存/删除会返回冲突提示并保留原文件，不会用空配置覆盖。
 
-**文件位置**：`<项目根>/papers.custom.json`（**进 git**）。⚠️ 它跟随**项目根**
-（`paths.find_project_root()`），**不跟 `--data-dir` 走**——`--data-dir` 只是数据落点
-（`state/` / `hits/`），自定义报社属于**配置层**。所以用 `--data-dir /tmp/x` 跑看板时，
-新增的报社仍写回项目根。
+**文件位置**：`<项目根>/papers.custom.json`（**进 git**）。⚠️ 它属于**配置层**，
+**不跟 `--data-dir` 走**——`--data-dir` 只是数据落点（`state/` / `hits/`）。所以用
+`--data-dir /tmp/x` 跑看板时，新增的报社仍写回项目根。
+
+「项目根」的判定，按优先级：
+
+1. `daily_scan.py` / `dashboard.py` 会把**脚本所在目录**钉死为项目根（内部设置环境变量
+   `NEWSPAPER_APP_DIR`），因此从仓库外调用（如 `python3 /path/AutoNewspaper/daily_scan.py`）
+   也不会找错；后台看板子进程（`dashboard --detach`）继承同一变量。
+2. 也可自行设置 `NEWSPAPER_APP_DIR` 显式覆盖（源码入口不会覆盖你已设的值）。
+3. 经 `newspaper-auto` / Windows exe 启动时，冻结运行取 **exe 所在目录**。
+4. 以上都没有时，回退为**从当前工作目录（cwd）向上查找**含 `.git` / `pyproject.toml`
+   的目录 —— 这也是「为什么建议 `cd` 到项目根再手编配置」的原因。
 
 ```json
 {

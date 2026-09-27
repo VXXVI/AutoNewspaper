@@ -280,6 +280,19 @@ def test_server_rejects_non_loopback_binding_before_listen(tmp_path):
         web.create_server(tmp_path, host="0.0.0.0", port=0)
 
 
+def test_create_server_papers_root_follows_app_dir_env(tmp_path, monkeypatch):
+    """未显式传 papers_root 时，自定义报社跟随 NEWSPAPER_APP_DIR，而不是 cwd。"""
+    app_root = tmp_path / "app"
+    app_root.mkdir()
+    monkeypatch.setenv("NEWSPAPER_APP_DIR", str(app_root))
+    monkeypatch.chdir(tmp_path)  # cwd 故意与 app_root 不同
+    server = web.create_server(tmp_path / "data", host="127.0.0.1", port=0)
+    try:
+        assert server.papers_root == app_root.resolve()
+    finally:
+        server.server_close()
+
+
 # ---------------------------------------------------------------- HTTP 集成
 @pytest.fixture
 def base_url(tmp_path):

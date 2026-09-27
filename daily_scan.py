@@ -57,6 +57,12 @@ _SRC = os.path.join(_HERE, "src")
 if os.path.isdir(_SRC) and _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
+# 把「项目根」（配置层）钉死为本文件所在目录：从仓库外调用时（如
+# `python3 /path/AutoNewspaper/daily_scan.py`）cwd 并不是项目根，若不显式指定，
+# papers.custom.json 会跟随 cwd 解析，静默忽略仓库里已提交的自定义报社。
+# 已显式设置 NEWSPAPER_APP_DIR 时不覆盖；后台看板子进程会继承该变量。
+os.environ.setdefault("NEWSPAPER_APP_DIR", _HERE)
+
 from newspaper_auto.cli import main  # noqa: E402  (需先补 sys.path)
 
 if __name__ == "__main__":
