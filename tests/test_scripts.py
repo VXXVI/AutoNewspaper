@@ -136,3 +136,43 @@ def test_run_scan_sh_forwards_unknown_options_verbatim(tmp_path):
     assert "--totally-new-option value" in command
     assert "--kw 人工智能" in command
     assert "--days 2" in command
+
+
+# ---------------------------------------------------------------- 可执行位
+# macOS 上 `scripts/*.command` 由 Finder 交给 Terminal **直接 exec**，`docs/scheduling.md`
+# 又让用户 `./scripts/run_scan.sh`；两条路都要求文件在 git 里带可执行位（100755）。
+# Windows 的 core.fileMode=false 不会丢掉索引里记录的模式，所以断言「索引模式」跨平台成立。
+_EXECUTABLE_ENTRY_SCRIPTS = (
+    "scripts/scan.command",
+    "scripts/dashboard.command",
+    "scripts/run_scan.sh",
+)
+
+
+def _git_index_modes(paths: tuple[str, ...]) -> dict[str, str] | None:
+    """读取这些文件在 git 索引里的模式；不是 git 工作区（或没有 git）时返回 None。"""
+    if shutil.which("git") is None or not (ROOT / ".git").exists():
+        return None
+    proc = subprocess.run(["git", "ls-files", "-s", "--", *paths], cwd=ROOT, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return None
+    modes: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        meta, name = line.split("\t", 1)
+        modes[name] = meta.split()[0]
+    return modes
+
+
+def test_macos_entry_scripts_are_executable_in_git():
+    """`.command` 双击入口与 `./scripts/run_scan.sh` 在 git 里必须是 100755。
+
+    回归：这三个文件曾以 100644 入库，Finder 双击 `.command` 直接 permission denied；
+    `docs/scheduling.md` 里写的 `./scripts/run_scan.sh ...` 同样报错。
+    """
+    modes = _git_index_modes(_EXECUTABLE_ENTRY_SCRIPTS)
+    if modes is None:
+        pytest.skip("需要 git 工作区才能检查索引里的可执行位")
+    for rel in _EXECUTABLE_ENTRY_SCRIPTS:
+        assert modes.get(rel) == "100755", (
+            f"{rel} 在 git 索引里不是 100755（当前 {modes.get(rel)}），双击或直接执行会失败"
+        )

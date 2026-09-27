@@ -13,6 +13,9 @@
   `papers.custom.json` 不再跟随当前工作目录解析。此前从仓库外执行（如
   `python3 /path/AutoNewspaper/daily_scan.py`）会静默忽略仓库里已提交的自定义报社，
   看板新增报社时也会写回错误的目录。
+- **macOS 双击入口不可执行**：`scripts/scan.command`、`scripts/dashboard.command` 与
+  `scripts/run_scan.sh` 此前以 100644 入库，Finder 双击会直接 `permission denied`，
+  文档里 `./scripts/run_scan.sh ...` 的用法同样报错。现已改为 100755，并加了防回归测试。
 
 ## [0.5.0] - 2026-09-27
 
