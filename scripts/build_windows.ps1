@@ -39,11 +39,17 @@ function Die([string]$Message) {
 }
 
 # ---------------------------------------------------------------- 版本号
-if (-not $Version) {
-    $Version = (& python -c "import sys; sys.path.insert(0, 'src'); import newspaper_auto; print(newspaper_auto.__version__)").Trim()
-}
+$sourceVersion = (& python -c "import sys; sys.path.insert(0, 'src'); import newspaper_auto; print(newspaper_auto.__version__)").Trim()
+if (-not $Version) { $Version = $sourceVersion }
 if (-not $Version) { Die '无法获取版本号（可显式传 -Version x.y.z）' }
-Write-Host "构建版本：$Version"
+
+# CI 传进来的是 **tag 名**（带 v 前缀，如 v0.9.0），而 /api/health 报的是包内版本号
+# （0.9.0）。必须归一化后再比，否则冒烟测试会永远匹配不上（v0.9.0 就这么挂过一次）。
+$packageVersion = $Version -replace '^[vV]', ''
+if ($sourceVersion -ne $packageVersion) {
+    Die "版本号不一致：构建标签 '$Version'（归一化后 '$packageVersion'） vs 源码 __version__ '$sourceVersion'"
+}
+Write-Host "构建版本：$Version（包内版本号 $packageVersion）"
 
 # ---------------------------------------------------------------- 依赖（仅构建期）
 if (-not $SkipInstall) {
@@ -83,8 +89,8 @@ if (-not $SkipSmoke) {
             } catch { }
         }
         if (-not $ready) { Die '看板未在预期时间内就绪（/api/health）' }
-        if ($health.Content -notmatch [regex]::Escape($Version)) {
-            Die "/api/health 未报告版本 $Version（实际：$($health.Content)）"
+        if ($health.Content -notmatch [regex]::Escape($packageVersion)) {
+            Die "/api/health 未报告版本 $packageVersion（实际：$($health.Content)）"
         }
 
         $staticResp = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/static/store.js" -TimeoutSec 5
