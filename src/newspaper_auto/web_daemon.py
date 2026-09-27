@@ -32,7 +32,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import paths
+from . import paths, procutil
 
 READY_TIMEOUT = 25.0
 POLL_INTERVAL = 0.25
@@ -277,18 +277,18 @@ def spawn(data_dir: str | os.PathLike[str], host: str, port: int, *, scan: bool 
 
     # cwd 有意继承父进程；「项目根」另由 NEWSPAPER_APP_DIR 显式传给子进程（见 paths.app_dir），
     # 因此父进程即使不是从项目根启动的，子进程也能找到正确的 papers.custom.json。
-    kwargs: dict = {
-        "stdin": subprocess.DEVNULL,
-        "stdout": log_file,
-        "stderr": log_file,
-        "env": _child_env(),
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
-    else:
-        kwargs["start_new_session"] = True
     try:
-        return subprocess.Popen(_child_argv(host, port, data_dir, scan), **kwargs)
+        return subprocess.Popen(
+            _child_argv(host, port, data_dir, scan),
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=log_file,
+            env=_child_env(),
+            # 脱离控制台：Windows 见 procutil.detached_console，POSIX 走 start_new_session。
+            # 写在调用点上而不是拼 kwargs —— 方便 tests/test_procutil.py 用 AST 守住
+            # 「每一处派生都抑制控制台窗口」这条不变量。
+            **procutil.detached_console(),
+        )
     finally:
         log_file.close()
 

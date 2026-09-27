@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 import zlib
 
-from . import config
+from . import config, procutil
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,7 +143,9 @@ def _curl_once(url: str, timeout: int) -> tuple[int, str]:
         url,
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=timeout + 8)
+        # 必须抑制控制台窗口：无窗口版 exe（父进程没有控制台）里，curl 每被派生
+        # 一次就会弹一个黑窗口，而扫描是逐页调用的（默认 8 并发）。见 procutil。
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout + 8, **procutil.hidden_console())
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return 0, ""
     raw = proc.stdout or b""
