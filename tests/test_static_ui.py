@@ -49,7 +49,10 @@ def test_result_and_dashboard_views_have_shared_filter_and_status_surfaces():
         "result-context",
         "rows",
         "chart",
-        "layouts",
+        # 结果筛选浮层：收起时零占位，整行宽度留给命中列表
+        "filter-toggle",
+        "filter-panel",
+        "filter-count",
         # 图形化看板
         "dashboard-section",
         "paper-rank",
@@ -74,7 +77,7 @@ def test_brand_icon_assets_are_present_and_referenced():
     """
     from newspaper_auto import web_static
 
-    for name in ("logo.svg", "logo-small.svg", "favicon.ico", "apple-touch-icon.png"):
+    for name in ("logo.svg", "favicon.ico", "apple-touch-icon.png"):
         assert (STATIC_DIR / name).is_file(), f"缺少图标资源 static/{name}"
         assert name in web_static.STATIC_TYPES, f"static/{name} 未登记进 STATIC_TYPES"
 
@@ -133,13 +136,13 @@ def test_render_module_owns_the_shared_result_pipeline():
         "renderApp",
         "renderStats",
         "renderChart",
-        "renderLayouts",
         "renderRows",
         "renderScanPanel",
         "renderPapersPanel",
         "renderPaperRanking",
         "renderKeywordRanking",
         "renderHeatmap",
+        "activeFilterCount",
     ):
         assert re.search(rf"export\s+function\s+{symbol}\b", render), f"render.js 应导出 {symbol}"
     # 服务断连提示是 renderHealth 的内部步骤（与 renderHealth 一样不对外导出）
@@ -245,12 +248,29 @@ class _NestCollector(HTMLParser):
                 return
 
 
-def test_layout_rail_sits_beside_the_result_list():
-    """版面位置图是命中列表的右栏，而不是结果下方「03 分析」网格里的一项。
+def test_result_row_carries_its_own_layout_map():
+    """每条命中在**行内**自带版面位置缩略图，而不是页面下方另起一整栏。
 
-    回归：这正是本次布局改动的核心契约 —— 版面位置栏必须和命中列表同处
-    ``.results-layout`` 的两列，并且不能再挂在 ``.analysis-grid`` 下。
+    回归：这正是本次布局改动的核心契约 —— 整版位置图必须由命中行渲染出来
+    （``.row-map`` 出现在 ``renderRows`` 里），页面骨架里不应再有独立的版面位置栏。
     """
+    parser = _NestCollector()
+    parser.feed(_read("index.html"))
+    assert "layout-rail" not in parser.by_id, "独立的版面位置栏应已删除"
+    assert "layouts" not in parser.by_id, "整栏的版面位置图容器应已删除"
+
+    render = _read("render.js")
+    rows_body = render.split("export function renderRows", 1)[1]
+    assert "rowMap(" in rows_body, "版面位置缩略图应由 renderRows 逐行渲染"
+    assert "row-map" in render, "缩略图应带 .row-map 样式钩子"
+    assert "svg" in render and "createElementNS" in render, "缩略位置图应画成 SVG"
+    # 位置图按版面坐标（0~1）而非像素绘制
+    assert "preserveAspectRatio" in render, "缩略图必须让 x/y 各自归一化，否则版面会被画扁"
+    assert "activeFilterCount" in render, "筛选按钮需要角标来体现当前筛选强度"
+
+
+def test_filter_popover_is_anchored_inside_the_results_card():
+    """筛选是结果卡右上角的浮层：结果表吃满整卡宽度，不再有左侧常驻栏。"""
     parser = _NestCollector()
     parser.feed(_read("index.html"))
 
@@ -260,26 +280,39 @@ def test_layout_rail_sits_beside_the_result_list():
             found.update((ancestor["attrs"].get("class") or "").split())
         return found
 
-    rail = parser.by_id["layout-rail"]
-    results = parser.by_id["results-card"]
-    layouts = parser.by_id["layouts"]
+    panel = parser.by_id["filter-panel"]
+    trigger = parser.by_id["filter-toggle"]
+    rows = parser.by_id["rows"]
+
+    assert "filter-popover" in (panel["attrs"].get("class") or ""), "筛选面板应是浮层（.filter-popover）"
+    assert "results-heading" in classes_in_chain(panel), "浮层要挂在结果卡标题上（定位锚）"
+    assert "hidden" in panel["attrs"], "浮层默认收起"
+    assert trigger["attrs"].get("aria-controls") == "filter-panel"
+    assert trigger["attrs"].get("aria-expanded") == "false"
+
+    # 结果表不再被左右分栏包着，直接挂在 .results-card 下
+    for stale in ("results-workspace", "results-layout"):
+        assert stale not in classes_in_chain(rows), f"结果列表不应再被 .{stale} 分栏"
+    assert "results-card" in classes_in_chain(rows)
+
+    # 时间趋势仍在独立的分析区
     chart = parser.by_id["chart"]
-
-    assert "results-layout" in classes_in_chain(rail), "版面位置栏应在 .results-layout 内"
-    assert "results-layout" in classes_in_chain(results), "命中列表应在 .results-layout 内"
-    assert "layout-rail" in classes_in_chain(layouts), "版面位置图应画在 .layout-rail 里"
-    assert "analysis-grid" not in classes_in_chain(layouts), "版面位置图不应再挂在 .analysis-grid 下"
-
-    # 两者是同一个 .results-layout 下的同级列
-    assert rail["chain"] and results["chain"]
-    assert rail["chain"][-1] is results["chain"][-1]
-
-    # 时间趋势留在独立的分析区（#trend-section 是 .chart 的祖先）
     assert parser.by_id["trend-section"] in chart["chain"]
-    assert parser.by_id["trend-section"] not in rail["chain"]
+    assert "analysis-grid" not in classes_in_chain(chart), "趋势图不必再套一格网格"
 
 
-def test_layout_rail_and_page_width_tokens_are_styled():
+def test_row_map_and_filter_popover_are_styled():
     css = _read("style.css")
-    for token in (".results-layout", ".layout-rail", "--page-max", "--sticky-top"):
+    for token in (
+        ".row-map",
+        ".row-map .map-hit",
+        ".cell-body",
+        ".filter-popover",
+        ".filter-count",
+        "--page-max",
+    ):
         assert token in css, f"style.css 缺少布局相关样式：{token}"
+    # 缩略图描边用 non-scaling-stroke：viewBox 被非等比拉伸，描边必须保持物理像素
+    assert "non-scaling-stroke" in css
+    for stale in (".results-layout", ".layout-rail", ".layout-item", ".filter-panel"):
+        assert stale not in css, f"style.css 仍残留已删除的布局样式：{stale}"

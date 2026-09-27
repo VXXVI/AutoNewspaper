@@ -21,10 +21,8 @@
   --shadow-sm: 0 1px 2px rgba(18, 31, 53, .05);
   --shadow: 0 16px 40px rgba(18, 31, 53, .075);
   --radius: 18px;
-  /* 页面最大宽度：宽屏下把结果表 + 右侧版面位置栏一并排开（旧值 1380 在 1900px 屏上留白过多）。 */
+  /* 页面最大宽度：命中列表要宽到能并排放「标题 + 版面位置缩略图」，宽屏下别再留大片空白。 */
   --page-max: 1560px;
-  /* 顶部导航高度 + 页面内边距，供筛选栏 / 版面位置栏的 sticky 定位复用。 */
-  --sticky-top: 99px;
 }
 
 * { box-sizing: border-box; }
@@ -95,12 +93,9 @@ a { color: inherit; }
   place-items: center;
   width: 42px;
   height: 42px;
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(18, 31, 53, .06), 0 0 0 1px var(--line);
 }
-/* 品牌图标：logo.svg 自带的纸面/折角/命中高亮，按 42px 方块等比铺满。 */
+/* 品牌图标：logo.svg 自带品牌蓝底 + 白纸 + 琥珀命中块，本身在高对比下就成立，
+ * 这里不再套白底和描边（会与图标自身的圆角打架、还压低对比度）。 */
 .brand-mark img { display: block; width: 100%; height: 100%; }
 .brand { min-width: 0; }
 .brand h1 { margin: 0; font-size: 18px; line-height: 1.35; letter-spacing: -.15px; }
@@ -123,7 +118,7 @@ a { color: inherit; }
 }
 .page-nav a:hover { background: white; color: var(--primary); box-shadow: var(--shadow-sm); }
 .top-actions { justify-content: flex-end; gap: 8px; }
-.health, .badge, .status-pill, .count-badge {
+.health, .badge, .status-pill {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -369,27 +364,33 @@ details > summary { cursor: pointer; }
 
 /* 结果浏览 */
 .results-card { padding: 25px 26px 26px; }
-.results-heading { align-items: flex-end; }
+/* .results-heading 是筛选浮层的定位锚：标题高度变化时浮层自动跟着走。 */
+.results-heading { position: relative; align-items: flex-end; }
 .results-heading h2 { margin-top: 8px; font-size: 23px; }
-.result-context { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: -5px 0 18px; padding: 12px 14px; border: 1px solid #bfd0ff; border-radius: 12px; background: #f3f6ff; }
-.result-context > div:first-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.result-context b { color: #173f9d; font-size: 13px; }
-.result-context span { color: var(--muted); font-size: 11.5px; }
-.results-workspace { display: grid; grid-template-columns: 274px minmax(0, 1fr); gap: 20px; align-items: start; }
-/* 收起筛选：结果表占满整行。用类而不是只靠 [hidden]，因为下面的 display 会盖掉 hidden。 */
-.results-workspace.is-collapsed { grid-template-columns: minmax(0, 1fr); }
-.filter-panel {
-  position: sticky;
-  top: var(--sticky-top);
+
+/* 筛选：结果卡右上角的浮层。收起时不占任何版面，整行宽度都留给命中列表 */
+.filter-trigger { gap: 7px; }
+.filter-count { display: grid; min-width: 19px; height: 19px; padding: 0 5px; place-items: center; border-radius: 999px; background: var(--primary); color: white; font-size: 11px; font-weight: 700; line-height: 1; }
+.filter-trigger[aria-expanded="true"] { border-color: #9ab4fa; background: var(--primary-soft); color: var(--primary); }
+.filter-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 12px);
+  right: 0;
   display: flex;
+  width: min(560px, 100%);
   flex-direction: column;
   gap: 16px;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: var(--surface-soft);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
-.filter-panel[hidden] { display: none; }
+.result-context { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: -5px 0 18px; padding: 12px 14px; border: 1px solid #bfd0ff; border-radius: 12px; background: #f3f6ff; }
+.result-context > div:first-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.result-context b { color: #173f9d; font-size: 13px; }
+.result-context span { color: var(--muted); font-size: 11.5px; }
 .filter-heading { display: flex; flex-direction: column; gap: 2px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
 .filter-heading b { font-size: 14px; }
 .filter-heading span { color: var(--muted); font-size: 11.5px; }
@@ -415,10 +416,34 @@ tbody tr:hover { background: #f8faff; }
 tbody tr:last-child td { border-bottom: 0; }
 .col-paper { width: 108px; color: var(--ink-soft); font-weight: 680; }
 .col-date { width: 106px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
-/* 版面位置：紧跟在命中报道右侧、右对齐成一列，方便按行扫读「这条在第几版第几块」。 */
-.col-section { width: 164px; text-align: right; }
+/* 版面位置：每条命中的右端一列 —— 缩略位置图 + 版面名 + 版内位置。
+ * 一行一条就近对应，扫读时不必再往页面下方找整节版面图。 */
+.col-section { width: 208px; text-align: right; }
+.cell-body { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.cell-text { min-width: 0; }
 .col-section .section-name { display: block; color: var(--ink-soft); font-size: 12.5px; font-weight: 620; }
 .col-section .section-pos { display: block; margin-top: 3px; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
+/* 行内版面位置缩略图：整版的非命中块预先合成**一条 SVG path**，每行只多一个
+ * 命中 rect。一个版面几十个块、一次最多上百行，这样每行只有 2 个节点。
+ * 高度固定、宽度由 aspect-ratio 决定；点一下 = 只看本版报道（等同旧的「查看本版 N 篇」）。 */
+.row-map {
+  flex: 0 0 auto;
+  height: 58px;
+  padding: 0;
+  border: 1px solid #b6c0cf;
+  border-radius: 4px;
+  background: white;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.row-map svg { display: block; width: 100%; height: 100%; border-radius: 3px; }
+.row-map .map-base { fill: #dfe5ee; }
+/* non-scaling-stroke：viewBox 被非等比拉伸（一版的高低宽窄不同），描边必须保持物理像素不变 */
+.row-map .map-hit { fill: rgba(231, 71, 58, .55); stroke: #cf3527; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.row-map:hover { border-color: #8aa8f7; }
+.row-map:focus-visible { outline: 3px solid rgba(40, 85, 217, .3); outline-offset: 1px; }
+.row-map.is-active { border-color: #cf3527; box-shadow: 0 0 0 3px rgba(207, 53, 39, .16); }
 td.title a { color: #174ba7; font-size: 15px; font-weight: 700; line-height: 1.45; text-decoration: none; }
 td.title a:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 .sn { max-width: 760px; margin-top: 6px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.58; word-break: break-word; }
@@ -427,57 +452,10 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .results-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border-top: 1px solid var(--line); background: var(--surface-soft); color: var(--muted); font-size: 12.5px; }
 .results-footer .btn { min-height: 34px; }
 
-/* 结果区 + 右侧「版面位置」栏
- * 命中列表在左、版面位置图贴右一栏并随滚动吸附：列表往右紧挨着就是「这条在第几版第几块」，
- * 不必再往下翻一整节。窄屏（<1440px）自动折回上下排列，见 media query。 */
-.results-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 368px);
-  gap: 20px;
-  align-items: start;
-}
-.layout-rail { position: sticky; top: var(--sticky-top); min-width: 0; }
-/* 栏内自成滚动区：命中多、版面多时不把整页撑长，标题始终留在顶部。 */
-.layout-rail .layout-card {
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 128px);
-  padding: 18px;
-}
-.layout-rail .layout-card .section-heading { flex-direction: column; align-items: flex-start; gap: 5px; }
-.layout-rail .layout-card .section-heading h2 { font-size: 16px; }
-.layout-rail .layout-card .section-heading p { font-size: 12px; }
-.layout-rail .layout-grid {
-  flex: 1 1 auto;
-  min-height: 0; /* 允许在 max-height 内收缩并滚动，否则会被内容顶破 */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  overflow-y: auto;
-  padding-right: 3px;
-}
-
-/* 分析区 */
+/* 分析区（版面位置并到命中行后，这一节只剩时间趋势） */
 .analysis-heading { align-items: flex-end; padding: 7px 2px 0; }
 .analysis-heading h2 { margin-top: 7px; font-size: 22px; }
-.analysis-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
-.layout-card, .trend-card { padding: 22px; }
-.count-badge { background: var(--surface-soft); }
-.layout-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.layout-item { display: grid; grid-template-columns: 116px 1fr; gap: 14px; align-items: start; padding: 13px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface-soft); transition: border-color .14s, box-shadow .14s; }
-.layout-item.is-active { border-color: #87a7ff; box-shadow: 0 0 0 3px rgba(40, 85, 217, .1); }
-.layout-page { position: relative; width: 100%; min-height: 158px; overflow: hidden; border: 1px solid #aeb9c8; background: white; box-shadow: 0 5px 12px rgba(16, 24, 40, .09); }
-.layout-block { position: absolute; min-width: 2px; min-height: 2px; border: 1px solid #cbd2dc; background: #e7ebf0; }
-.layout-block.hit { z-index: 2; border: 2px solid #ce352a; background: rgba(231, 71, 58, .35); }
-.layout-info { min-width: 0; }
-.layout-info h3 { margin: 0 0 5px; overflow: hidden; font-size: 13.5px; text-overflow: ellipsis; white-space: nowrap; }
-.layout-info p { margin: 3px 0; color: var(--muted); font-size: 11.5px; line-height: 1.48; }
-.layout-info .layout-hit { color: var(--danger); font-weight: 680; }
-.layout-action { width: 100%; min-height: 34px; margin-top: 9px; }
-.layout-action.is-active { border-color: #9ab4fa; background: var(--primary-soft); color: var(--primary); }
-.layout-legend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 9px; }
-.layout-legend span { color: var(--muted); font-size: 10.5px; }
-.layout-legend i { display: inline-block; width: 12px; height: 8px; margin-right: 4px; border: 1px solid #cbd2dc; background: #e7ebf0; vertical-align: middle; }
-.layout-legend .hit-key i { border-color: #ce352a; background: rgba(231, 71, 58, .35); }
+.trend-card { padding: 22px; }
 .chart { display: flex; align-items: flex-end; justify-content: space-between; gap: 7px; min-height: 230px; overflow-x: auto; padding: 28px 3px 2px; border-bottom: 1px solid var(--line); }
 /* 时间趋势现在独占整行：给单列设上限，日期少时柱体不会被拉得稀稀拉拉；
  * flex-shrink 仍为 0，日期多（最多 90 天）时照旧横向滚动。 */
@@ -586,20 +564,14 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .dialog-action-spacer { flex: 1; }
 .dialog-actions .btn { white-space: nowrap; }
 
-/* 结果表 + 右侧版面位置栏并排需要足够宽度：1440px 以下折回上下排列，
- * 版面位置图恢复成两列，避免结果表被挤成一条。 */
-@media (max-width: 1439px) {
-  .results-layout { grid-template-columns: minmax(0, 1fr); }
-  .layout-rail { position: static; }
-  .layout-rail .layout-card { max-height: none; padding: 22px; }
-  .layout-rail .layout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; overflow: visible; padding-right: 0; }
-}
-
 @media (max-width: 1180px) {
   .topbar-inner { grid-template-columns: 1fr auto; }
   .page-nav { display: none; }
   .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .trend-card .chart { min-height: 170px; }
+  /* 窄屏上「版面位置」列会被挤：缩略图与列宽同步收一点 */
+  .row-map { height: 50px; }
+  .col-section { width: 180px; }
 }
 
 @media (max-width: 960px) {
@@ -608,10 +580,7 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
   .activity-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
   .activity-heading, .scan-progress, .log-details { grid-column: 1 / -1; }
   .run-steps { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); }
-  .results-workspace { grid-template-columns: 1fr; }
-  .filter-panel { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .filter-heading, .field-search, .filter-details { grid-column: 1 / -1; }
-  .filter-group { align-self: end; }
+  .filter-popover { width: min(520px, calc(100% - 24px)); }
   .filter-options { display: grid; grid-template-columns: 1fr 1fr; }
 }
 
@@ -643,7 +612,8 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
   .result-context .button-group .btn { flex: 1; }
   .button-group { gap: 8px; }
   .button-group .btn { flex: 1; }
-  .filter-panel { display: flex; padding: 15px; }
+  /* 手机端浮层没有空间可浮：改回文档流，跟在标题下面 */
+  .filter-popover { position: static; width: auto; margin-top: 12px; box-shadow: none; }
   .filter-options { display: flex; }
   .table-wrap { max-height: none; overflow: visible; border: 0; }
   table, tbody { display: block; }
@@ -655,6 +625,8 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
   td::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--muted); font-size: 10.5px; font-weight: 650; }
   .col-paper, .col-date, .col-section { width: auto; white-space: normal; }
   .col-section { text-align: left; }
+  /* 卡片态下「版面位置」格只剩三分之一宽：缩略图与文字改上下堆叠，文字才有整格宽度 */
+  .cell-body { flex-direction: column; align-items: flex-start; gap: 7px; }
   /* 手机端改成卡片：报社/日期/版面位置在首行，标题占满第二行（DOM 顺序已把版面位置放最后）。 */
   .col-paper { order: 1; }
   .col-date { order: 2; }
@@ -664,10 +636,7 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
   td.title a { font-size: 15px; }
   .sn { font-size: 12.5px; }
   .results-footer { margin-top: 0; }
-  .layout-card, .trend-card { padding: 18px 15px; }
-  .layout-grid { grid-template-columns: 1fr; }
-  .layout-rail .layout-card { padding: 18px 15px; }
-  .layout-rail .layout-grid { grid-template-columns: minmax(0, 1fr); }
+  .trend-card { padding: 18px 15px; }
   .papers-list { grid-template-columns: 1fr; }
   .settings-intro { align-items: flex-start; flex-direction: column; }
   .papers-row { align-items: flex-start; flex-wrap: wrap; padding: 12px; }
@@ -694,8 +663,6 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
   .stats { grid-template-columns: 1fr 1fr; }
   .stat { padding-left: 13px; }
   .stat::before { display: none; }
-  .layout-item { grid-template-columns: 96px 1fr; gap: 10px; padding: 10px; }
-  .layout-page { min-height: 136px; }
   .results-footer { align-items: stretch; flex-direction: column; }
   .results-footer .btn { width: 100%; }
 }
@@ -705,7 +672,7 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 }
 
 @media (forced-colors: active) {
-  .brand-mark, .btn.primary, .layout-block.hit, .progress-track span { forced-color-adjust: auto; }
+  .brand-mark, .btn.primary, .row-map .map-hit, .progress-track span { forced-color-adjust: auto; }
 }
 
 /* ================= 图形化看板 & 新控件 =================

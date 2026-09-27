@@ -69,7 +69,7 @@ export function createInitialState() {
     preset: "all",
     visibleRows: INITIAL_ROWS,
     // 结果区的筛选面板是否展开（收起来后结果表占满整行）。选择由 app.js 记忆在 localStorage。
-    filtersOpen: true,
+    filtersOpen: false,
     // 扫描面板：运行标志、可选/已选报社、进度、日志、历史
     scan: {
       running: false,
@@ -221,7 +221,8 @@ export function reducer(state, action) {
     case A.LOAD_MORE:
       return withPatch(state, { visibleRows: state.visibleRows + ROW_STEP });
     case A.SET_FILTERS_OPEN:
-      return withPatch(state, { filtersOpen: action.open !== false });
+      // 筛选是结果卡右上角的浮层，缺省收起：只有显式 open:true 才展开。
+      return withPatch(state, { filtersOpen: action.open === true });
 
     /* ---------------------------------------------------------- 扫描状态 */
     case A.SCAN_SET_PAPERS: {

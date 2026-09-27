@@ -60,7 +60,7 @@ export const domTests = [
       }),
   },
   {
-    name: "版面位置图：优先读后端按版面去重的 layouts 表",
+    name: "版面位置：画在对应命中行内，命中块高亮，点图可只看本版",
     fn: () => {
       const record = RECORDS[0];
       const layout = {
@@ -79,37 +79,65 @@ export const domTests = [
       };
       return withPage({ routes }, async (page) => {
         const doc = page.document;
-        assert.equal(doc.querySelectorAll("#layouts .layout-block").length, 2, "应画出共享 layout 的两个格子");
-        assert.equal(doc.querySelectorAll("#layouts .layout-block.hit").length, 1, "命中格高亮");
-        assert.match(page.text("layouts-summary"), /1 个可绘制版面/);
+        const maps = doc.querySelectorAll("#rows .row-map");
+        assert.equal(maps.length, 1, "一条命中对应一个行内位置缩略图");
+        const map = maps[0];
+        assert.equal(map.closest("td").className, "col-section", "缩略图落在「版面位置」格内");
+        // 整版非命中块合成一条 path：两个位置 → 两段 M
+        const base = map.querySelector(".map-base");
+        assert.equal((base.getAttribute("d").match(/M/g) || []).length, 2, "同版块压成一条 path");
+        const hit = map.querySelector(".map-hit");
+        assert.equal(hit.getAttribute("x"), "100", "命中块按 0~1 归一化坐标 × 1000");
+        assert.equal(hit.getAttribute("width"), "400");
+        assert.equal(map.style.aspectRatio, "0.72");
+        assert.match(map.getAttribute("aria-label"), /只看本版 1 篇/);
+
+        map.click();
+        await settle();
+        assert.equal(doc.querySelector("#result-context").hidden, false, "点击后进入本版筛选");
+        assert.match(doc.getElementById("result-context-title").textContent, /本版|版面|湛江日报/);
       });
     },
   },
   {
-    name: "筛选面板可收起：按钮文案、结果区布局与记忆同步",
+    name: "筛选浮层：默认收起、按钮角标反映筛选强度、Esc 与点外部关闭",
     fn: () =>
       withPage(undefined, async (page) => {
         const doc = page.document;
         const panel = doc.getElementById("filter-panel");
         const toggle = doc.getElementById("filter-toggle");
-        const workspace = doc.querySelector(".results-workspace");
-        assert.equal(panel.hidden, false);
-        assert.equal(toggle.textContent, "隐藏筛选");
-        assert.equal(toggle.getAttribute("aria-expanded"), "true");
+        const badge = doc.getElementById("filter-count");
+        assert.equal(panel.hidden, true, "默认收起：浮层不占版面");
+        assert.equal(toggle.getAttribute("aria-expanded"), "false");
+        assert.equal(badge.hidden, true, "没有筛选时不显示角标");
 
         toggle.click();
         await settle();
-        assert.equal(panel.hidden, true, "收起后面板隐藏");
-        assert.equal(toggle.textContent, "显示筛选");
-        assert.equal(toggle.getAttribute("aria-expanded"), "false");
-        assert.ok(workspace.classList.contains("is-collapsed"), "收起后结果表占满整行");
+        assert.equal(panel.hidden, false);
+        assert.equal(toggle.getAttribute("aria-expanded"), "true");
+        assert.equal(page.window.localStorage.getItem("newspaper-auto.filtersOpen"), "1");
+
+        // Esc 关闭并交还焦点
+        doc.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await settle();
+        assert.equal(panel.hidden, true, "Esc 关闭浮层");
         assert.equal(page.window.localStorage.getItem("newspaper-auto.filtersOpen"), "0");
 
+        // 点浮层外部也关闭
         toggle.click();
         await settle();
         assert.equal(panel.hidden, false);
-        assert.ok(!workspace.classList.contains("is-collapsed"));
-        assert.equal(page.window.localStorage.getItem("newspaper-auto.filtersOpen"), "1");
+        doc.getElementById("results-title").dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+        await settle();
+        assert.equal(panel.hidden, true, "点浮层外部关闭");
+
+        // 筛选条件生效后角标显示数量
+        const q = doc.getElementById("q");
+        q.value = "人工智能";
+        q.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+        await settle();
+        assert.equal(badge.hidden, false);
+        assert.equal(badge.textContent, "1", "搜索框算一项筛选");
       }),
   },
   {

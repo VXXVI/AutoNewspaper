@@ -6,11 +6,10 @@ import {
   paperRanking, keywordRanking, heatmap, HEATMAP_KEY_SEP,
 } from "./store.js";
 import {
-  $, el, mount, safeUrl, setText, setInputValue, clearNode, setHidden, toggleClass, chip,
+  $, el, mount, safeUrl, setText, setInputValue, clearNode, setHidden, chip,
 } from "./dom.js";
 import { geomText } from "./format.js";
 
-export var MAX_LAYOUTS = 24;
 export var MAX_RANK = 8;
 export var MAX_HEATMAP_PAPERS = 8;
 export var MAX_HEATMAP_DATES = 14;
@@ -38,7 +37,7 @@ export function renderApp(ctx) {
   renderVersion(state);
   renderFilterInputs(state);
   renderDateBounds(state);
-  renderFiltersToggle(state);
+  renderFilterPopover(state);
   renderControls(ctx, state);
   renderScanPanel(state);
   renderScanHistory(state);
@@ -48,8 +47,7 @@ export function renderApp(ctx) {
     var list = selectSorted(state);
     renderStats(state, all, list);
     renderChart(ctx, list);
-    renderLayouts(ctx, list);
-    renderRows(state, list);
+    renderRows(ctx, state, list);
     renderResultContext(state, list);
     renderShown(state, all, list);
     renderEmpty(state, all, list);
@@ -108,16 +106,37 @@ function renderFilterInputs(state) {
   if (sort && sort.value !== state.sort) sort.value = state.sort;
 }
 
-/* 筛选面板可整块收起：收起后结果表占满整行，页面信息密度更高。
- * 选择记忆在 localStorage（app.js），刷新/重开看板后保持。 */
-function renderFiltersToggle(state) {
-  var open = state.filtersOpen !== false;
+/* 筛选面板做成结果卡右上角的浮层：收起时零占位，整行宽度都留给命中列表。
+ * 展开状态记忆在 localStorage（app.js），刷新/重开看板后保持。 */
+function renderFilterPopover(state) {
+  var open = state.filtersOpen === true;
   setHidden($("filter-panel"), !open);
-  toggleClass(document.querySelector(".results-workspace"), "is-collapsed", !open);
   var btn = $("filter-toggle");
-  if (!btn) return;
-  setText(btn, open ? "隐藏筛选" : "显示筛选");
-  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+  var count = activeFilterCount(state);
+  setHidden($("filter-count"), count === 0);
+  setText($("filter-count"), String(count));
+  if (btn) {
+    btn.title = count
+      ? "已启用 " + count + " 项筛选，点此查看或调整"
+      : "按时间、报社、关键词缩小范围";
+  }
+}
+
+/* 当前启用的筛选条件数：既是「筛选」按钮上的角标，也让收起状态下的筛选强度可见。
+ * 报社/关键词 chips 是「全选 = 未筛选」的语义，所以只有**真被收窄**时才计一项。 */
+export function activeFilterCount(state) {
+  var data = state.data;
+  var count = 0;
+  if (state.q) count += 1;
+  if (state.from || state.to) count += 1;
+  if (state.preset && state.preset !== "all") count += 1;
+  if (data) {
+    if (state.papers.size !== data.papers.length) count += 1;
+    if (state.keywords.size !== data.keywords.length) count += 1;
+  }
+  if (state.linkedFilter) count += 1;
+  return count;
 }
 
 function renderDateBounds(state) {
@@ -392,88 +411,114 @@ export function layoutKeyOf(r) {
   return [r.paper, r.date, r.section_no || "", r.section || "—"].join(LAYOUT_KEY_SEP);
 }
 
-export function renderLayouts(ctx, records) {
-  var box = $("layouts"), empty = $("layouts-empty");
-  if (!box || !empty) return;
-  var layoutMap = (ctx.getState().data && ctx.getState().data.layouts) || {};
-  var groups = {};
-  records.forEach(function (r) {
-    var key = layoutKeyOf(r);
-    // 优先用后端按版面去重的共享 layout；老接口仍逐条带 layout 时兼容；都没有才用 geometry 拼近似图。
-    var layout = layoutMap[key] || r.layout || fallbackLayout(r);
-    if (!layout || !Array.isArray(layout.items) || !layout.items.length) return;
-    if (!groups[key]) {
-      groups[key] = { key: key, paper: r.paper, date: r.date, section: r.section || "—",
-        layout: layout, hitUrls: new Set(), titles: [] };
-    }
-    if (layout.items.length > groups[key].layout.items.length) groups[key].layout = layout;
-    groups[key].hitUrls.add(r.url);
-    if (r.title && groups[key].titles.indexOf(r.title) === -1) groups[key].titles.push(r.title);
-  });
-  clearNode(box);
-  var list = Object.keys(groups).map(function (k) { return groups[k]; });
-  list.sort(function (a, b) {
-    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-    return a.paper.localeCompare(b.paper, "zh") || a.section.localeCompare(b.section, "zh");
-  });
-  $("layouts-summary").textContent = list.length
-    ? (list.length > MAX_LAYOUTS ? "显示 " + MAX_LAYOUTS + " / " + list.length + " 个版面" : list.length + " 个可绘制版面")
-    : "暂无坐标";
-  empty.hidden = list.length > 0;
-  if (!list.length) {
-    empty.textContent = records.length
-      ? "这些记录的网站没有提供二维版面坐标；仍会显示“版内第几条”，但不会伪造位置图。重新扫描后，支持坐标的报社会自动出现。"
-      : "当前筛选没有命中记录。";
-    return;
-  }
-  list.slice(0, MAX_LAYOUTS).forEach(function (group) {
-    var lf = ctx.getState().linkedFilter;
-    var active = lf && lf.type === "layout" && lf.key === group.key;
-    var card = mount(box, "article", active ? "layout-item is-active" : "layout-item");
-    var page = mount(card, "div", "layout-page");
-    page.style.aspectRatio = String(Math.max(0.35, Math.min(1.5, Number(group.layout.aspect_ratio) || 0.72)));
-    page.setAttribute("role", "img");
-    page.setAttribute("aria-label", group.paper + " " + group.date + " " + group.section +
-      "版面位置图，命中 " + group.hitUrls.size + " 条，共 " + group.layout.items.length + " 个位置");
-    group.layout.items.forEach(function (item) {
-      var block = mount(page, "span", group.hitUrls.has(item.url) ? "layout-block hit" : "layout-block");
-      block.style.left = pct(item.left);
-      block.style.top = pct(item.top);
-      block.style.width = pct(Math.max(0.004, item.right - item.left));
-      block.style.height = pct(Math.max(0.004, item.bottom - item.top));
-      block.title = group.hitUrls.has(item.url) ? "命中报道" : "本版其他报道";
-    });
-    var info = mount(card, "div", "layout-info");
-    mount(info, "h3", null, group.paper + " · " + group.date);
-    mount(info, "p", null, group.section);
-    mount(info, "p", "layout-hit", "命中 " + group.hitUrls.size + " 条 / 本版 " + group.layout.items.length + " 个位置");
-    group.titles.slice(0, 3).forEach(function (title) { mount(info, "p", null, "· " + title); });
-    if (group.layout.partial) mount(info, "p", null, "历史记录仅保留命中块，背景文章将在下次扫描后补全。");
-    var viewButton = mount(info, "button", active ? "btn subtle layout-action is-active" : "btn subtle layout-action",
-      active ? "取消本版筛选" : "查看本版 " + group.hitUrls.size + " 篇报道");
-    viewButton.type = "button";
-    viewButton.setAttribute("aria-pressed", active ? "true" : "false");
-    viewButton.setAttribute("aria-controls", "rows");
-    viewButton.addEventListener("click", function () {
-      toggleLinked(ctx, { type: "layout", key: group.key, urls: new Set(group.hitUrls),
-        label: group.paper + " · " + group.date + " · " + group.section });
-    });
-    var legend = mount(info, "div", "layout-legend");
-    legend.appendChild(legendItem("hit-key", "命中"));
-    legend.appendChild(legendItem("", "本版其他报道"));
-  });
+/* ------------------------------------------------------- 行内版面位置缩略图
+ *
+ * 目标：**一条命中对应一个位置图**，紧贴在标题右侧，扫读时不必往页面下方找整节版面图。
+ *
+ * 性能：一次默认渲染 50 行（「显示更多」还在加），而一个版面动辄几十个块。
+ * 若每块一个 DOM 节点，光缩略图就是几千个节点；这里把**非命中块预先合成一条 SVG
+ * path**（按 layout 对象缓存、整版共享），每行只多一个命中 <rect>。
+ */
+var SVG_NS = "http://www.w3.org/2000/svg";
+var MAP_UNIT = 1000; // 缩略图 viewBox 边长：版面坐标是 0~1 的归一化值
+var _mapCache = new WeakMap();
+
+function mapNumber(value, fallback) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
-function legendItem(className, text) {
-  var span = el("span", className || null);
-  span.appendChild(el("i"));
-  span.appendChild(document.createTextNode(text));
-  return span;
+function mapUnit(value) {
+  return Math.round(value * MAP_UNIT * 10) / 10;
 }
 
-export function renderRows(state, records) {
+/** 取这条记录所属版面的布局：后端的共享 layouts → 老接口逐条 layout → geometry 近似图。 */
+function layoutOf(state, record) {
+  var layoutMap = (state.data && state.data.layouts) || {};
+  return layoutMap[layoutKeyOf(record)] || record.layout || fallbackLayout(record);
+}
+
+/** 把整版的非命中块压成一条 path。同一份 layout 只算一次（WeakMap 缓存）。 */
+function mapGeometry(layout) {
+  var cached = _mapCache.get(layout);
+  if (cached) return cached;
+  var path = "";
+  (layout.items || []).forEach(function (item) {
+    var left = mapNumber(item.left, 0), top = mapNumber(item.top, 0);
+    var width = mapNumber(item.right, 1) - left, height = mapNumber(item.bottom, 1) - top;
+    if (width <= 0 || height <= 0) return;
+    // 相对段拼矩形（M/h/v/h/z）比重复写绝对坐标短得多，几十个块也只有几百字节
+    path += "M" + mapUnit(left) + " " + mapUnit(top) +
+      "h" + mapUnit(width) + "v" + mapUnit(height) + "h" + mapUnit(-width) + "z";
+  });
+  cached = {
+    path: path,
+    aspect: Math.max(0.35, Math.min(1.5, Number(layout.aspect_ratio) || 0.72)),
+  };
+  _mapCache.set(layout, cached);
+  return cached;
+}
+
+/**
+ * 生成一条命中的版面位置缩略图（`<button>`，点一下 = 只看本版报道，等同旧的
+ * 「查看本版 N 篇」）。没有坐标数据时返回 null，由调用方只渲染文字。
+ */
+function rowMap(ctx, state, record, groupUrls) {
+  var layout = layoutOf(state, record);
+  if (!layout || !Array.isArray(layout.items) || !layout.items.length) return null;
+  var geometry = mapGeometry(layout);
+  var key = layoutKeyOf(record);
+  var linked = state.linkedFilter;
+  var active = Boolean(linked && linked.type === "layout" && linked.key === key);
+  var action = active ? "取消本版筛选" : "只看本版 " + groupUrls.size + " 篇报道";
+
+  var box = el("button", active ? "row-map is-active" : "row-map");
+  box.type = "button";
+  // 版面宽高比靠外层 aspect-ratio 决定，viewBox 用 preserveAspectRatio="none"
+  // 让 x/y 各自归一化 —— 这正是 items 里 left/right 与 top/bottom 的原始口径。
+  box.style.aspectRatio = String(geometry.aspect);
+  box.title = action;
+  box.setAttribute("aria-label", (record.section || "本版") + " 版面位置图；" + action);
+  box.setAttribute("aria-pressed", active ? "true" : "false");
+  box.setAttribute("aria-controls", "rows");
+  box.addEventListener("click", function () {
+    toggleLinked(ctx, { type: "layout", key: key, urls: groupUrls,
+      label: record.paper + " · " + record.date + " · " + (record.section || "—") });
+  });
+
+  var svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 " + MAP_UNIT + " " + MAP_UNIT);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  var base = document.createElementNS(SVG_NS, "path");
+  base.setAttribute("class", "map-base");
+  base.setAttribute("d", geometry.path);
+  svg.appendChild(base);
+
+  var hit = layout.items.filter(function (item) { return item.url === record.url; })[0];
+  if (hit) {
+    var left = mapNumber(hit.left, 0), top = mapNumber(hit.top, 0);
+    var rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("class", "map-hit");
+    rect.setAttribute("x", String(mapUnit(left)));
+    rect.setAttribute("y", String(mapUnit(top)));
+    rect.setAttribute("width", String(Math.max(2, mapUnit(mapNumber(hit.right, 1) - left))));
+    rect.setAttribute("height", String(Math.max(2, mapUnit(mapNumber(hit.bottom, 1) - top))));
+    svg.appendChild(rect);
+  }
+  box.appendChild(svg);
+  return box;
+}
+
+export function renderRows(ctx, state, records) {
   var body = $("rows");
   if (!body) return;
   clearNode(body);
+  // 先按版面聚一遍：同一版的命中集合既用于缩略图的「只看本版 N 篇」，也是点击后联动筛选的依据。
+  var groupUrls = {};
+  records.forEach(function (r) {
+    var key = layoutKeyOf(r);
+    if (!groupUrls[key]) groupUrls[key] = new Set();
+    groupUrls[key].add(r.url);
+  });
   var fragment = document.createDocumentFragment();
   records.slice(0, state.visibleRows).forEach(function (r) {
     var tr = document.createElement("tr");
@@ -492,12 +537,16 @@ export function renderRows(state, records) {
       r.matched.filter(function (k) { return state.keywords.has(k); })
         .forEach(function (k) { mount(tags, "span", "tag", k); });
     }
-    // 版面位置紧跟在命中报道右侧：一条报道对应一格，扫读时不必在行内来回找。
-    var position = geomText(r.geometry);
+    // 版面位置：一条报道对应一格缩略位置图，紧跟在命中报道右侧。
     var posCell = mount(tr, "td", "col-section");
     posCell.setAttribute("data-label", "版面位置");
-    mount(posCell, "span", "section-name", r.section || "—");
-    if (position) mount(posCell, "span", "section-pos", position);
+    var cellBody = mount(posCell, "div", "cell-body");
+    var map = rowMap(ctx, state, r, groupUrls[layoutKeyOf(r)]);
+    if (map) cellBody.appendChild(map);
+    var text = mount(cellBody, "div", "cell-text");
+    mount(text, "span", "section-name", r.section || "—");
+    var position = geomText(r.geometry);
+    if (position) mount(text, "span", "section-pos", position);
     fragment.appendChild(tr);
   });
   body.appendChild(fragment);

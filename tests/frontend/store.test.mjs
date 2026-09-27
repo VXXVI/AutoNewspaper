@@ -270,12 +270,12 @@ test("paperRanking / keywordRanking 按命中数倒序", () => {
   assert.deepEqual(rank, [{ name: "k1", count: 2 }, { name: "k2", count: 1 }]);
 });
 
-test("SET_FILTERS_OPEN：控制结果区筛选面板开合", () => {
+test("SET_FILTERS_OPEN：控制结果区筛选浮层开合", () => {
   const s = createInitialState();
-  assert.equal(s.filtersOpen, true, "默认展开");
-  assert.equal(reducer(s, { type: A.SET_FILTERS_OPEN, open: false }).filtersOpen, false);
+  assert.equal(s.filtersOpen, false, "默认收起：浮层不占版面");
   assert.equal(reducer(s, { type: A.SET_FILTERS_OPEN, open: true }).filtersOpen, true);
-  assert.equal(reducer(s, { type: A.SET_FILTERS_OPEN }).filtersOpen, true, "缺省视为展开");
+  assert.equal(reducer(s, { type: A.SET_FILTERS_OPEN, open: false }).filtersOpen, false);
+  assert.equal(reducer(s, { type: A.SET_FILTERS_OPEN }).filtersOpen, false, "缺省视为收起");
 });
 
 test("heatmap：行列裁剪与计数", () => {

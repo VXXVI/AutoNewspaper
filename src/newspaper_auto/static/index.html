@@ -26,7 +26,6 @@
       <a href="#scan-card">开始扫描</a>
       <a href="#dashboard-section">图形看板</a>
       <a href="#results-card">查看结果</a>
-      <a href="#layout-rail">版面位置</a>
       <a href="#trend-section">时间趋势</a>
     </nav>
     <div class="top-actions">
@@ -202,119 +201,100 @@
     </div>
   </section>
 
-  <div class="results-layout">
-    <section class="card results-card" id="results-card" aria-labelledby="results-title">
-      <div class="section-heading results-heading">
-        <div>
-          <div class="section-kicker"><span>02</span> 浏览监测结果</div>
-          <h2 id="results-title">命中报道</h2>
-          <p id="shown" aria-live="polite">正在加载…</p>
-        </div>
-        <div class="button-group">
-          <button id="filter-toggle" class="btn ghost" type="button" aria-expanded="true" aria-controls="filter-panel">隐藏筛选</button>
-          <button id="export" class="btn ghost" type="button">导出结果</button>
-          <button id="reset" class="btn subtle" type="button">清除筛选</button>
-        </div>
+  <section class="card results-card" id="results-card" aria-labelledby="results-title">
+    <div class="section-heading results-heading">
+      <div>
+        <div class="section-kicker"><span>02</span> 浏览监测结果</div>
+        <h2 id="results-title">命中报道</h2>
+        <p id="shown" aria-live="polite">正在加载…</p>
+      </div>
+      <div class="button-group">
+        <button id="filter-toggle" class="btn ghost filter-trigger" type="button" aria-expanded="false" aria-controls="filter-panel">筛选<span class="filter-count" id="filter-count" hidden></span></button>
+        <button id="export" class="btn ghost" type="button">导出结果</button>
+        <button id="reset" class="btn subtle" type="button">清除筛选</button>
       </div>
 
-      <div class="result-context" id="result-context" role="status" aria-live="polite" hidden>
-        <div>
-          <b id="result-context-title">当前结果范围</b>
-          <span id="result-context-detail">命中报道、时间趋势与版面位置保持同步。</span>
+      <aside class="filter-popover" id="filter-panel" aria-label="结果筛选" hidden>
+        <div class="filter-heading">
+          <b>筛选结果</b>
+          <span>缩小范围，更快找到目标报道</span>
         </div>
-        <div class="button-group">
-          <button id="result-clear-linked" class="btn subtle compact-button" type="button" hidden>取消图表筛选</button>
-          <button id="result-show-history" class="btn ghost compact-button" type="button" hidden>查看全部历史</button>
+
+        <label class="field field-search">
+          <span>搜索结果</span>
+          <div class="search-control"><i aria-hidden="true"></i><input id="q" type="search" placeholder="标题、版面或上下文" autocomplete="off"></div>
+        </label>
+
+        <div class="date-filter-grid">
+          <label class="field compact-field"><span>开始日期</span><input id="from" type="date"></label>
+          <label class="field compact-field"><span>结束日期</span><input id="to" type="date"></label>
         </div>
+
+        <label class="field compact-field">
+          <span>排序方式</span>
+          <select id="sort">
+            <option value="date-desc">最新优先</option>
+            <option value="date-asc">最早优先</option>
+            <option value="paper">按报社</option>
+            <option value="title">按标题</option>
+          </select>
+        </label>
+
+        <fieldset class="filter-group fieldset-reset">
+          <legend>快捷时间</legend>
+          <div class="chips" id="preset-chips">
+            <button class="chip on" data-preset="all" type="button" aria-pressed="true">全部</button>
+            <button class="chip" data-preset="today" type="button" aria-pressed="false">最新一天</button>
+            <button class="chip" data-preset="7d" type="button" aria-pressed="false">近 7 天</button>
+            <button class="chip" data-preset="30d" type="button" aria-pressed="false">近 30 天</button>
+          </div>
+          <span class="hint" id="range-hint"></span>
+        </fieldset>
+
+        <details class="filter-details">
+          <summary>报社与关键词</summary>
+          <div class="filter-options">
+            <fieldset class="option-row fieldset-reset">
+              <legend>报社</legend>
+              <div class="chips" id="paper-chips"></div>
+            </fieldset>
+            <fieldset class="option-row fieldset-reset">
+              <legend>关键词</legend>
+              <div class="chips" id="keyword-chips"></div>
+            </fieldset>
+          </div>
+        </details>
+      </aside>
+    </div>
+
+    <div class="result-context" id="result-context" role="status" aria-live="polite" hidden>
+      <div>
+        <b id="result-context-title">当前结果范围</b>
+        <span id="result-context-detail">命中报道、时间趋势与版面位置保持同步。</span>
       </div>
-
-      <div class="results-workspace">
-        <aside class="filter-panel" id="filter-panel" aria-label="结果筛选">
-          <div class="filter-heading">
-            <b>筛选结果</b>
-            <span>缩小范围，更快找到目标报道</span>
-          </div>
-
-          <label class="field field-search">
-            <span>搜索结果</span>
-            <div class="search-control"><i aria-hidden="true"></i><input id="q" type="search" placeholder="标题、版面或上下文" autocomplete="off"></div>
-          </label>
-
-          <div class="date-filter-grid">
-            <label class="field compact-field"><span>开始日期</span><input id="from" type="date"></label>
-            <label class="field compact-field"><span>结束日期</span><input id="to" type="date"></label>
-          </div>
-
-          <label class="field compact-field">
-            <span>排序方式</span>
-            <select id="sort">
-              <option value="date-desc">最新优先</option>
-              <option value="date-asc">最早优先</option>
-              <option value="paper">按报社</option>
-              <option value="title">按标题</option>
-            </select>
-          </label>
-
-          <fieldset class="filter-group fieldset-reset">
-            <legend>快捷时间</legend>
-            <div class="chips" id="preset-chips">
-              <button class="chip on" data-preset="all" type="button" aria-pressed="true">全部</button>
-              <button class="chip" data-preset="today" type="button" aria-pressed="false">最新一天</button>
-              <button class="chip" data-preset="7d" type="button" aria-pressed="false">近 7 天</button>
-              <button class="chip" data-preset="30d" type="button" aria-pressed="false">近 30 天</button>
-            </div>
-            <span class="hint" id="range-hint"></span>
-          </fieldset>
-
-          <details class="filter-details">
-            <summary>报社与关键词</summary>
-            <div class="filter-options">
-              <fieldset class="option-row fieldset-reset">
-                <legend>报社</legend>
-                <div class="chips" id="paper-chips"></div>
-              </fieldset>
-              <fieldset class="option-row fieldset-reset">
-                <legend>关键词</legend>
-                <div class="chips" id="keyword-chips"></div>
-              </fieldset>
-            </div>
-          </details>
-        </aside>
-
-        <div class="result-list-panel">
-          <div class="table-wrap" tabindex="0" aria-label="命中报道列表，可横向滚动">
-            <table>
-              <caption class="sr-only">当前筛选条件下的命中报道</caption>
-              <thead>
-                <tr><th class="col-paper" scope="col">报社</th><th class="col-date" scope="col">日期</th><th scope="col">标题与命中上下文</th><th class="col-section" scope="col">版面位置</th></tr>
-              </thead>
-              <tbody id="rows"></tbody>
-            </table>
-          </div>
-          <div class="empty" id="empty" hidden>没有符合条件的命中。</div>
-          <div class="results-footer" id="results-footer" hidden>
-            <span id="results-limit"></span>
-            <button id="results-more" class="btn ghost" type="button">显示更多</button>
-          </div>
-        </div>
+      <div class="button-group">
+        <button id="result-clear-linked" class="btn subtle compact-button" type="button" hidden>取消图表筛选</button>
+        <button id="result-show-history" class="btn ghost compact-button" type="button" hidden>查看全部历史</button>
       </div>
-    </section>
+    </div>
 
-    <aside class="layout-rail" id="layout-rail" aria-labelledby="layouts-title">
-      <section class="card layout-card" id="layouts-card">
-        <div class="section-heading compact-heading">
-          <div>
-            <span class="eyebrow">版面位置</span>
-            <h2 id="layouts-title">报道出现在报纸的什么位置</h2>
-            <p>高亮区域是命中报道，浅色区域是同版其他报道。</p>
-          </div>
-          <div class="hint count-badge" id="layouts-summary">—</div>
-        </div>
-        <div class="layout-grid" id="layouts"></div>
-        <div class="empty" id="layouts-empty" hidden></div>
-      </section>
-    </aside>
-  </div>
+    <div class="result-list-panel">
+      <div class="table-wrap" tabindex="0" aria-label="命中报道列表，可横向滚动">
+        <table>
+          <caption class="sr-only">当前筛选条件下的命中报道</caption>
+          <thead>
+            <tr><th class="col-paper" scope="col">报社</th><th class="col-date" scope="col">日期</th><th scope="col">标题与命中上下文</th><th class="col-section" scope="col">版面位置</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="empty" hidden>没有符合条件的命中。</div>
+      <div class="results-footer" id="results-footer" hidden>
+        <span id="results-limit"></span>
+        <button id="results-more" class="btn ghost" type="button">显示更多</button>
+      </div>
+    </div>
+  </section>
 
   <div class="analysis-heading" id="analysis">
     <div>
@@ -324,7 +304,7 @@
     <p>图表始终跟随当前结果筛选。</p>
   </div>
 
-  <section class="analysis-grid" id="trend-section" aria-label="时间趋势">
+  <section class="trend-section" id="trend-section" aria-label="时间趋势">
     <section class="card trend-card" aria-labelledby="trend-title">
       <div class="section-heading compact-heading">
         <div>

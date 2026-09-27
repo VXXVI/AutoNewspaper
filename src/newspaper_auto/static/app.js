@@ -123,28 +123,43 @@ import { shiftDate } from "./format.js";
     dispatch(action);
   }
 
-  /* -------------------------------------------------------------- 筛选面板开关 */
-  // 记忆「筛选面板是否收起」：localStorage 在隐私模式/被禁用时会抛异常，一律吞掉并回落到默认展开。
+  /* -------------------------------------------------------------- 筛选浮层开关 */
+  // 记忆「筛选浮层是否展开」：localStorage 在隐私模式/被禁用时会抛异常，一律吞掉并回落到默认收起。
   var FILTERS_KEY = "newspaper-auto.filtersOpen";
 
   function readFiltersOpen() {
     try {
       var raw = window.localStorage.getItem(FILTERS_KEY);
-      return raw === null ? true : raw === "1";
-    } catch (err) { return true; }
+      return raw === "1";
+    } catch (err) { return false; }
   }
 
   function writeFiltersOpen(open) {
     try { window.localStorage.setItem(FILTERS_KEY, open ? "1" : "0"); } catch (err) { /* 忽略 */ }
   }
 
+  function setFiltersOpen(open) {
+    dispatch({ type: A.SET_FILTERS_OPEN, open: open }, { immediate: true });
+    writeFiltersOpen(open);
+  }
+
+  function filtersOpen() { return store.getState().filtersOpen === true; }
+
   /* -------------------------------------------------------------- 启动 */
   function init() {
     dispatch({ type: A.SET_FILTERS_OPEN, open: readFiltersOpen() });
-    $("filter-toggle").addEventListener("click", function () {
-      var open = !(store.getState().filtersOpen !== false);
-      dispatch({ type: A.SET_FILTERS_OPEN, open: open }, { immediate: true });
-      writeFiltersOpen(open);
+    $("filter-toggle").addEventListener("click", function () { setFiltersOpen(!filtersOpen()); });
+    // 浮层的两条退出口：Esc 与点面板外部。关闭后焦点回到触发按钮，键盘用户不会丢位置。
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape" || !filtersOpen()) return;
+      setFiltersOpen(false);
+      $("filter-toggle").focus();
+    });
+    document.addEventListener("click", function (event) {
+      if (!filtersOpen()) return;
+      var panel = $("filter-panel"), trigger = $("filter-toggle");
+      if (panel.contains(event.target) || trigger.contains(event.target)) return;
+      setFiltersOpen(false);
     });
     $("reload").addEventListener("click", function () { load({ preserve: true }); });
     $("scan-form").addEventListener("submit", function (event) {
