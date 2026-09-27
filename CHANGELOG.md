@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-27
+
 ### Changed
 
 - **Windows 便携版收拢成一个 `NewspaperAuto.exe`**。上一版分了「无窗口版 + 控制台版」两个
