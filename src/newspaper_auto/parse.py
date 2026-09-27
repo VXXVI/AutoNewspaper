@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import unicodedata
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urljoin
@@ -334,9 +335,21 @@ def extract_text(html: str) -> str:
     return clean(segment)
 
 
+def normalize_for_match(text: str) -> str:
+    """匹配前的归一化：用 NFKC 把全角字母/数字/括号等折叠成半角。
+
+    关键词与正文两侧必须走同一口径（``make_kw_re`` 归一化关键词，``scanner``
+    归一化正文），否则用户打成全角「ＡＩ」而正文是半角「AI」时会**静默漏匹配**——
+    对监测工具来说，漏报比误报更致命。
+    """
+    return unicodedata.normalize("NFKC", text)
+
+
 def make_kw_re(keyword: str) -> re.Pattern[str]:
-    """关键词正则：允许字符间出现空白，防止标签把中文切开导致漏匹配。"""
-    return re.compile(r"\s*".join(re.escape(ch) for ch in keyword), re.I)
+    """关键词正则：先做 NFKC 归一化（全角→半角），再允许字符间出现空白，
+    防止标签把中文切开导致漏匹配；大小写不敏感。"""
+    normalized = normalize_for_match(keyword)
+    return re.compile(r"\s*".join(re.escape(ch) for ch in normalized), re.I)
 
 
 def snippet(text: str, match: re.Match[str], span: int = 70) -> str:

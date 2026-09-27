@@ -15,6 +15,26 @@ CONTENT_RE = r"content_\w+\.html?$"
 Fetcher = Callable[[str], tuple[int, str]]
 
 
+def partial_failure(stats: dict[str, Any]) -> bool:
+    """该单元是否属于「严重部分失败」：抓取失败占比达到 ``config.PARTIAL_FAILURE_RATIO``。
+
+    只描述「入口正常、也拿到了文章」的单元；整体失败（``ok=False``）由调用方另行统计，
+    避免同一单元被重复计入两种失败。
+
+    两个占比的分母语义**不同，不能混用**：
+    - ``sections`` 是**发现**到的版面总数（含抓取失败的），故版面占比 = failed / sections；
+    - ``scanned`` 是**成功**的文章数（不含失败），故文章占比 = failed / (scanned + failed)。
+    """
+    sections = int(stats.get("sections") or 0)
+    sections_failed = int(stats.get("sections_failed") or 0)
+    if sections > 0 and sections_failed / sections >= config.PARTIAL_FAILURE_RATIO:
+        return True
+    scanned = int(stats.get("scanned") or 0)
+    articles_failed = int(stats.get("articles_failed") or 0)
+    attempts = scanned + articles_failed
+    return attempts > 0 and articles_failed / attempts >= config.PARTIAL_FAILURE_RATIO
+
+
 def _classify_entry_failure(code: int, body_len: int) -> tuple[str, str]:
     """把入口失败同时收敛为 ``(failure_kind, 给用户看的中文说明)``。
 
@@ -420,9 +440,12 @@ def scan_paper(
             )
             return None
         blob = title + " " + text
+        # 匹配走 NFKC 归一化后的文本（全角 ＡＩ 也能命中半角关键词），
+        # 与 make_kw_re 对关键词的归一化保持同一口径。
+        match_blob = parse.normalize_for_match(blob)
         # 一次遍历同时带回关键词与命中位置：matched / snippets 都从这里派生，
         # 不再对同一 blob 跑第二遍正则。
-        found = [(keyword, match) for keyword, kr in kw_res.items() if (match := kr.search(blob))]
+        found = [(keyword, match) for keyword, kr in kw_res.items() if (match := kr.search(match_blob))]
         section = article_section.get(article_url, "")
         record: dict[str, Any] = {
             "paper": paper["name"],
@@ -440,7 +463,7 @@ def scan_paper(
         if layout:
             record["layout"] = layout
         if found:
-            record["snippets"] = [parse.snippet(blob, match) for _keyword, match in found[:3]]
+            record["snippets"] = [parse.snippet(match_blob, match) for _keyword, match in found[:3]]
             record["matched"] = [keyword for keyword, _match in found]
         return record
 

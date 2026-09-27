@@ -439,8 +439,24 @@ def test_partial_failure_article_does_not_block_hits(tmp_path, capsys, site_fetc
     hit_files = _hit_files(records)
     # content_104 命中；content_103 失败被跳过，其余正常
     assert "content_104.html" in hit_files
-    # 文章失败不导致 CLI 非零退出（只有入口失败才非零）
+    # 4 篇里只失败 1 篇（25%），未达 config.PARTIAL_FAILURE_RATIO → 仍算成功
     assert code == 0
+
+
+def test_severe_partial_failure_exits_nonzero(tmp_path, capsys, site_fetcher, today):
+    """过半文章页失败：结果可能漏报，CLI 应以非零退出让 CI 变红，并给出明确告警。"""
+    date_part = f"{today.year}-{today.month:02d}/{today.day:02d}"
+    bad = {f"http://paper.gdzjdaily.com.cn/html/{date_part}/content_{no}.html" for no in ("101", "102")}
+
+    def fetcher(url: str):
+        return (500, "") if url in bad else site_fetcher(today)(url)
+
+    code = cli.main([*ZJ_ARGS, "--no-state", "--json", "--data-dir", str(tmp_path)], fetcher=fetcher)
+    _out, err = capsys.readouterr()
+    # 4 篇里失败 2 篇 = 50%，达到阈值
+    assert code == 1
+    assert "抓取失败占比达到 50%" in err
+    assert "结果可能漏报" in err
 
 
 def test_select_papers_reports_unmatched():

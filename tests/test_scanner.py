@@ -162,6 +162,35 @@ def test_all_empty_article_pages_are_failure(fixed_day):
     assert stats["ok"] is False
 
 
+def test_partial_failure_thresholds_by_ratio():
+    """过半失败才算「严重部分失败」；两个占比的分母语义不同，不能混用。"""
+    # 版面：sections 已含抓取失败的版面，故分母就是 sections
+    assert scanner.partial_failure({"sections": 3, "sections_failed": 1}) is False
+    assert scanner.partial_failure({"sections": 3, "sections_failed": 2}) is True
+    # 文章：scanned 只含成功数，故分母是 scanned + articles_failed
+    assert scanner.partial_failure({"scanned": 3, "articles_failed": 1}) is False
+    assert scanner.partial_failure({"scanned": 2, "articles_failed": 2}) is True
+    # 入口就失败（什么都没抓到）不算部分失败 —— 由 entry_failures 负责
+    assert scanner.partial_failure({"sections": 0, "scanned": 0, "articles_failed": 0}) is False
+
+
+def test_scan_matches_fullwidth_body_with_halfwidth_keyword(fixed_day):
+    """正文写成全角「ＡＩ」、关键词是半角「AI」：NFKC 归一化后必须命中（否则属静默漏报）。"""
+    paper = {"name": "测试报", "style": "ymd", "tpl": "https://x/{a}/node_1.html"}
+    section = '<a href="content_1.html">文章</a>' + "x" * 400
+    article = (
+        "<html><body><founder-content>本报讨论 ＡＩ 技术</founder-content>" + "x" * 400 + "</body></html>"
+    )
+
+    def fetch(url: str):
+        return (200, article) if "content_" in url else (200, section)
+
+    hits, _articles, _stats = scanner.scan_paper(
+        paper, fixed_day, {"AI": parse.make_kw_re("AI")}, workers=2, fetcher=fetch
+    )
+    assert _hit_names(hits) == {"content_1.html"}
+
+
 def test_section_fetch_failure_is_ignored(zhanjiang_paper, fixed_day, site_fetcher):
     base = f"http://paper.gdzjdaily.com.cn/html/{fixed_day:%Y-%m}/{fixed_day:%d}/"
     fetcher = site_fetcher(fixed_day, status_overrides={base + "node_2.htm": (500, "")})

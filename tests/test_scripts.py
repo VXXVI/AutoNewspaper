@@ -55,6 +55,17 @@ def test_windows_powershell_scripts_are_utf8_bom_with_crlf(rel):
     assert data.count(b"\n") == data.count(b"\r\n"), f"{rel} 存在裸 LF 行"
 
 
+def test_build_windows_zip_copies_explicit_user_files():
+    """回归：组装 zip 曾用 ``Copy-Item packaging\\windows\\*`` 通配，把构建脚本
+    ``installer.iss`` 一起装进了发给最终用户的 windows-x64.zip。现改为显式列举。"""
+    text = (ROOT / "scripts/build_windows.ps1").read_text(encoding="utf-8")
+    assert "packaging\\windows\\*" not in text, "打包 zip 不应再用通配拷贝 packaging\\windows\\"
+
+    zip_block = text.split("组装 zip", 1)[1]
+    for name in ("README.txt", "Run-Scan.cmd", "Start-Dashboard.cmd"):
+        assert name in zip_block, f"zip 组装段应显式包含 {name}"
+
+
 def _make_isolated_project(tmp_path: Path) -> tuple[Path, Path]:
     """复制 run_scan.sh 到 tmp 项目，并造一个回显 argv 的桩 Python。"""
     scripts = tmp_path / "scripts"

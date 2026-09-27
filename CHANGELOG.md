@@ -16,6 +16,18 @@
 - **macOS 双击入口不可执行**：`scripts/scan.command`、`scripts/dashboard.command` 与
   `scripts/run_scan.sh` 此前以 100644 入库，Finder 双击会直接 `permission denied`，
   文档里 `./scripts/run_scan.sh ...` 的用法同样报错。现已改为 100755，并加了防回归测试。
+- **关键词打成全角就漏匹配**：正文里写「ＡＩ」、关键词写「AI」（或反过来）此前一律不命中，
+  属静默漏报。关键词与正文现统一做 NFKC 归一化（全角字母/数字/括号折叠为半角）再匹配。
+- **Windows 便携 zip 夹带构建脚本**：`NewspaperAuto-<版本>-windows-x64.zip` 此前用
+  `Copy-Item packaging\windows\*` 打包，把 Inno Setup 脚本 `installer.iss` 一起发给了
+  最终用户。现改为显式列举 4 个用户文件（exe + 两个 `.cmd` + 使用说明）。
+
+### Changed
+
+- **部分抓取失败不再被当成「全绿」**：单家报社单日的抓取失败占比达到
+  `config.PARTIAL_FAILURE_RATIO`（默认 50%）时，CLI 以退出码 1 结束，让 CI 步骤变红，
+  避免「多数文章没抓到」却报成一次正常扫描。未达阈值的零星失败仍只告警，不影响退出码；
+  日志里每家报社的统计行也会直接标出「⚠️ 版面失败N / 文章失败M」。
 
 ## [0.5.0] - 2026-09-27
 

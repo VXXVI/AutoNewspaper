@@ -415,7 +415,8 @@ docs/scheduling.md            # 本文档
 
 - `scanner` 统计新增 `sections_failed` / `articles_failed` / `failed_urls`；
 - Markdown 报告新增「抓取失败（缺报）」章节，明确警示「无命中 ≠ 真的没有」；
-- CLI 在**入口失败**时以退出码 1 退出，让 Actions 步骤变红（文章级失败不影响退出码）；
+- CLI 在**入口失败**、或**抓取失败占比达到 `config.PARTIAL_FAILURE_RATIO`（默认 50%）**时
+  以退出码 1 退出，让 Actions 步骤变红；未达阈值的零星失败只在日志/报告里告警；
 - Actions 提交步骤改为 `if: always()`，失败时也提交已落盘的增量结果，
   提交信息追加 `[含失败]` 后缀；
 - 羊城晚报在 GitHub runner（Chicago）上原本 30s 才返回 `HTTP 000`，属临界状态，

@@ -209,6 +209,16 @@ def test_make_kw_re_does_not_match_other_schools():
     assert parse.make_kw_re("广东海洋大学").search("广东林业大学") is None
 
 
+def test_make_kw_re_normalizes_fullwidth_keyword():
+    """用户把关键词打成全角「ＡＩ」、正文是半角「AI」时也必须命中。"""
+    assert parse.make_kw_re("ＡＩ").search("AI 技术")
+
+
+def test_normalize_for_match_folds_fullwidth_text():
+    """正文侧同样归一化：半角关键词要能命中正文里的全角写法。"""
+    assert parse.make_kw_re("AI").search(parse.normalize_for_match("本文讨论 ＡＩ 技术"))
+
+
 # ---------------------------------------------------------------- snippet
 def test_snippet_adds_ellipsis_on_both_sides():
     text = "a" * 100 + "KEY" + "b" * 100

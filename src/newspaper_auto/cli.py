@@ -294,7 +294,7 @@ def main(
             flag = "✓" if stats["entry_code"] == 200 else "✗"
             log(
                 f"  {flag} {paper['name']:<5} {day:%m-%d}  版面{stats['sections']:>3}  "
-                f"文章{stats['scanned']:>4}  命中{len(hits):>2}  {stats['note']}"
+                f"文章{stats['scanned']:>4}  命中{len(hits):>2}  {_unit_detail(stats)}"
             )
             # 单元内也可能被取消（scan_paper 会在下一个版面/文章前停止）；
             # 这里再检查一次，确保取消时整体走「不落盘」路径。
@@ -303,6 +303,8 @@ def main(
                 break
 
     entry_failures = [s for s in all_stats if not s.get("ok", s.get("entry_code", 200) == 200)]
+    # 入口正常、但抓取失败占比过半的单元：结果可能漏报，单独统计以便告警 + 非零退出。
+    partial_failures = [s for s in all_stats if s.get("ok") and scanner.partial_failure(s)]
 
     if cancelled:
         log("-" * 72)
@@ -390,21 +392,44 @@ def main(
         log(f"\n  ⚠️  结果写入失败：{persistence_error}")
     if export_error:
         log(f"\n  ⚠️  结果导出失败：{export_error}")
-    if persistence_error or export_error:
-        return 1
-
-    # 入口失败 → 非零退出，让 Actions 步骤变红；但增量状态/报告已在上面写完，
-    # Actions 的"提交结果"步骤应设  if: always()  确保提交仍然发生。
     if entry_failures:
         _report_entry_failures(log, entry_failures)
+    if partial_failures:
+        _report_partial_failures(log, partial_failures)
+
+    # 入口失败 / 严重部分失败 → 非零退出，让 Actions 步骤变红；但增量状态/报告已在
+    # 上面写完，Actions 的"提交结果"步骤应设  if: always()  确保提交仍然发生。
+    if persistence_error or export_error or entry_failures or partial_failures:
         return 1
     return 0
+
+
+def _unit_detail(stats: dict[str, Any]) -> str:
+    """单家报社单日收尾说明：把部分失败显式写出来，别让 ``note`` 为空时「看着一切正常」。"""
+    note = str(stats.get("note") or "")
+    failed: list[str] = []
+    if stats.get("sections_failed"):
+        failed.append(f"版面失败{stats['sections_failed']}")
+    if stats.get("articles_failed"):
+        failed.append(f"文章失败{stats['articles_failed']}")
+    if not failed:
+        return note
+    return f"⚠️ {'、'.join(failed)}" + (f"（{note}）" if note else "")
 
 
 def _report_entry_failures(log: Callable[..., None], entry_failures: list[dict[str, Any]]) -> None:
     """汇总「入口失败 / 扫描异常」的报社与日期，提示结果可能漏报。"""
     names = "、".join(s["paper"] for s in entry_failures)
     log(f"\n  ⚠️  {len(entry_failures)} 个报社/日期出现入口失败或扫描异常（{names}），结果可能漏报！")
+
+
+def _report_partial_failures(log: Callable[..., None], partial_failures: list[dict[str, Any]]) -> None:
+    """汇总「抓取失败占比过半」的报社/日期：结果可能漏报，退出码一并变红。"""
+    units = "、".join(f"{s['paper']} {s['date']}" for s in partial_failures)
+    log(
+        f"\n  ⚠️  {len(partial_failures)} 个报社/日期抓取失败占比达到 "
+        f"{config.PARTIAL_FAILURE_RATIO:.0%}（{units}），结果可能漏报！"
+    )
 
 
 def _internal_failure_stats(paper: dict[str, Any], day: datetime, exc: Exception) -> dict[str, Any]:

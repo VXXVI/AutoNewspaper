@@ -304,7 +304,8 @@ bash -n scripts/*.sh                                  → OK
    - 扫描统计新增 `sections_failed` / `articles_failed` / `failed_urls`；
    - Markdown 报告新增「抓取失败（缺报）」章节（明确「无命中 ≠ 真的没有」），
      「各家扫描情况」表新增「失败」列；
-   - CLI 在**入口失败**时返回退出码 1（文章级失败不影响退出码），让 Actions 步骤变红；
+   - CLI 在**入口失败**、或**抓取失败占比达到 `config.PARTIAL_FAILURE_RATIO`（默认 50%）**时
+     返回退出码 1，让 Actions 步骤变红；未达阈值的零星失败只在日志/报告里告警，不影响退出码；
    - `scan.yml` 提交步骤改为 `if: always()`，失败也提交已落盘的增量结果，
      提交信息追加 `[含失败]` 后缀；
    - 羊城晚报在 GitHub runner（Chicago）上原始请求 30s 才返回 `HTTP 000`，属临界，
