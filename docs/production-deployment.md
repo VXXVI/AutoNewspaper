@@ -1,3 +1,115 @@
+# 生产部署与分发
+
+> 本文由原 `README.md` 的部署/分发/CI 章节整理而来，并在文末保留早期交付记录。
+> 安装与日常用法见仓库根 [README.md](../README.md)；调度见 [scheduling.md](scheduling.md)。
+
+## 需要服务器吗？不需要
+
+| 项 | 实现 | 是否需额外服务器 |
+|---|---|---|
+| 数据存储 | 本地文件 `state/seen.json`、`hits/*` | 否（无需数据库） |
+| 抓取 | 标准库 HTTP 直连六家报社官网（`curl` 兜底） | 否，仅需外网出站 |
+| 运行 | **GitHub Actions**（免费 runner，生产路径）或本机 Python | 否 |
+| 调度 | 生产 = GitHub Actions + 外部触发；本机 = macOS `launchd` / Windows 任务计划程序 | 否 |
+| 依赖 | Python 3.9+，**0 个第三方运行时包**（`curl` 可选） | 否 |
+
+唯一的"服务器"角色是**被采集方**——六家报社官网本身，这是数据源，无法避免。
+需要注意的边界：**本机**定时任务要求本机在触发时刻处于唤醒/登录状态
+（休眠会顺延到唤醒后触发）；Actions 路径则不受本机开关机影响。
+若想 7×24 稳定，可以是"常开本机"，也可以是任意一台便宜 VPS 跑 cron，
+但**都不需要安装数据库或常驻服务框架**。仓库内置的 Web 看板只面向单用户、本机访问；
+只有要做公网多用户、登录权限或消息推送时，才需要引入正式服务端架构。
+
+**是否需要打包 exe：源码分发不需要；Windows 用户可选。** 项目**零第三方运行时依赖**，
+有 Python 环境时直接跑源码即可。但把工具发给**没装 Python 的 Windows 用户**时，单文件
+exe 最省事：CI 在打 `v*` tag 时构建 `NewspaperAuto-<tag>-windows-x64.zip`（内含
+`NewspaperAuto.exe` + 双击启动器），也可在仓库 Actions 手动触发 `build-windows` 构建并下载。
+exe 只捆绑标准库，**运行时仍零第三方依赖**。
+
+> exe 解决不了「谁每天来触发」——它自己不会定时启动；本机定时仍需 Windows 任务计划程序
+> （见 [scheduling.md](scheduling.md)）。exe 的定位是**便于手动使用与分发**。
+
+## 持续集成（GitHub Actions）
+
+| workflow | 触发 | 作用 |
+|---|---|---|
+| `ci.yml` | push / PR | Py3.9/3.12/3.13 上 ruff、格式检查、pytest；`node --check` 前端脚本 + 前端单测；Shell 启动脚本语法；Windows job 验证 PowerShell 解析与 UTF-8 BOM |
+| `scan.yml` | schedule / dispatch / 手动 | 每日扫描，结果归档到 `data` 分支（见下） |
+| `build-windows.yml` | 手动 / 被 release 复用 | 在 `windows-latest` 构建单文件 exe 并产出可分发的 zip |
+| `release.yml` | 打 `v*` tag | 构建 sdist / wheel / 便携源码 zip + Windows exe，统一发布到 GitHub Release |
+
+### `main` 不再接收运行数据（`data` 分支）
+
+`hits/` 与 `state/` 是每次运行都会整体重写的产物，曾长期提交回 `main`，导致巨大 diff、
+无限增长与两方抢推冲突。现在：
+
+- `.gitignore` 忽略 `hits/` 与 `state/`；`main` 只承载源码与配置（`papers.custom.json` 仍入库）。
+- `scan.yml` 每次运行前从专用的 **`data` 分支**恢复 `hits/`、`state/`，扫描后再用独立
+  `git worktree` 把结果提交并推送回 `data` 分支（`fetch-depth: 0`、`contents: write`）。
+- 推送带**有界重试**：并发推送被拒时先 `pull --rebase --autostash` 再重试，最多 3 次。
+- 提交步骤用 `if: always()`，扫描即使部分失败也会把已落盘的结果推送到 `data`，不丢数据。
+
+选择 `data` 分支而非 artifact + `actions/cache`：cache 不可变、受容量上限影响且可能被逐出，
+一旦丢失就会把旧文章当「新增」重复报告；`data` 分支可靠、可审计、无容量上限问题，且天然
+支持并发（见上）。任何仍需要推 `main` 的场景，也应使用同样的「push 失败则 rebase 重试」模式。
+
+### CI 供应链
+
+- `actions/checkout`、`actions/setup-python`、`actions/upload-artifact`、
+  `actions/download-artifact` 全部固定到完整 commit SHA（而不是浮动大版本标签）。
+- `release.yml` 中 `python -m pip install --upgrade build` 与 `python -m build`
+  的构建工具链**未固定版本**（注释已标明）；如需可复现构建，应显式锁定版本。
+
+## 分发给别人用（推荐方式）
+
+按目标用户从易到难：
+
+1. **Windows 单文件 exe（无需 Python，最省事）**：打 `v*` tag 后，
+   `.github/workflows/release.yml` 会在 `windows-latest` 上构建并挂出
+   `NewspaperAuto-<tag>-windows-x64.zip`（内含 `NewspaperAuto.exe`、`Run-Scan.cmd`、
+   `Start-Dashboard.cmd` 与使用说明）。也可在仓库 **Actions → build-windows → Run workflow**
+   手动构建并下载 artifact，无需打 tag。解压到任意**可写**目录即用（勿放 `C:\Program Files`）。
+   本机自行构建：在 Windows 上执行 `scripts\build_windows.ps1`
+   （`pip install pyinstaller` 属构建期依赖，不进入运行时）。
+2. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
+   换机即用；目标机只需装 Python 3.9+。
+3. **从 Release 下载压缩包**（推荐给国内 / Python 用户）：打 `v*` tag 会触发
+   `.github/workflows/release.yml`，在 GitHub Release 里同时提供
+   - `NewspaperAuto-<tag>-portable.zip`：源码精简包（已剔除 `tests/`、`legacy/`、
+     `.github/`、`state/`、`hits/`，**包含 `docs/`**），**解压即用**，无需 git；
+   - `.whl` / `.tar.gz`：`pip install <whl>` 或 `uv tool install <whl>`（`uv` 会自动准备 Python）。
+4. **便携 Python（无 Python 环境、又不想用 exe）**：Windows 用官方 *embeddable* Python 解压到
+   项目内 + 一个启动脚本；macOS 用 python.org 安装包。
+
+**Windows exe 用法**：解压后双击 `Start-Dashboard.cmd` 打开看板、`Run-Scan.cmd` 扫一次；
+命令行可用 `NewspaperAuto.exe scan --days 7`、`NewspaperAuto.exe dashboard --open`
+（`NewspaperAuto.exe --help` 查看全部子命令）。`state/`、`hits/` 与 `papers.custom.json`
+默认写在 **exe 所在目录**，整个文件夹可整体拷贝换机。
+
+> exe 未做代码签名，首次运行可能触发 Windows SmartScreen：点「更多信息 → 仍要运行」即可；
+> 若要做正式签名分发，需自行准备 Windows 代码签名证书。exe 用 PyInstaller **单文件**构建、
+> 只捆绑标准库；对体积/启动更敏感时可在 `packaging/NewspaperAuto.spec` 里改成 onedir。
+
+### 获取源码
+
+当前 GitHub 仓库是私有库：**有访问权限且已完成 GitHub 认证的账号可以正常 clone**；
+未登录或没有权限时 GitHub 会拒绝。可使用 GitHub Credential Manager、`gh auth login`
+或已配置的 SSH 密钥完成认证。没有权限时，也可直接使用上面的 `portable.zip` / Source zip。
+
+### 关于 `git clone` 慢
+
+> ⚠️ **`git clone` 慢 ≠ 仓库大**。仓库本身很小、克隆慢几乎总是**到 GitHub 的网络往返延迟/抖动**，
+> 而不是体积。加速办法（任选）：
+> - **浅克隆**：`git clone --depth 1 https://github.com/VXXVI/AutoNewspaper.git`（只取最新一次提交）；
+> - **直接下压缩包**：到 Releases 下载 Source code (zip) 或上面的 `portable.zip`，解压即用，**完全不碰 git**；
+> - 维护者在本地可 `git gc` 压缩 `.git`，但对克隆速度影响有限。
+
+---
+
+## 附：历史交付记录（v0.2 工程化改造）
+
+> 以下为项目早期的交付说明存档，数量与界面描述可能不随主线更新；
+
 # 交付说明：v0.2 工程化改造
 
 > 本文是 v0.2 阶段的历史交付记录，部分数量与界面描述不会随主线更新；当前安装与使用方式
@@ -7,7 +119,7 @@
 - 日期：2026-09-22
 - 范围：脚本 Bug 修复 + 包结构重构 + 测试/打包/CI + 文档
 - 状态：已完成，单元测试与真实抓取均已复跑通过
-- 前置文档：[`交付说明-无状态模式与定时任务.md`](交付说明-无状态模式与定时任务.md)（v0.1 能力，本文档在其之上改造）
+- 前置文档：[`scheduling.md`](scheduling.md)（v0.1 能力，本文档在其之上改造）
 
 ---
 

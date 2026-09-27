@@ -50,13 +50,15 @@ jobs:
 
       - name: 安装前端测试依赖（jsdom，仅 dev）
         if: matrix.python-version == '3.12'
+        working-directory: tests/frontend
         run: npm ci --no-audit --no-fund
 
       - name: 前端单元测试（纯函数 + jsdom DOM）
         if: matrix.python-version == '3.12'
+        working-directory: tests/frontend
         run: |
-          node --test tests/frontend/*.test.mjs
-          node tests/frontend/run-dom.mjs
+          node --test *.test.mjs
+          node run-dom.mjs
 
       - name: 单元测试
         run: pytest -q

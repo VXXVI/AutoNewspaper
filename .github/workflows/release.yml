@@ -26,9 +26,12 @@ jobs:
 
       - name: 安装构建工具
         run: python -m pip install --upgrade build
+        # 注：build 及其传递依赖（setuptools / wheel / pyproject-hooks）未固定版本，
+        # 供应链风险高于已 SHA 固定的 actions；如需可复现构建，应在这里固定到具体版本。
 
       - name: 构建 sdist 与 wheel
         run: python -m build
+        # 同上：`python -m build` 本身也不锁版本，仅由上面 pip 安装时的最新版决定。
 
       - name: 冒烟验证 wheel（全新安装 + 版本 + 前端资源随包）
         run: |
@@ -45,16 +48,18 @@ jobs:
           print("static OK:", static)
           PY
 
-      - name: 打包便携源码 zip（去掉 CI/测试/历史方案与本机运行数据，解压即用）
+      - name: 打包便携源码 zip（去掉 CI/历史方案与本机运行数据，解压即用）
         run: |
+          # docs/ 现在随源码包一起发布（README 会链接到 docs/ 下的说明），
+          # 因此这里不再排除 docs/，与 .gitattributes、MANIFEST.in 保持一致。
           git archive --format=zip --prefix="NewspaperAuto-${GITHUB_REF_NAME}/" \
             -o "NewspaperAuto-${GITHUB_REF_NAME}-portable.zip" HEAD \
-            ':(exclude)tests' ':(exclude)legacy' ':(exclude)docs' ':(exclude).github' \
+            ':(exclude)tests' ':(exclude)legacy' ':(exclude).github' \
             ':(exclude)state' ':(exclude)hits'
-        # state/（seen.json 增量状态）与 hits/（历史命中归档）是维护者的本机运行数据，
+        # state/（seen.json 增量状态）与 hits/（历史命中归档）是维护者的运行数据，
         # 打进便携包会让接收方首次扫描显示「0 新增」。程序会在需要时自行创建这两个目录。
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: python-dist
           path: |
@@ -76,7 +81,7 @@ jobs:
     needs: [build, windows-exe]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: release-assets
           merge-multiple: true

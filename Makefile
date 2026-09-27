@@ -11,12 +11,12 @@ export RUFF_CACHE_DIR := $(if $(RUFF_CACHE_DIR),$(RUFF_CACHE_DIR),$(shell mktemp
 # 测试不落 __pycache__（避免污染工作区）
 export PYTHONDONTWRITEBYTECODE := 1
 
-# 看板端口：NEWSPAPER_PORT 环境变量优先，否则用 web.py 的默认 8788。
-WEB_PORT ?= $(if $(NEWSPAPER_PORT),$(NEWSPAPER_PORT),8788)
+# 看板端口与「占用时回退到空闲端口」的逻辑统一放在 scripts/dashboard.command / .cmd，
+# 这里只做转发，避免同一段回退逻辑在 Makefile / 两个启动器里各抄一份。
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install test lint fmt check dry scan json csv web start run-now plist papers-check unlock clean
+.PHONY: help install test lint fmt fmt-check check dry scan json csv web start run-now plist papers-check unlock clean
 
 help:  ## 显示本帮助
 	@grep -E '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) \
@@ -36,7 +36,10 @@ fmt:  ## 自动格式化并修复可自动修复的问题
 	$(PY) -m ruff format .
 	$(PY) -m ruff check . --fix
 
-check: lint test  ## 提交前自检（lint + test）
+fmt-check:  ## 格式检查（与 CI 的 ruff format --check 一致）
+	$(PY) -m ruff format --check .
+
+check: lint fmt-check test  ## 提交前自检（lint + 格式检查 + test，与 CI 对齐）
 
 dry:  ## 只探测已启用报社的入口与版面，不抓文章
 	$(PY) daily_scan.py --dry
@@ -51,18 +54,10 @@ csv:  ## 无状态扫描并以 CSV 输出
 	$(PY) daily_scan.py --days 1 --no-state --csv
 
 web:  ## 启动本地看板（可在页面一键触发扫描；默认 http://127.0.0.1:8788，被占用时自动改用空闲端口）
-	@$(PY) dashboard.py --port $(WEB_PORT) --open || { \
-		echo; \
-		echo "端口 $(WEB_PORT) 不可用，改用系统自动分配的空闲端口重试…"; \
-		$(PY) dashboard.py --port 0 --open; \
-	}
+	@$(PY) scripts/launch_dashboard.py
 
 start:  ## 打开看板，并按上次保存的页面设置自动扫描
-	@$(PY) dashboard.py --port $(WEB_PORT) --open --scan || { \
-		echo; \
-		echo "端口 $(WEB_PORT) 不可用，改用系统自动分配的空闲端口重试…"; \
-		$(PY) dashboard.py --port 0 --open --scan; \
-	}
+	@$(PY) scripts/launch_dashboard.py --scan
 
 plist:  ## 打印将要安装的 launchd plist
 	./scripts/install_launchd.sh print

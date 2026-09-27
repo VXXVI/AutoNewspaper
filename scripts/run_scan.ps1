@@ -1,29 +1,30 @@
 ﻿# ==============================================================================
-# run_scan.ps1 - 六家报社数字报每日监测启动脚本（Windows / PowerShell）
+# run_scan.ps1 - 数字报每日监测启动脚本（Windows / PowerShell）
 #
-# 用途：Windows 任务计划程序（scripts\install_task_scheduler.ps1）或手动调用。
-#       默认以「无状态」方式运行（daily_scan.py --no-state），不读写 state\ 与 hits\。
+# 职责刻意保持很薄：
+#   1. 解析 Python 解释器（NEWSPAPER_PYTHON → 项目 .venv → PATH 中的 python）；
+#   2. cd 到项目根；
+#   3. 补默认值：始终无状态（--no-state）；未显式给日期时补 --days；
+#   4. 把其余参数**原样**透传给 daily_scan.py。
 #
-# 关键词来源（任选其一）：
-#   位置参数：  .\scripts\run_scan.ps1 人工智能 生成式人工智能
-#   显式选项：  .\scripts\run_scan.ps1 --kw 人工智能 --kw 生成式人工智能
-#   环境变量：  $env:NEWSPAPER_KW = "人工智能,生成式人工智能"; .\scripts\run_scan.ps1
+# 本脚本**不再维护 daily_scan.py 的选项白名单**：任何 `--xxx` 都直接转发，
+# 因此 cli.py 新增选项时无需同步修改这里（历史上白名单滞后已多次导致定时任务报错）。
+# 显式给出 --days 或 --since/--until 时，不再注入默认 --days（CLI 里两者互斥）。
 #
-# 其余选项原样透传给 daily_scan.py，例如：
+# 用法示例（全部原样透传）：
 #   .\scripts\run_scan.ps1 --days 3 --workers 4 --only 湛江日报,南方日报
-#   .\scripts\run_scan.ps1 --since 2026-09-20 --until 2026-09-25   # 显式区间（与 --days 互斥）
-#   .\scripts\run_scan.ps1 --export-dir .\exports --export-format json
+#   .\scripts\run_scan.ps1 --since 2026-09-20 --until 2026-09-25
+#   .\scripts\run_scan.ps1 --kw 人工智能 --export-dir .\exports --export-format json
 #
-# 可配置环境变量：
+# 环境变量：
 #   NEWSPAPER_PYTHON  Python 解释器绝对路径（默认：项目 .venv\Scripts\python.exe → PATH 中的 python）
-#   NEWSPAPER_DAYS    回溯天数（默认 2＝今天+昨天，与 daily_scan.py 的默认一致）
-#   NEWSPAPER_KW      关键词，逗号或分号分隔
+#   NEWSPAPER_DAYS    回溯天数默认值（默认 2 = 今天 + 昨天，与 daily_scan.py 一致）
 #
-# 日志：追加写入 logs\scan-YYYY-MM-DD.log
+# 日志：追加写入 logs\scan-YYYY-MM-DD.log，并同时回显到标准输出（便于双击启动器查看）。
 # ==============================================================================
 
 # 说明：本脚本刻意不声明 param() 块 —— 全部参数按顺序进入自动变量 $args，
-#       从而把 --kw / --days / ... 等原样透传给 daily_scan.py（与 run_scan.sh 行为一致）。
+#       从而把新增的 CLI 选项原样透传给 daily_scan.py（与 run_scan.sh 行为一致）。
 
 #Requires -Version 5.1
 
@@ -60,101 +61,31 @@ function Resolve-Python {
 
 $PythonBin = Resolve-Python
 
-# ---------------------------------------------------------------- 参数解析
-$Days = if ($env:NEWSPAPER_DAYS) { [string]$env:NEWSPAPER_DAYS } else { '2' }
-$KwArgs = @()
-$PassArgs = @()
-# --days 与 --since/--until 在 daily_scan.py 里互斥：给了显式区间就不再注入 --days，
-# 两者同时显式给出则直接报错，避免「静默忽略其中一个」。
-$HasDays = $false
-$HasRange = $false
-
-$rawArgs = @($args)
-for ($i = 0; $i -lt $rawArgs.Count; $i++) {
-    $a = [string]$rawArgs[$i]
-    if ($a -eq '--') {
-        # 其后全部按裸关键词处理
-        for ($j = $i + 1; $j -lt $rawArgs.Count; $j++) {
-            $KwArgs += @('--kw', [string]$rawArgs[$j])
-        }
-        break
-    }
-    elseif ($a -eq '--kw' -or $a -eq '-k') {
-        if ($i + 1 -ge $rawArgs.Count) { Die "$a 缺少参数" }
-        $i++
-        $KwArgs += @('--kw', [string]$rawArgs[$i])
-    }
-    elseif ($a -like '--kw=*') {
-        $KwArgs += @('--kw', $a.Substring(5))
-    }
-    elseif ($a -eq '--days') {
-        if ($i + 1 -ge $rawArgs.Count) { Die '--days 缺少参数' }
-        $i++
-        $Days = [string]$rawArgs[$i]
-        $HasDays = $true
-    }
-    elseif ($a -like '--days=*') {
-        $Days = $a.Substring(7)
-        $HasDays = $true
-    }
-    elseif ($a -eq '--since' -or $a -eq '--until') {
-        if ($i + 1 -ge $rawArgs.Count) { Die "$a 缺少参数" }
-        $i++
-        $PassArgs += @($a, [string]$rawArgs[$i])
-        $HasRange = $true
-    }
-    elseif ($a -like '--since=*' -or $a -like '--until=*') {
-        $PassArgs += $a
-        $HasRange = $true
-    }
-    elseif ($a -eq '--workers' -or $a -eq '--only' -or $a -eq '--data-dir' -or $a -eq '--export-dir' -or $a -eq '--export-format' -or $a -eq '--archive-keep-days') {
-        if ($i + 1 -ge $rawArgs.Count) { Die "$a 缺少参数" }
-        $i++
-        $PassArgs += @($a, [string]$rawArgs[$i])
-    }
-    elseif ($a -like '--workers=*' -or $a -like '--only=*' -or $a -like '--data-dir=*' -or $a -like '--export-dir=*' -or $a -like '--export-format=*' -or $a -like '--archive-keep-days=*') {
-        $PassArgs += $a
-    }
-    elseif ($a -eq '--dry' -or $a -eq '--full' -or $a -eq '--json' -or $a -eq '--csv' -or $a -eq '--version' -or $a -eq '-h' -or $a -eq '--help') {
-        $PassArgs += $a
-    }
-    elseif ($a -eq '--no-state') {
-        # 本脚本始终以 --no-state 运行；重复传入直接忽略，避免 argv 重复
-    }
-    elseif ($a -like '-*') {
-        Die "未知选项：$a（如需传给 daily_scan.py 的新选项，请在此脚本中登记）"
-    }
-    else {
-        # 裸关键词（向后兼容旧用法）
-        $KwArgs += @('--kw', $a)
+# ---------------------------------------------------------------- 默认参数
+# 只在用户没有显式给出任何日期参数时注入默认天数，避免与 --since/--until 互斥。
+$DefaultDays = if ($env:NEWSPAPER_DAYS) { [string]$env:NEWSPAPER_DAYS } else { '2' }
+$HasDateArg = $false
+foreach ($rawArg in @($args)) {
+    $a = [string]$rawArg
+    if ($a -eq '--days' -or $a -like '--days=*' -or
+        $a -eq '--since' -or $a -like '--since=*' -or
+        $a -eq '--until' -or $a -like '--until=*') {
+        $HasDateArg = $true
     }
 }
 
-if ($HasDays -and $HasRange) {
-    Die "--days 与 --since/--until 不能同时使用（与 daily_scan.py 一致）"
+$CmdArgs = @('daily_scan.py', '--no-state')
+if (-not $HasDateArg) {
+    $CmdArgs += @('--days', $DefaultDays)
 }
+# 其余参数原样透传（位置参数 / 未知选项都交给 daily_scan.py 判断）。
+$CmdArgs += @($args)
 
-# 位置参数与显式 --kw 均未给出时，退回环境变量
-if ($KwArgs.Count -eq 0 -and $env:NEWSPAPER_KW) {
-    foreach ($item in ($env:NEWSPAPER_KW -split '[,;]')) {
-        $kw = $item.Trim()
-        if ($kw) {
-            $KwArgs += @('--kw', $kw)
-        }
-    }
-}
-
-# ---------------------------------------------------------------- 组命令并执行
+# ---------------------------------------------------------------- 执行并记录日志
 $LogsDir = Join-Path $ProjectDir 'logs'
 New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
 $LogFile = Join-Path $LogsDir ('scan-{0}.log' -f (Get-Date -Format 'yyyy-MM-dd'))
 $env:PYTHONIOENCODING = 'utf-8'
-
-$CmdArgs = @('daily_scan.py', '--no-state')
-if (-not $HasRange) {
-    $CmdArgs += @('--days', $Days)
-}
-$CmdArgs += $KwArgs + $PassArgs
 
 # 日志统一用 UTF-8（不带 BOM）追加写入
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -185,6 +116,8 @@ if ($null -ne $prevOutputEncoding) {
 }
 
 if ($output.Count -gt 0) {
+    # 同时回显到控制台（供双击启动器查看）并写入日志
+    $output | ForEach-Object { Write-Host $_ }
     Write-Log (($output -join [Environment]::NewLine))
 }
 Write-Log "=== 扫描完成：$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')，退出码：$ExitCode ==="

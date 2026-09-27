@@ -20,6 +20,9 @@ Google News 是**标题级检索**，正文提及全漏。同日跑数字报全�
 ## 文件
 
 - `gdou_tracker.py` — 旧脚本：Google News 按站点 + 湛江站内搜索双通道
-- `report.html` / `result.csv` / `result.json` — 旧脚本产出（182 条，其中高置信 11 条）
+
+> 旧脚本产出（`report.html` / `result.csv` / `result.json`，182 条，其中高置信 11 条）
+> 已删除：它们是 `gdou_tracker.py` 可随时重新生成的运行时结果，留在仓库里只会带来
+> 体积与陈旧数据。需要时直接运行该脚本即可再生成。
 
 **仅作历史参考，不要再用。**

@@ -1,13 +1,15 @@
-"""启动脚本（run_scan.sh / run_scan.ps1）与 CLI 选项的同步契约测试。
+"""启动脚本（run_scan.sh / run_scan.ps1）的**参数透传**契约测试。
 
-历史缺陷：脚本用严格白名单匹配参数，但白名单滞后于 ``cli.py`` 的新选项
-（``--since`` / ``--until`` / ``--export-dir`` …），用户在定时任务里使用新特性会
-直接 ``die``。这里用两把锁守住：
+``run_scan.sh`` / ``run_scan.ps1`` 刻意保持很薄：解析解释器、cd 项目根、补默认
+（``--no-state``，未显式给日期时补 ``--days 2``），其余参数原样转发给
+``daily_scan.py``。它们**不再维护 CLI 选项白名单**（历史上白名单滞后于 cli.py 的
+新选项，用户在定时任务里用新特性会直接报「未知选项」），所以这里的契约是：
 
-1. **文本契约**：``cli.build_parser()`` 里的每个长选项都必须出现在两个脚本里，
-   新增 CLI 选项却忘了登记脚本时测试变红（含 PowerShell，CI 可在任意平台跑文本断言）。
-2. **行为契约**：把 ``run_scan.sh`` 复制到临时目录、用桩解释器驱动，断言它确实把
-   ``--since/--until/--export-*`` 透传给 daily_scan.py，且不会同时注入互斥的 ``--days``。
+1. **文本契约**：两个脚本都直接转发 ``"$@"`` / ``@($args)``，且不再出现
+   「未知选项」这类白名单拒绝逻辑；
+2. **行为契约**：把 ``run_scan.sh`` 复制到临时目录、用桩解释器驱动，断言
+   ``--since/--until/--export-*`` 等选项**逐字**透传，默认只补一次 ``--days``，
+   且任何未登记过的选项也照样转发。
 """
 
 from __future__ import annotations
@@ -19,8 +21,6 @@ from pathlib import Path
 
 import pytest
 
-from newspaper_auto import cli
-
 ROOT = Path(__file__).resolve().parents[1]
 
 # 行为测试依赖 POSIX shell（Linux/macOS）；Windows 上的 Git Bash 无法可靠执行这些脚本，
@@ -29,26 +29,15 @@ _HAS_POSIX_BASH = os.name == "posix" and shutil.which("bash") is not None
 _requires_posix_bash = pytest.mark.skipif(not _HAS_POSIX_BASH, reason="需要 POSIX bash 环境")
 
 
-def _cli_long_options() -> set[str]:
-    options: set[str] = set()
-    for action in cli.build_parser()._actions:
-        options.update(opt for opt in action.option_strings if opt.startswith("--"))
-    return options
+def test_scan_scripts_forward_arguments_verbatim_without_whitelist():
+    """两个脚本都原样转发参数，不再枚举 CLI 选项 / 拒绝未知选项。"""
+    sh_text = (ROOT / "scripts/run_scan.sh").read_text(encoding="utf-8")
+    ps_text = (ROOT / "scripts/run_scan.ps1").read_text(encoding="utf-8")
 
-
-def test_scan_scripts_register_every_cli_long_option():
-    """新增 CLI 选项必须同步登记到两个启动脚本，否则定时任务无法使用。"""
-    options = _cli_long_options()
-    for rel in ("scripts/run_scan.sh", "scripts/run_scan.ps1"):
-        text = (ROOT / rel).read_text(encoding="utf-8")
-        missing = sorted(opt for opt in options if opt not in text)
-        assert not missing, f"{rel} 未登记 CLI 选项：{missing}"
-
-
-def test_run_scan_ps1_defaults_to_two_days_and_mentions_range_example():
-    text = (ROOT / "scripts/run_scan.ps1").read_text(encoding="utf-8")
-    assert "else { '2' }" in text, "PowerShell 默认天数应与 CLI / run_scan.sh 一致为 2"
-    assert "--since 2026-09-20 --until 2026-09-25" in text
+    assert 'CMD+=("$@")' in sh_text, "run_scan.sh 应把参数原样加入命令"
+    assert "@($args)" in ps_text, "run_scan.ps1 应把参数原样转发"
+    for label, text in (("run_scan.sh", sh_text), ("run_scan.ps1", ps_text)):
+        assert "未知选项：" not in text, f"{label} 不应再有选项白名单拒绝逻辑"
 
 
 @pytest.mark.parametrize(
@@ -138,9 +127,12 @@ def test_run_scan_sh_injects_default_days_when_no_range(tmp_path):
 
 
 @_requires_posix_bash
-def test_run_scan_sh_rejects_days_with_explicit_range(tmp_path):
+def test_run_scan_sh_forwards_unknown_options_verbatim(tmp_path):
+    """未登记过的选项也必须原样转发（白名单已删除）。"""
     project, stub = _make_isolated_project(tmp_path)
-    proc = _run_script(project, stub, "--days", "3", "--since", "2026-09-20")
-    assert proc.returncode == 2
-    assert "不能同时使用" in proc.stderr
-    assert not (project / "logs").exists()
+    proc = _run_script(project, stub, "--totally-new-option", "value", "--kw", "人工智能")
+    assert proc.returncode == 0, proc.stderr
+    command = _logged_command(project)
+    assert "--totally-new-option value" in command
+    assert "--kw 人工智能" in command
+    assert "--days 2" in command

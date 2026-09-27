@@ -10,8 +10,10 @@ PUBLIC_DOCS = (
     ROOT / "README.md",
     ROOT / "CHANGELOG.md",
     ROOT / "legacy" / "README.md",
-    *sorted((ROOT / "docs").rglob("*.md")),
+    *sorted((ROOT / "docs").glob("*.md")),
 )
+# legacy/ 只保留旧脚本 + 说明；以下产出物可由 gdou_tracker.py 随时重新生成，不应入库。
+LEGACY_GENERATED_ARTIFACTS = ("report.html", "result.csv", "result.json")
 MACHINE_PATH_PATTERNS = {
     "macOS 用户目录": re.compile(r"/Users/"),
     "Linux 用户目录": re.compile(r"/home/"),
@@ -30,3 +32,8 @@ def test_public_docs_do_not_contain_machine_specific_user_paths():
                     offenders.append(f"{path.relative_to(ROOT)}:{line_no}: {label}")
 
     assert not offenders, "公开文档包含本机路径：\n" + "\n".join(offenders)
+
+
+def test_legacy_generated_artifacts_are_not_kept():
+    leftovers = [name for name in LEGACY_GENERATED_ARTIFACTS if (ROOT / "legacy" / name).exists()]
+    assert not leftovers, f"legacy/ 不应保留可再生的产出物：{leftovers}"

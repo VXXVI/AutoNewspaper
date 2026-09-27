@@ -1,14 +1,20 @@
 # 每日自动扫描：GitHub Actions 版（生产形态）
 #
 # 与本地 launchd 版本等价，但跑在 GitHub 托管 runner 上：
-#   - 结果（hits/ 与 state/seen.json）提交回仓库，这样增量语义得以保留，
-#     同时白送一份完整的审计历史；
+#   - 结果（hits/ 与 state/）不再提交回 main，而是推送到专用的 **data 分支**；
+#     每次运行前再从 data 分支恢复到工作区，从而保留增量语义，同时白送一份
+#     完整的审计历史，且不污染 main（main 上不再有每天整体重写的巨量 diff）。
 #   - TZ 必须是 Asia/Shanghai：本项目用 datetime.now() 判断「今天」，
 #     而 runner 默认 UTC。10:00(北京) 时 UTC 是当日 02:00（同日，无跨日错位风险），
 #     不设置就会按 UTC 去扫「昨天的报纸」，静默漏掉当天内容。
 #
+# 为什么选 data 分支而不是 artifact + actions/cache：
+#   cache 不可变、受仓库容量上限影响且可能被逐出，一旦丢失就会把旧文章当「新增」
+#   重复报告；data 分支把增量状态放进 git 历史，可靠、可审计、无容量上限问题，
+#   且天然支持并发（推送冲突用 rebase 重试解决）。main 保持只读。
+#
 # 注意：本地 launchd / Windows 任务计划程序均以 run_scan 脚本带 --no-state 运行，
-# 不读写 state/seen.json、不产 hits/，因此可与本 workflow 并存，不会互相覆盖。
+# 不读写 state/、不产 hits/，因此可与本 workflow 并存，不会互相覆盖。
 name: daily-scan
 
 on:
@@ -39,7 +45,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      # fetch-depth: 0：需要完整历史才能在后面创建/推送 data 分支与 worktree。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -51,6 +60,20 @@ jobs:
           echo "北京时间: $(date '+%F %T %Z')"
           echo "UTC 时间: $(date -u '+%F %T')"
 
+      - name: 从 data 分支恢复增量数据（hits/ state/）
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch origin data
+            # 显式路径检出对 .gitignore 免疫；逐个目录检出，任一缺失不影响另一个。
+            for d in hits state; do
+              git checkout FETCH_HEAD -- "$d" 2>/dev/null || true
+            done
+            echo "已从 data 分支恢复 hits/ state/"
+          else
+            echo "data 分支尚不存在：首次运行，从空状态开始"
+          fi
+
       - name: 执行扫描（增量，--days 2）
         id: scan
         run: python3 daily_scan.py --days 2
@@ -58,22 +81,60 @@ jobs:
         # 只扫 1 天时若某报入口当天失败或报纸当天未上线，该日文章不会被后续运行覆盖，
         # 且 seen.json 也不会记录 → 永久漏报。已在 v0.3.1 与 run_scan.sh / README 对齐。
         # 入口失败时以非零退出（让步骤变红、工作流最终判 failure），
-        # 但不用 continue-on-error——而是在提交步骤用 if: always() 确保
-        # 已落盘的增量结果（hits/ state/）仍能被提交回仓库。
+        # 但不用 continue-on-error——而是在下一步用 if: always() 确保
+        # 已落盘的增量结果（hits/ state/）仍能推送到 data 分支。
 
-      - name: 把结果提交回仓库
-        if: always()   # 扫描步骤失败（入口失败）时也要执行，以免丢失已写入的部分结果
+      - name: 把结果推送到 data 分支（main 保持干净）
+        if: always()   # 扫描失败（入口失败）时也要执行，以免丢失已写入的部分结果
         run: |
+          set -uo pipefail
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A state hits
-          if git diff --cached --quiet; then
-            echo "本次无变化，无需提交"
+
+          data_dir="$RUNNER_TEMP/newspaper-data"
+
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch origin data
+            git worktree add --detach "$data_dir" origin/data
+          else
+            # data 分支尚不存在：以空树为起点新建一个空提交，
+            # 避免把 main 的文件一并带进 data 分支。
+            empty_tree="$(git hash-object -t tree /dev/null)"
+            empty_commit="$(git commit-tree "$empty_tree" -m 'chore(data): 初始化数据分支')"
+            git worktree add --detach "$data_dir" "$empty_commit"
+          fi
+          # 全程在 detached HEAD 上提交，最后 push HEAD:refs/heads/data：
+          # 不创建本地分支，避免「branch already used by worktree」之类的名字冲突。
+
+          # 用本次扫描的整体结果替换 data 分支内容（逐个目录处理：目录可能不存在）。
+          rm -rf "$data_dir/hits" "$data_dir/state"
+          for d in hits state; do
+            if [ -d "$d" ]; then
+              cp -r "$d" "$data_dir/$d"
+              git -C "$data_dir" add -A -- "$d"
+            fi
+          done
+
+          if git -C "$data_dir" diff --cached --quiet; then
+            echo "本次无变化，无需推送"
             exit 0
           fi
+
           SCAN_STATUS="${{ steps.scan.outcome }}"
           SUFFIX=""
           if [ "$SCAN_STATUS" != "success" ]; then SUFFIX=" [含失败]"; fi
-          git commit -m "chore(scan): $(date '+%F') 自动扫描结果${SUFFIX}"
-          git pull --rebase --autostash origin main
-          git push
+          git -C "$data_dir" commit -m "chore(data): $(date '+%F') 自动扫描结果${SUFFIX}"
+
+          # 有界重试：并发推送被拒时先 rebase 到远端最新再重试，最多 3 次。
+          pushed=0
+          for _ in 1 2 3; do
+            if git -C "$data_dir" push origin HEAD:refs/heads/data; then
+              pushed=1
+              break
+            fi
+            git -C "$data_dir" pull --rebase --autostash origin data || true
+          done
+          if [ "$pushed" -ne 1 ]; then
+            echo "::error::data 分支连续 3 次推送失败"
+            exit 1
+          fi

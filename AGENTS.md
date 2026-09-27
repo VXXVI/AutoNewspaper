@@ -17,25 +17,23 @@ git rev-parse --show-toplevel    # 必须是 /Users/quark/Codex/Project/NewsPape
 在 `~/Codex/Essay`、`~/Codex/VPS`、`~/Codex/Headache` 这类**没有自己 `.git`** 的目录里跑 git，
 会静默落到**家目录仓库**（远端 `ListSkills`，跟踪了整个 `Codex/`）。这不是本仓库，别在这里提交任何东西。
 
-## 2. main 上有第二个写入者：CI
+## 2. CI 不再写入 main；运行数据在 `data` 分支
 
-`.github/workflows/scan.yml` 每天 10:00（北京）在 CI 里执行：
-`git add -A state hits` → commit → `git pull --rebase --autostash origin main` → `git push`。
+`.github/workflows/scan.yml` 每天 10:00（北京）在 CI 里执行扫描，但结果**不再提交回
+`main`**：`main` 只承载源码与配置，`hits/`、`state/` 已在 `.gitignore` 中忽略，CI 会把它们
+推送到专用的 **`data` 分支**（推送带 rebase 重试），并在下次运行前从该分支恢复。
 
-**所以 main 随时可能在你不知情时前进。** 规矩：
+因此：
 
-1. **推之前先 fetch**：
-   ```bash
-   git fetch origin main
-   git rev-list --count HEAD..origin/main   # 必须为 0
-   ```
-   不为 0 就先 `git pull --rebase --autostash origin main`，再推。
+1. **正常情况 main 只由你推进**，但仍建议推之前 `git fetch origin main` 对齐；
 2. **推之后必须复核**（不能只看命令回显）：
    ```bash
    git ls-remote origin refs/heads/main    # 与 git rev-parse HEAD 逐字符比对
    ```
 3. **禁止用管道吞退出码**：`git push 2>&1 | tail -5` 的退出码是 `tail` 的 `0`，
    会把**失败的推送读成成功**。要留输出就 `set -o pipefail`，或者干脆分开跑一条干净的 `git push`。
+4. 如需检查每日归档，用 `git fetch origin data && git log FETCH_HEAD --oneline -5`，
+   不要试图在 `main` 上找 `hits/`、`state/`。
 
 ## 3. 提交粒度（这条覆盖全局 AGENTS.md 的「分步 commit」）
 

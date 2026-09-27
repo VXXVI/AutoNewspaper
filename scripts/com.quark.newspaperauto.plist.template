@@ -16,6 +16,10 @@
     <array>
         <string>/bin/bash</string>
         <string>{{PROJECT_DIR}}/scripts/run_scan.sh</string>
+        <!-- 可选：自定义关键词（run_scan.sh 会把参数原样透传给 daily_scan.py），取消注释即生效
+        <string>--kw</string>
+        <string>人工智能</string>
+        -->
     </array>
 
     <key>WorkingDirectory</key>
@@ -41,9 +45,9 @@
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
 
-        <!-- 可选：自定义关键词（逗号或分号分隔），取消注释即生效
-        <key>NEWSPAPER_KW</key>
-        <string>人工智能,生成式人工智能</string>
+        <!-- 可选：回溯天数默认值（默认 2 = 今天 + 昨天；关键词请用上面的 ProgramArguments 传）
+        <key>NEWSPAPER_DAYS</key>
+        <string>2</string>
         -->
 
         <!-- 可选：显式指定 Python 解释器（默认用项目 .venv 或 PATH 中的 python3）

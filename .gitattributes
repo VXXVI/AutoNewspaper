@@ -21,14 +21,15 @@
 *.command text eol=lf
 
 # ---- 源码归档裁剪：git archive / GitHub 的 "Source code (zip)" ----
-# 这几项只对维护者有意义（历史方案、内部交付说明、CI 配置），终端用户下载源码包时无需携带。
+# 只裁剪纯维护者向、终端用户无需携带的部分（历史方案与 CI 配置）。
+# 注意：docs/ 不再 export-ignore —— README 会链接到 docs/ 下的说明文档，
+# GitHub 的 Source zip 必须带上它们。release.yml 便携包的排除清单与之一致。
 legacy/** export-ignore
-docs/** export-ignore
 .github/** export-ignore
 
 # ---- 故意不声明的东西（改动前请先想清楚）----
-# 1) 不加 `* text=auto`：tests/fixtures/rmrb_article_30182606.html 与
-#    legacy/result.csv 里存的是真实站点的原始 CRLF 快照，全局规则会改写它们，
-#    属于没必要的变更（fixture 一旦被动，测试断言的可信度就下降）。
+# 1) 不加 `* text=auto`：tests/fixtures/rmrb_article_30182606.html 里存的是
+#    真实站点的原始 CRLF 快照，全局规则会改写它，属于没必要的变更
+#    （fixture 一旦被动，测试断言的可信度就下降）。
 # 2) 不加 `*.md eol=lf` 之类的冗余规则：这些文件本来就是 LF，加了只是噪声；
 #    Windows 上 core.autocrlf=true 时它们被签出成 CRLF 也能正常工作。
