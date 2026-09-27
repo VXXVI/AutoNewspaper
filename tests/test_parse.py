@@ -219,6 +219,28 @@ def test_normalize_for_match_folds_fullwidth_text():
     assert parse.make_kw_re("AI").search(parse.normalize_for_match("本文讨论 ＡＩ 技术"))
 
 
+# ---------------------------------------------------------------- 位置映射回原文
+def test_original_index_map_maps_back_to_source():
+    """归一化只用于找位置，摘录要能映射回**原文**（保留全角字形）。"""
+    text = "本文讨论 ＡＩ 技术"
+    folded = parse.normalize_for_match(text)
+    assert folded == "本文讨论 AI 技术"
+    offsets = parse.original_index_map(text)
+    assert offsets is not None
+    pos = folded.index("AI")
+    assert text[offsets[pos] : offsets[pos + 2]] == "ＡＩ"
+
+
+def test_original_index_map_returns_none_on_cross_char_change():
+    """跨字符组合（基字符 + 组合音符）下逐字符归一化与整串不一致 → 返回 None，调用方退化。"""
+    assert parse.original_index_map("e\u0301") is None
+    assert parse.original_index_map("普通文本") is not None
+
+
+def test_snippet_at_takes_explicit_span():
+    assert parse.snippet_at("abcdefghij", 4, 6, span=2) == "…cdefgh…"
+
+
 # ---------------------------------------------------------------- snippet
 def test_snippet_adds_ellipsis_on_both_sides():
     text = "a" * 100 + "KEY" + "b" * 100

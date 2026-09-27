@@ -35,6 +35,18 @@ def partial_failure(stats: dict[str, Any]) -> bool:
     return attempts > 0 and articles_failed / attempts >= config.PARTIAL_FAILURE_RATIO
 
 
+def _snippet(blob: str, match_blob: str, match: re.Match[str], offsets: list[int] | None) -> str:
+    """命中摘录：优先回到**原文**切片，保持全角等原始字形。
+
+    ``match`` 的位置来自归一化文本 ``match_blob``；``offsets`` 把位置映射回 ``blob``。
+    映射不可用（极少数跨字符组合）时退化为在归一化文本上切片 —— 匹配结果不变，
+    只是摘录字形可能被折叠成半角。
+    """
+    if offsets is None:
+        return parse.snippet_at(match_blob, match.start(), match.end())
+    return parse.snippet_at(blob, offsets[match.start()], offsets[match.end()])
+
+
 def _classify_entry_failure(code: int, body_len: int) -> tuple[str, str]:
     """把入口失败同时收敛为 ``(failure_kind, 给用户看的中文说明)``。
 
@@ -463,7 +475,9 @@ def scan_paper(
         if layout:
             record["layout"] = layout
         if found:
-            record["snippets"] = [parse.snippet(match_blob, match) for _keyword, match in found[:3]]
+            # 归一化只用于「找位置」；摘录回到原文切片，保留全角等原始字形。
+            offsets = parse.original_index_map(blob)
+            record["snippets"] = [_snippet(blob, match_blob, match, offsets) for _keyword, match in found[:3]]
             record["matched"] = [keyword for keyword, _match in found]
         return record
 

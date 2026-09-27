@@ -352,8 +352,35 @@ def make_kw_re(keyword: str) -> re.Pattern[str]:
     return re.compile(r"\s*".join(re.escape(ch) for ch in normalized), re.I)
 
 
+def original_index_map(text: str) -> list[int] | None:
+    """给出「NFKC 归一化文本第 i 个字符 → 原文索引」映射（长度 = 归一化长度 + 1）。
+
+    命中位置是在 :func:`normalize_for_match` 之后的文本上算出来的；要拿**原文**切片做
+    摘录，就必须把位置映射回去（否则全角「ＡＩ」会在摘录里显示成半角「AI」）。
+
+    逐字符归一化与整串归一化在极少数「跨字符组合」场景（如基字符 + 组合音符）下可能
+    不一致；一旦发现不一致就返回 ``None``，调用方退化为直接用归一化文本
+    —— 匹配结果不受影响，只是摘录字形可能被折叠。
+    """
+    folded_parts: list[str] = []
+    offsets: list[int] = []
+    for index, char in enumerate(text):
+        folded = unicodedata.normalize("NFKC", char)
+        folded_parts.append(folded)
+        offsets.extend([index] * len(folded))
+    offsets.append(len(text))
+    if "".join(folded_parts) != normalize_for_match(text):
+        return None
+    return offsets
+
+
+def snippet_at(text: str, start: int, end: int, span: int = 70) -> str:
+    """在 ``text`` 上截取 ``[start, end)`` 前后 ``span`` 字符的上下文。"""
+    start = max(0, start - span)
+    end = min(len(text), end + span)
+    return ("…" if start > 0 else "") + text[start:end] + ("…" if end < len(text) else "")
+
+
 def snippet(text: str, match: re.Match[str], span: int = 70) -> str:
     """截取命中位置前后 ``span`` 字符的上下文。"""
-    start = max(0, match.start() - span)
-    end = min(len(text), match.end() + span)
-    return ("…" if start > 0 else "") + text[start:end] + ("…" if end < len(text) else "")
+    return snippet_at(text, match.start(), match.end(), span)

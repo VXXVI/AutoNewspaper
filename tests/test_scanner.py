@@ -191,6 +191,29 @@ def test_scan_matches_fullwidth_body_with_halfwidth_keyword(fixed_day):
     assert _hit_names(hits) == {"content_1.html"}
 
 
+def test_fullwidth_snippet_keeps_original_glyphs(fixed_day):
+    """摘录必须回到原文切片：正文里的全角「ＡＩ」不能在报告里被折叠成半角「AI」。
+
+    回归：此前摘录直接从 NFKC 归一化后的文本切片，全角字形会显示成半角。
+    """
+    paper = {"name": "测试报", "style": "ymd", "tpl": "https://x/{a}/node_1.html"}
+    section = '<a href="content_1.html">文章</a>' + "x" * 400
+    article = (
+        "<html><body><founder-content>本报讨论 ＡＩ 技术</founder-content>" + "x" * 400 + "</body></html>"
+    )
+
+    def fetch(url: str):
+        return (200, article) if "content_" in url else (200, section)
+
+    hits, _articles, _stats = scanner.scan_paper(
+        paper, fixed_day, {"AI": parse.make_kw_re("AI")}, workers=2, fetcher=fetch
+    )
+    assert len(hits) == 1
+    snippet = hits[0]["snippets"][0]
+    assert "ＡＩ" in snippet, f"摘录应保留全角字形，实际：{snippet!r}"
+    assert "AI" not in snippet
+
+
 def test_section_fetch_failure_is_ignored(zhanjiang_paper, fixed_day, site_fetcher):
     base = f"http://paper.gdzjdaily.com.cn/html/{fixed_day:%Y-%m}/{fixed_day:%d}/"
     fetcher = site_fetcher(fixed_day, status_overrides={base + "node_2.htm": (500, "")})
