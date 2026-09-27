@@ -29,6 +29,7 @@ export var A = {
   SHOW_ALL_HISTORY: "SHOW_ALL_HISTORY",
   RESET_VIEW: "RESET_VIEW",
   LOAD_MORE: "LOAD_MORE",
+  SET_FILTERS_OPEN: "SET_FILTERS_OPEN",
   // 扫描运行状态（含进度、日志、本次可选报社）
   SCAN_SET_PAPERS: "SCAN_SET_PAPERS",
   SCAN_CONFIG_ONLY: "SCAN_CONFIG_ONLY",
@@ -67,6 +68,8 @@ export function createInitialState() {
     sort: "date-desc",
     preset: "all",
     visibleRows: INITIAL_ROWS,
+    // 结果区的筛选面板是否展开（收起来后结果表占满整行）。选择由 app.js 记忆在 localStorage。
+    filtersOpen: true,
     // 扫描面板：运行标志、可选/已选报社、进度、日志、历史
     scan: {
       running: false,
@@ -217,6 +220,8 @@ export function reducer(state, action) {
     }
     case A.LOAD_MORE:
       return withPatch(state, { visibleRows: state.visibleRows + ROW_STEP });
+    case A.SET_FILTERS_OPEN:
+      return withPatch(state, { filtersOpen: action.open !== false });
 
     /* ---------------------------------------------------------- 扫描状态 */
     case A.SCAN_SET_PAPERS: {

@@ -207,6 +207,7 @@
         <p id="shown" aria-live="polite">正在加载…</p>
       </div>
       <div class="button-group">
+        <button id="filter-toggle" class="btn ghost" type="button" aria-expanded="true" aria-controls="filter-panel">隐藏筛选</button>
         <button id="export" class="btn ghost" type="button">导出结果</button>
         <button id="reset" class="btn subtle" type="button">清除筛选</button>
       </div>
@@ -224,7 +225,7 @@
     </div>
 
     <div class="results-workspace">
-      <aside class="filter-panel" aria-label="结果筛选">
+      <aside class="filter-panel" id="filter-panel" aria-label="结果筛选">
         <div class="filter-heading">
           <b>筛选结果</b>
           <span>缩小范围，更快找到目标报道</span>
@@ -281,7 +282,7 @@
           <table>
             <caption class="sr-only">当前筛选条件下的命中报道</caption>
             <thead>
-              <tr><th class="col-paper" scope="col">报社</th><th class="col-date" scope="col">日期</th><th class="col-section" scope="col">版面位置</th><th scope="col">标题与命中上下文</th></tr>
+              <tr><th class="col-paper" scope="col">报社</th><th class="col-date" scope="col">日期</th><th scope="col">标题与命中上下文</th><th class="col-section" scope="col">版面位置</th></tr>
             </thead>
             <tbody id="rows"></tbody>
           </table>

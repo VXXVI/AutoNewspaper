@@ -5,7 +5,9 @@ import {
   A, selectFiltered, selectSorted, selectScanNames,
   paperRanking, keywordRanking, heatmap, HEATMAP_KEY_SEP,
 } from "./store.js";
-import { $, el, mount, safeUrl, setText, setInputValue, clearNode, setHidden, chip } from "./dom.js";
+import {
+  $, el, mount, safeUrl, setText, setInputValue, clearNode, setHidden, toggleClass, chip,
+} from "./dom.js";
 import { geomText } from "./format.js";
 
 export var MAX_LAYOUTS = 24;
@@ -36,6 +38,7 @@ export function renderApp(ctx) {
   renderVersion(state);
   renderFilterInputs(state);
   renderDateBounds(state);
+  renderFiltersToggle(state);
   renderControls(ctx, state);
   renderScanPanel(state);
   renderScanHistory(state);
@@ -104,6 +107,19 @@ function renderFilterInputs(state) {
   var sort = $("sort");
   if (sort && sort.value !== state.sort) sort.value = state.sort;
 }
+
+/* 筛选面板可整块收起：收起后结果表占满整行，页面信息密度更高。
+ * 选择记忆在 localStorage（app.js），刷新/重开看板后保持。 */
+function renderFiltersToggle(state) {
+  var open = state.filtersOpen !== false;
+  setHidden($("filter-panel"), !open);
+  toggleClass(document.querySelector(".results-workspace"), "is-collapsed", !open);
+  var btn = $("filter-toggle");
+  if (!btn) return;
+  setText(btn, open ? "隐藏筛选" : "显示筛选");
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
 function renderDateBounds(state) {
   if (!state.data) return;
   var dates = Object.keys(state.data.date_counts).sort();
@@ -369,14 +385,23 @@ function fallbackLayout(record) {
   };
 }
 
+/* 版面分组的键：必须与后端 web_dashboard.layout_key 完全一致（\u0001 分隔）。
+ * 后端把同一版面的 layout 抽到顶层 `layouts` 去重，这里按同键取回共享的那一份。 */
+var LAYOUT_KEY_SEP = "\u0001";
+export function layoutKeyOf(r) {
+  return [r.paper, r.date, r.section_no || "", r.section || "—"].join(LAYOUT_KEY_SEP);
+}
+
 export function renderLayouts(ctx, records) {
   var box = $("layouts"), empty = $("layouts-empty");
   if (!box || !empty) return;
+  var layoutMap = (ctx.getState().data && ctx.getState().data.layouts) || {};
   var groups = {};
   records.forEach(function (r) {
-    var layout = r.layout || fallbackLayout(r);
+    var key = layoutKeyOf(r);
+    // 优先用后端按版面去重的共享 layout；老接口仍逐条带 layout 时兼容；都没有才用 geometry 拼近似图。
+    var layout = layoutMap[key] || r.layout || fallbackLayout(r);
     if (!layout || !Array.isArray(layout.items) || !layout.items.length) return;
-    var key = [r.paper, r.date, r.section_no || "", r.section || "—"].join("\u0001");
     if (!groups[key]) {
       groups[key] = { key: key, paper: r.paper, date: r.date, section: r.section || "—",
         layout: layout, hitUrls: new Set(), titles: [] };
@@ -454,10 +479,6 @@ export function renderRows(state, records) {
     var tr = document.createElement("tr");
     var paperCell = mount(tr, "td", "col-paper", r.paper); paperCell.setAttribute("data-label", "报社");
     var dateCell = mount(tr, "td", "col-date", r.date); dateCell.setAttribute("data-label", "日期");
-    var sectionText = r.section || "—";
-    var position = geomText(r.geometry);
-    if (position) sectionText += " · " + position;
-    mount(tr, "td", "col-section", sectionText).setAttribute("data-label", "版面位置");
     var td = mount(tr, "td", "title");
     td.setAttribute("data-label", "报道");
     var url = safeUrl(r.url);
@@ -471,6 +492,12 @@ export function renderRows(state, records) {
       r.matched.filter(function (k) { return state.keywords.has(k); })
         .forEach(function (k) { mount(tags, "span", "tag", k); });
     }
+    // 版面位置紧跟在命中报道右侧：一条报道对应一格，扫读时不必在行内来回找。
+    var position = geomText(r.geometry);
+    var posCell = mount(tr, "td", "col-section");
+    posCell.setAttribute("data-label", "版面位置");
+    mount(posCell, "span", "section-name", r.section || "—");
+    if (position) mount(posCell, "span", "section-pos", position);
     fragment.appendChild(tr);
   });
   body.appendChild(fragment);

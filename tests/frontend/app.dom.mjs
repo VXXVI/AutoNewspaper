@@ -7,7 +7,12 @@
  */
 import assert from "node:assert/strict";
 
-import { boot, defaultRoutes, runningScan, settle } from "./harness.mjs";
+import { RECORDS, boot, defaultRoutes, hitsPayload, runningScan, settle } from "./harness.mjs";
+
+/** 与后端 web_dashboard.layout_key / render.js layoutKeyOf 同一口径（\u0001 分隔）。 */
+function layoutKey(record) {
+  return [record.paper, record.date, record.section_no || "", record.section || "—"].join("\u0001");
+}
 
 function rows(doc) {
   return doc.querySelectorAll("#rows tr");
@@ -37,6 +42,74 @@ export const domTests = [
         assert.match(firstRow.textContent, /版内 8\/11/);
         assert.match(firstRow.textContent, /上版 70%/);
         assert.equal(firstRow.querySelector("a").getAttribute("href"), "http://example.test/zj/1");
+      }),
+  },
+  {
+    name: "命中行：版面位置排在报道右侧（行内最后一格）",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const cells = [...rows(page.document)[0].querySelectorAll("td")];
+        assert.equal(cells.length, 4);
+        assert.equal(cells[0].className, "col-paper");
+        assert.equal(cells[1].className, "col-date");
+        assert.equal(cells[2].className, "title");
+        assert.equal(cells[3].className, "col-section");
+        assert.match(cells[3].textContent, /第2版：本地/);
+        assert.match(cells[3].textContent, /版内 8\/11/);
+        assert.doesNotMatch(cells[2].textContent, /版内 8\/11/, "报道格不应再夹带版面位置");
+      }),
+  },
+  {
+    name: "版面位置图：优先读后端按版面去重的 layouts 表",
+    fn: () => {
+      const record = RECORDS[0];
+      const layout = {
+        basis: "area",
+        aspect_ratio: 0.72,
+        items: [
+          { url: record.url, left: 0.1, top: 0.2, right: 0.5, bottom: 0.4 },
+          { url: "http://example.test/zj/other", left: 0.1, top: 0.5, right: 0.5, bottom: 0.7 },
+        ],
+      };
+      const routes = (path, init) => {
+        if (path.startsWith("/api/hits")) {
+          return { body: { ...hitsPayload([record]), layouts: { [layoutKey(record)]: layout } } };
+        }
+        return defaultRoutes(path, init);
+      };
+      return withPage({ routes }, async (page) => {
+        const doc = page.document;
+        assert.equal(doc.querySelectorAll("#layouts .layout-block").length, 2, "应画出共享 layout 的两个格子");
+        assert.equal(doc.querySelectorAll("#layouts .layout-block.hit").length, 1, "命中格高亮");
+        assert.match(page.text("layouts-summary"), /1 个可绘制版面/);
+      });
+    },
+  },
+  {
+    name: "筛选面板可收起：按钮文案、结果区布局与记忆同步",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        const panel = doc.getElementById("filter-panel");
+        const toggle = doc.getElementById("filter-toggle");
+        const workspace = doc.querySelector(".results-workspace");
+        assert.equal(panel.hidden, false);
+        assert.equal(toggle.textContent, "隐藏筛选");
+        assert.equal(toggle.getAttribute("aria-expanded"), "true");
+
+        toggle.click();
+        await settle();
+        assert.equal(panel.hidden, true, "收起后面板隐藏");
+        assert.equal(toggle.textContent, "显示筛选");
+        assert.equal(toggle.getAttribute("aria-expanded"), "false");
+        assert.ok(workspace.classList.contains("is-collapsed"), "收起后结果表占满整行");
+        assert.equal(page.window.localStorage.getItem("newspaper-auto.filtersOpen"), "0");
+
+        toggle.click();
+        await settle();
+        assert.equal(panel.hidden, false);
+        assert.ok(!workspace.classList.contains("is-collapsed"));
+        assert.equal(page.window.localStorage.getItem("newspaper-auto.filtersOpen"), "1");
       }),
   },
   {

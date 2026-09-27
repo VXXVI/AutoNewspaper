@@ -247,10 +247,76 @@ def test_build_dashboard_normalizes_layout(tmp_path):
         ],
     }
     _write_archive(tmp_path, [{**ARCHIVE[0], "layout": layout}])
-    normalized = web.build_dashboard(tmp_path)["records"][0]["layout"]
+    dash = web.build_dashboard(tmp_path)
+    # layout 不再挂在记录上，而是抽到顶层共享表（避免同一版面逐条重复下发）
+    assert "layout" not in dash["records"][0]
+    normalized = dash["layouts"][web.layout_key(dash["records"][0])]
     assert normalized["basis"] == "area"
     assert normalized["aspect_ratio"] == 0.7
     assert normalized["items"] == [layout["items"][0]]
+
+
+def test_layout_key_matches_frontend_contract():
+    """分组键必须与前端 render.js 的 layoutKeyOf 完全一致：paper\\u0001date\\u0001section_no\\u0001section。"""
+    assert (
+        web.layout_key(
+            {"paper": "湛江日报", "date": "2026-09-23", "section_no": "第02版", "section": "第2版：本地"}
+        )
+        == "湛江日报\u00012026-09-23\u0001第02版\u0001第2版：本地"
+    )
+    # 缺失字段：版面名回落到 "—"，section_no 回落到空串（与前端 `r.section || "—"` 一致）
+    assert web.layout_key({"paper": "A", "date": "2026-01-01"}) == "A\u00012026-01-01\u0001\u0001—"
+
+
+def test_build_dashboard_deduplicates_shared_layout(tmp_path):
+    """同一版面多条记录只下发一份 layout。
+
+    回归：layout 曾逐条跟着记录重复（同一版 40 篇文章 = 同一份坐标重复 40 次），
+    实测可占 /api/hits 响应体的 90%。
+    """
+    layout = {
+        "basis": "area",
+        "aspect_ratio": 0.72,
+        "items": [
+            {"url": f"http://x/{i}", "left": 0.1, "top": i / 5, "right": 0.4, "bottom": (i + 1) / 5}
+            for i in range(5)
+        ],
+    }
+    records = [
+        {**ARCHIVE[0], "url": f"http://x/{i}", "section_no": "第02版", "layout": layout} for i in range(5)
+    ]
+    _write_archive(tmp_path, records)
+    dash = web.build_dashboard(tmp_path)
+
+    assert len(dash["records"]) == 5
+    assert all("layout" not in rec for rec in dash["records"]), "记录里不再逐条携带 layout"
+    assert len(dash["layouts"]) == 1, "同一版面只保留一份"
+    assert len(dash["layouts"][web.layout_key(dash["records"][0])]["items"]) == 5
+
+
+def test_build_dashboard_keeps_longest_layout_per_section(tmp_path):
+    """同一版面出现多份 layout 时保留项数最多的那份（与前端原有语义一致）。"""
+    short = {
+        "basis": "area",
+        "aspect_ratio": 0.72,
+        "items": [{"url": "http://x/0", "left": 0.1, "top": 0.1, "right": 0.4, "bottom": 0.2}],
+    }
+    long = {
+        "basis": "area",
+        "aspect_ratio": 0.72,
+        "items": [
+            {"url": f"http://x/{i}", "left": 0.1, "top": i / 5, "right": 0.4, "bottom": (i + 1) / 5}
+            for i in range(5)
+        ],
+    }
+    records = [
+        {**ARCHIVE[0], "url": "http://x/0", "section_no": "第02版", "layout": short},
+        {**ARCHIVE[0], "url": "http://x/1", "section_no": "第02版", "layout": long},
+    ]
+    _write_archive(tmp_path, records)
+    dash = web.build_dashboard(tmp_path)
+    assert len(dash["layouts"]) == 1
+    assert len(next(iter(dash["layouts"].values()))["items"]) == 5
 
 
 def test_web_parser_accepts_scan_on_start():

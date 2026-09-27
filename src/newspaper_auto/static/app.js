@@ -123,8 +123,29 @@ import { shiftDate } from "./format.js";
     dispatch(action);
   }
 
+  /* -------------------------------------------------------------- 筛选面板开关 */
+  // 记忆「筛选面板是否收起」：localStorage 在隐私模式/被禁用时会抛异常，一律吞掉并回落到默认展开。
+  var FILTERS_KEY = "newspaper-auto.filtersOpen";
+
+  function readFiltersOpen() {
+    try {
+      var raw = window.localStorage.getItem(FILTERS_KEY);
+      return raw === null ? true : raw === "1";
+    } catch (err) { return true; }
+  }
+
+  function writeFiltersOpen(open) {
+    try { window.localStorage.setItem(FILTERS_KEY, open ? "1" : "0"); } catch (err) { /* 忽略 */ }
+  }
+
   /* -------------------------------------------------------------- 启动 */
   function init() {
+    dispatch({ type: A.SET_FILTERS_OPEN, open: readFiltersOpen() });
+    $("filter-toggle").addEventListener("click", function () {
+      var open = !(store.getState().filtersOpen !== false);
+      dispatch({ type: A.SET_FILTERS_OPEN, open: open }, { immediate: true });
+      writeFiltersOpen(open);
+    });
     $("reload").addEventListener("click", function () { load({ preserve: true }); });
     $("scan-form").addEventListener("submit", function (event) {
       event.preventDefault();

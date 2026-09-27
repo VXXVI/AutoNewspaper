@@ -372,6 +372,8 @@ details > summary { cursor: pointer; }
 .result-context b { color: #173f9d; font-size: 13px; }
 .result-context span { color: var(--muted); font-size: 11.5px; }
 .results-workspace { display: grid; grid-template-columns: 274px minmax(0, 1fr); gap: 20px; align-items: start; }
+/* 收起筛选：结果表占满整行。用类而不是只靠 [hidden]，因为下面的 display 会盖掉 hidden。 */
+.results-workspace.is-collapsed { grid-template-columns: minmax(0, 1fr); }
 .filter-panel {
   position: sticky;
   top: 99px;
@@ -383,6 +385,7 @@ details > summary { cursor: pointer; }
   border-radius: 14px;
   background: var(--surface-soft);
 }
+.filter-panel[hidden] { display: none; }
 .filter-heading { display: flex; flex-direction: column; gap: 2px; padding-bottom: 13px; border-bottom: 1px solid var(--line); }
 .filter-heading b { font-size: 14px; }
 .filter-heading span { color: var(--muted); font-size: 11.5px; }
@@ -408,7 +411,10 @@ tbody tr:hover { background: #f8faff; }
 tbody tr:last-child td { border-bottom: 0; }
 .col-paper { width: 108px; color: var(--ink-soft); font-weight: 680; }
 .col-date { width: 106px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
-.col-section { width: 176px; color: var(--muted); font-size: 12.5px; }
+/* 版面位置：紧跟在命中报道右侧、右对齐成一列，方便按行扫读「这条在第几版第几块」。 */
+.col-section { width: 164px; text-align: right; }
+.col-section .section-name { display: block; color: var(--ink-soft); font-size: 12.5px; font-weight: 620; }
+.col-section .section-pos { display: block; margin-top: 3px; color: var(--muted); font-size: 11.5px; white-space: nowrap; }
 td.title a { color: #174ba7; font-size: 15px; font-weight: 700; line-height: 1.45; text-decoration: none; }
 td.title a:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 .sn { max-width: 760px; margin-top: 6px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.58; word-break: break-word; }
@@ -605,7 +611,12 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
   td { display: block; min-width: 0; padding: 10px 11px; border: 0; font-size: 12px; }
   td::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--muted); font-size: 10.5px; font-weight: 650; }
   .col-paper, .col-date, .col-section { width: auto; white-space: normal; }
-  td.title { grid-column: 1 / -1; padding: 13px 12px 14px; border-top: 1px solid var(--line-soft); }
+  .col-section { text-align: left; }
+  /* 手机端改成卡片：报社/日期/版面位置在首行，标题占满第二行（DOM 顺序已把版面位置放最后）。 */
+  .col-paper { order: 1; }
+  .col-date { order: 2; }
+  .col-section { order: 3; }
+  td.title { order: 4; grid-column: 1 / -1; padding: 13px 12px 14px; border-top: 1px solid var(--line-soft); }
   td.title::before { display: none; }
   td.title a { font-size: 15px; }
   .sn { font-size: 12.5px; }

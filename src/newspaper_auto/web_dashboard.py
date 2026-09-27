@@ -104,6 +104,26 @@ def _normalize_layout(raw: Any) -> dict[str, Any] | None:
     }
 
 
+LAYOUT_KEY_SEP = "\u0001"
+
+
+def layout_key(record: dict[str, Any]) -> str:
+    """版面分组的键：取值口径必须与前端 ``render.js`` 的 ``layoutKeyOf`` 完全一致。
+
+    归档会把同一版面的 ``layout`` 写到该版**每一条**记录上。若逐条下发，一个 40 篇文章
+    的版面就会把同一份坐标重复 40 次（实测可占响应体的 90%）。``build_dashboard`` 因此把
+    layout 抽到顶层按本键去重，只发一份。
+    """
+    return LAYOUT_KEY_SEP.join(
+        [
+            str(record.get("paper") or ""),
+            str(record.get("date") or ""),
+            str(record.get("section_no") or ""),
+            str(record.get("section") or "") or "—",
+        ]
+    )
+
+
 def _normalize(item: Any) -> dict[str, Any] | None:
     """把归档条目收敛成前端需要的形状；丢弃无 URL 的脏数据。"""
     if not isinstance(item, dict) or not item.get("url"):
@@ -168,6 +188,17 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
 
     now = now or datetime.now()
     records = [rec for rec in (_normalize(item) for item in _read_archive(archive_path)) if rec]
+    # layout 抽到顶层按版面去重：同一版面所有文章共享一份坐标，逐条下发会把响应体撑大数十倍。
+    layouts: dict[str, dict[str, Any]] = {}
+    for rec in records:
+        layout = rec.pop("layout", None)
+        if not layout:
+            continue
+        key = layout_key(rec)
+        current = layouts.get(key)
+        # 与前端原有语义一致：同一版面出现多份 layout 时保留项数最多的那份。
+        if current is None or len(layout["items"]) > len(current["items"]):
+            layouts[key] = layout
     records.sort(key=lambda r: (r["date"], r["paper"], r["url"]), reverse=True)
 
     seen = state.load_seen(paths.state_file(data_dir))
@@ -192,6 +223,8 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
         "seen_counts": seen_counts,
         "date_counts": date_counts,
         "records": records,
+        # 版面布局按 layout_key 去重后的共享表；记录里不再重复携带 layout。
+        "layouts": layouts,
         # 空状态引导用：该数据目录是否已生成 web_config.json（判断是否全新环境），
         # 以及默认关键词（全新环境时提示用户「默认扫什么」）。
         "has_web_config": paths.web_config_file(data_dir).exists(),
