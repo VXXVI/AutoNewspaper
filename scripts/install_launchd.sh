@@ -159,8 +159,12 @@ case "${ACTION}" in
         fi
         do_unload
         do_load
+        DISPLAY_TIMES=()
+        for t in "${VALID_TIMES[@]}"; do
+            DISPLAY_TIMES+=("$(printf '%02d:%02d' "${t%%:*}" "${t##*:}")")
+        done
         echo "✓ 已安装并加载：${DEST_PLIST}"
-        echo "  运行时间：每天 ${VALID_TIMES[*]}（共 ${#VALID_TIMES[@]} 次）"
+        echo "  运行时间：每天 ${DISPLAY_TIMES[*]}（共 ${#VALID_TIMES[@]} 次）"
         echo "  可用 '$0 status' 查看、'$0 run-now' 立即测试。"
         ;;
     print)
