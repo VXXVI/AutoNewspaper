@@ -33,13 +33,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
 
-from . import __version__, cli, exporter, paths, web_static
+from . import __version__, cli, exporter, paths, web_daemon, web_static
 from .web_dashboard import (
     _DASHBOARD_CACHE,
     _DASHBOARD_CACHE_LOCK,
@@ -179,6 +180,7 @@ __all__ = [
     "validate_export_request",
     "validate_scan_params",
     "validate_web_config",
+    "web_daemon",
     "web_static",
 ]
 
@@ -205,13 +207,82 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="启动后按 state/web_config.json（不存在则用默认设置）立即扫描",
     )
+    parser.add_argument(
+        "--detach",
+        action="store_true",
+        help="在后台运行（脱离当前控制台，关闭窗口不影响看板）；已在运行则直接复用",
+    )
+    parser.add_argument("--stop", action="store_true", help="停止后台运行的看板")
+    parser.add_argument("--status", action="store_true", help="查看看板是否在运行")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
 
+def _stop_hint() -> str:
+    """教用户怎么停止后台看板（源码运行与冻结运行的命令不同）。"""
+    if getattr(sys, "frozen", False):
+        return "NewspaperAuto.exe dashboard --stop"
+    return "python -m newspaper_auto.web --stop"
+
+
+def _pause_if_console() -> None:
+    """只在「人类双击」场景下停一下，避免窗口一闪而过看不到提示。
+
+    判据是 ``--open``（自动开浏览器 = 面向人的调用）**且** 标准输入是终端；
+    脚本里 ``dashboard --detach`` 不会被打断。
+    """
+    try:
+        if sys.stdin is not None and sys.stdin.isatty():
+            input("按回车键关闭本窗口…")
+    except (EOFError, OSError, KeyboardInterrupt):
+        pass
+
+
+def _detach(data_dir: Path, args: argparse.Namespace) -> int:
+    """后台启动看板并按需打开浏览器。"""
+    state = web_daemon.launch(data_dir, args.host, args.port, scan=args.scan)
+    if not state.get("running"):
+        print(f"启动失败：{state.get('reason', '未知原因')}", file=sys.stderr)
+        print("可换端口重试（--port 8789），或查看 logs/dashboard.log。", file=sys.stderr)
+        return 1
+    if args.open:
+        webbrowser.open(state["url"])
+    print(f"看板{'已在后台运行' if state.get('reused') else '已启动'}：{state['url']}（pid {state['pid']}）")
+    print(f"关闭本窗口不会停止看板；要停止请运行：{_stop_hint()}")
+    if args.open:
+        _pause_if_console()
+    return 0
+
+
 def main(argv: Sequence[str] | None = None, *, default_data_dir: Path | None = None) -> int:
+    # 后台运行时 stdout/stderr 是文件（块缓冲），日志会「什么都看不到」；
+    # 改成行缓冲，出问题时有据可查。
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream is not None and hasattr(stream, "reconfigure"):
+                stream.reconfigure(line_buffering=True)
+        except (OSError, ValueError):
+            pass
+
     args = build_parser().parse_args(argv)
     data_dir = paths.resolve_data_dir(args.data_dir, default_data_dir)
+
+    if args.stop:
+        result = web_daemon.stop(data_dir)
+        if result.get("stopped"):
+            print(f"已停止后台看板（pid {result.get('pid')}）。")
+            return 0
+        print(f"未停止：{result.get('reason', '未知原因')}。")
+        return 1
+    if args.status:
+        state = web_daemon.status(data_dir)
+        if state["running"]:
+            print(f"看板正在运行：{state['url']}（pid {state['pid']}，v{state['version']}）")
+            return 0
+        print("看板未在运行。")
+        return 1
+    if args.detach:
+        return _detach(data_dir, args)
 
     try:
         server = create_server(data_dir, args.host, args.port)
@@ -226,6 +297,8 @@ def main(argv: Sequence[str] | None = None, *, default_data_dir: Path | None = N
 
     host, port = server.server_address[0], server.server_address[1]
     url = f"http://{host}:{port}/"
+    # 落盘运行状态：--status / --stop 与「已在运行则复用」都依赖它
+    web_daemon.write_state(data_dir, host, port)
 
     print(f"看板已启动：{url}")
     print(f"数据目录：{data_dir}")
@@ -258,6 +331,7 @@ def main(argv: Sequence[str] | None = None, *, default_data_dir: Path | None = N
         print("\n已停止")
     finally:
         server.server_close()
+        web_daemon.clear_state(data_dir, os.getpid())
     return 0
 
 

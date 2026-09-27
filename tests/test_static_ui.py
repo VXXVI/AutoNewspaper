@@ -56,6 +56,9 @@ def test_result_and_dashboard_views_have_shared_filter_and_status_surfaces():
         "heatmap",
         "scan-history",
         "health-text",
+        # 服务断开时的自助恢复入口
+        "service-tip",
+        "service-retry",
     }
     assert required_ids <= parser.attributes_by_id.keys()
     assert parser.attributes_by_id["result-context"].get("role") == "status"
@@ -118,6 +121,8 @@ def test_render_module_owns_the_shared_result_pipeline():
         "renderHeatmap",
     ):
         assert re.search(rf"export\s+function\s+{symbol}\b", render), f"render.js 应导出 {symbol}"
+    # 服务断连提示是 renderHealth 的内部步骤（与 renderHealth 一样不对外导出）
+    assert "renderServiceTip" in render
     # 单一数据来源：渲染消费 store 的纯选择器，而不是各自重算。
     assert "selectSorted" in render
 
@@ -177,5 +182,6 @@ def test_new_widget_and_legacy_tokens_are_styled():
         ".heatmap-cell",
         ".history-row",
         ".history-state",
+        ".service-tip",
     ):
         assert cls in css, f"style.css 缺少 {cls} 样式"

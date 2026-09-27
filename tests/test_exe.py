@@ -42,10 +42,31 @@ def test_web_static_dir_falls_back_to_bundle(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------- 子命令分发
-def test_exe_help_and_version(capsys):
+def test_exe_no_args_opens_dashboard_in_background(monkeypatch):
+    """双击 exe（无参数）应直接起看板：后台运行 + 自动打开浏览器。
+
+    这条守护的是一个真实的用户事故：以前无参数只打印帮助，双击后窗口一闪而过，
+    用户以为程序坏了；而看板又跑在前台窗口里，关掉窗口服务就没了。
+    """
+    seen: dict[str, object] = {}
+
+    def fake_web(argv=None, *, default_data_dir=None):
+        seen["argv"] = list(argv)
+        seen["dir"] = default_data_dir
+        return 0
+
+    monkeypatch.setattr(exe.web, "main", fake_web)
     assert exe.main([]) == 0
+    assert seen["argv"] == ["dashboard", "--open", "--detach"]
+    assert seen["dir"] == paths.app_dir()
+
+
+def test_exe_help_and_version(capsys):
+    assert exe.main(["--help"]) == 0
     help_text = capsys.readouterr().out
     assert "scan" in help_text and "dashboard" in help_text
+    # 后台运行必须能在帮助里看到停止方式，否则用户没法关掉它
+    assert "--detach" in help_text and "--stop" in help_text
 
     assert exe.main(["--version"]) == 0
     assert __version__ in capsys.readouterr().out

@@ -186,7 +186,13 @@ export async function boot(options = {}) {
       try { body = JSON.parse(init.body); } catch { body = init.body; }
     }
     calls.push({ path: String(path), method, body });
-    return Promise.resolve(makeResponse(routes(String(path), init)));
+    const route = routes(String(path), init);
+    // 模拟「连接被拒」：真实浏览器里 fetch 抛的是本域 TypeError（api.js 据此判定服务离线）。
+    // 必须用 window.TypeError，否则跨 realm 的 instanceof 判定会失败。
+    if (route && route.networkError) {
+      return Promise.reject(new window.TypeError("Failed to fetch"));
+    }
+    return Promise.resolve(makeResponse(route));
   };
   window.fetch = fetchMock;
 

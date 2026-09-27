@@ -129,6 +129,11 @@ export function createScanController(ctx) {
     }).catch(function (err) {
       if (err.status === 409) { setStatus("已有扫描在运行，正在接入进度…"); return resume(); }
       setRunning(false);
+      if (err.offline) {
+        setStatus("看板服务已停止：请重新启动看板后点「重新连接看板」");
+        if (ctx.features && ctx.features.system) ctx.features.system.markOffline();
+        return;
+      }
       setStatus("启动失败：" + err.message);
     });
   }
@@ -452,18 +457,30 @@ export function createExportController(ctx) {
 
 /* ============================================================ 系统状态 */
 export function createSystemController(ctx) {
+  function setHealth(ok, health) {
+    ctx.dispatch({ type: A.SYSTEM_HEALTH, ok: ok, version: (health && health.version) || "",
+      checkedAt: new Date().toISOString() });
+  }
   function loadHealth() {
     ctx.api.get("/api/health").then(function (health) {
-      ctx.dispatch({ type: A.SYSTEM_HEALTH, ok: Boolean(health && health.ok),
-        version: (health && health.version) || "", checkedAt: new Date().toISOString() });
-    }).catch(function () {
-      ctx.dispatch({ type: A.SYSTEM_HEALTH, ok: false, version: "", checkedAt: new Date().toISOString() });
-    });
+      setHealth(Boolean(health && health.ok), health);
+    }).catch(function () { setHealth(false, null); });
+  }
+  /* 请求失败且是「连不上」时，把头部/提示区切到离线态，让用户看到自救入口。 */
+  function markOffline() { setHealth(false, null); }
+  /* 一键重连：先探活，通了就把看板数据重新拉一遍。 */
+  function reconnect() {
+    return ctx.api.get("/api/health").then(function (health) {
+      var ok = Boolean(health && health.ok);
+      setHealth(ok, health);
+      if (ok) { ctx.load(); }
+      return ok;
+    }).catch(function () { setHealth(false, null); return false; });
   }
   function loadScanHistory() {
     ctx.api.get("/api/scan/history")
       .then(function (data) { ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] }); })
       .catch(function () { ctx.dispatch({ type: A.SCAN_HISTORY, tasks: [] }); });
   }
-  return { loadHealth: loadHealth, loadScanHistory: loadScanHistory };
+  return { loadHealth: loadHealth, loadScanHistory: loadScanHistory, markOffline: markOffline, reconnect: reconnect };
 }

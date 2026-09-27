@@ -82,6 +82,19 @@ function renderHealth(state) {
     box.setAttribute("data-state", "unknown");
   }
   if (state.data && state.data.generated_at) box.title = "数据生成时间：" + state.data.generated_at;
+  renderServiceTip(state);
+}
+
+/* 服务不可用时给一条自助恢复路径：解释原因 + 一键重连，而不是只留一句「请确认看板仍在运行」。 */
+var SERVICE_TIP =
+  "看板服务已停止或已断开（关掉命令行窗口会停止前台看板）。请重新运行 NewspaperAuto.exe" +
+  "（或双击 Start-Dashboard.cmd），然后点右侧按钮重连。";
+function renderServiceTip(state) {
+  var tip = $("service-tip"), text = $("service-tip-text");
+  if (!tip) return;
+  var down = state.system.ok === false;
+  tip.hidden = !down;
+  if (down && text) setText(text, SERVICE_TIP);
 }
 function renderVersion(state) { setText($("version"), state.data ? "v" + state.data.version : ""); }
 function renderFilterInputs(state) {

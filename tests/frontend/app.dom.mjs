@@ -235,6 +235,53 @@ export const domTests = [
       }),
   },
   {
+    name: "服务断开时显示「重新连接」入口，恢复后一键重连",
+    fn: () => {
+      let down = true;
+      const routes = (path, init) => (down ? { networkError: true } : defaultRoutes(path, init));
+      return withPage({ routes }, async (page) => {
+        const doc = page.document;
+        // 首屏就断网：头部切离线，活动面板出现自助恢复入口
+        assert.equal(doc.getElementById("health").getAttribute("data-state"), "off");
+        const tip = doc.getElementById("service-tip");
+        assert.equal(tip.hidden, false, "断网时应显示重连提示");
+        assert.match(tip.textContent, /NewspaperAuto\.exe/);
+        assert.match(tip.textContent, /重新连接看板/);
+
+        // 服务恢复后点按钮
+        down = false;
+        doc.getElementById("service-retry").click();
+        await page.flush(6);
+        await settle();
+        assert.equal(doc.getElementById("health").getAttribute("data-state"), "ok");
+        assert.equal(tip.hidden, true, "恢复后提示应隐藏");
+        assert.equal(rows(doc).length, 2, "重连后应把看板数据重新拉回来");
+      });
+    },
+  },
+  {
+    name: "扫描时服务断开：状态行给出明确指引而不是只报错",
+    fn: () => {
+      let down = false;
+      const routes = (path, init) => {
+        if ((init?.method || "GET").toUpperCase() === "POST" && path === "/api/scan" && down) {
+          return { networkError: true };
+        }
+        return defaultRoutes(path, init);
+      };
+      return withPage({ routes }, async (page) => {
+        down = true;
+        page.document
+          .getElementById("scan-form")
+          .dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+        await page.flush(6);
+        await settle();
+        assert.match(page.text("scan-status"), /看板服务已停止/);
+        assert.equal(page.document.getElementById("service-tip").hidden, false);
+      });
+    },
+  },
+  {
     name: "扫描报社 chip 的 aria-pressed 由 state 推导（dispatch 后重建）",
     fn: () =>
       withPage(undefined, async (page) => {

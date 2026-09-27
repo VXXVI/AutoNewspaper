@@ -298,6 +298,10 @@ details > summary { cursor: pointer; }
 .activity-panel .status-pill[data-state="running"] { border-color: rgba(111, 168, 255, .5); background: rgba(54, 112, 221, .2); color: #dceaff; }
 .activity-panel .status-pill[data-state="success"] { border-color: rgba(84, 213, 164, .45); background: rgba(16, 150, 104, .18); color: #c7f6e4; }
 .activity-panel .status-pill[data-state="error"] { border-color: rgba(255, 141, 128, .45); background: rgba(201, 55, 45, .18); color: #ffd5d0; }
+/* 服务断开时的自救提示：说明原因 + 一键重连 */
+.service-tip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; padding: 10px 12px; border: 1px solid rgba(255, 141, 128, .45); border-radius: 10px; background: rgba(201, 55, 45, .18); color: #ffd5d0; font-size: 12.5px; line-height: 1.5; }
+.service-tip[hidden] { display: none; }
+.service-tip .btn { flex: none; }
 .scan-progress { margin-top: 20px; }
 .progress-track { height: 8px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.13); }
 .progress-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #64d4c0, #7ca8ff); transition: width .25s ease; }

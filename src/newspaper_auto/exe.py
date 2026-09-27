@@ -2,8 +2,9 @@
 
 用法::
 
+    NewspaperAuto.exe                       起本地看板（后台 + 自动开浏览器）
     NewspaperAuto.exe scan [daily_scan.py 的参数...]
-    NewspaperAuto.exe dashboard [dashboard.py 的参数...]
+    NewspaperAuto.exe dashboard [dashboard.py 的参数...]   # --detach / --stop / --status
     NewspaperAuto.exe --version
 
 冻结（PyInstaller 单文件 exe）运行时，默认数据目录与 ``papers.custom.json`` 跟随
@@ -24,18 +25,23 @@ _USAGE = f"""\
 数字报关键词每日监测 v{__version__}
 
 用法:
+  NewspaperAuto.exe                       打开本地看板（后台运行并自动打开浏览器）
   NewspaperAuto.exe scan [参数...]        扫描一次（默认扫今天 + 昨天）
-  NewspaperAuto.exe dashboard [参数...]   打开本地看板（可加 --open --scan）
+  NewspaperAuto.exe dashboard [参数...]   看板（默认前台；--detach 后台，--stop 停止）
   NewspaperAuto.exe --version             显示版本号
   NewspaperAuto.exe --help                显示本帮助
 
 示例:
+  NewspaperAuto.exe                       ← 双击即用：起看板并打开浏览器
+  NewspaperAuto.exe dashboard --stop      停止后台看板
+  NewspaperAuto.exe dashboard --status    查看看板是否在运行
   NewspaperAuto.exe scan --days 7 --kw 人工智能
   NewspaperAuto.exe scan --since 2026-09-20 --until 2026-09-25 --no-state
-  NewspaperAuto.exe dashboard --open
 
 scan / dashboard 后面的参数与 daily_scan.py / dashboard.py 完全一致（详见 README）。
 数据（state/、hits/）与 papers.custom.json 默认放在本 exe 所在目录。
+
+看板默认在**后台**运行：关掉命令行窗口不会停止它，停止请用 dashboard --stop。
 """
 
 _SCAN_COMMANDS = frozenset({"scan", "daily_scan", "daily"})
@@ -45,7 +51,11 @@ _DASHBOARD_COMMANDS = frozenset({"dashboard", "web"})
 def main(argv: Sequence[str] | None = None) -> int:
     """分发子命令；返回进程退出码（供 ``SystemExit`` 使用）。"""
     args = list(sys.argv[1:] if argv is None else argv)
-    if not args or args[0] in ("-h", "--help", "help"):
+    if not args:
+        # 双击即用：直接起看板（后台运行 + 打开浏览器）。
+        # 这样用户不必知道该双击哪个 .cmd，也不会再遇到「关掉窗口 = 服务没了」。
+        return web.main(["dashboard", "--open", "--detach"], default_data_dir=paths.app_dir())
+    if args[0] in ("-h", "--help", "help"):
         print(_USAGE)
         return 0
     if args[0] in ("-V", "--version", "version"):

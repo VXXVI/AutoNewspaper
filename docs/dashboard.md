@@ -68,16 +68,25 @@ python daily_scan.py --days 1 --no-state --export-dir .\exports --export-format 
 用标准库起一个看板，零第三方依赖、无构建、无 CDN：
 
 ```bash
-python3 dashboard.py               # http://127.0.0.1:8788（默认端口）
-python3 dashboard.py --port 8799 --open
-make web                           # 只打开看板
-make start                         # 打开看板 + 按上次页面设置自动抓取
+python3 dashboard.py                      # 前台运行，http://127.0.0.1:8788（默认端口）
+python3 dashboard.py --port 8799 --open   # 前台运行并自动打开浏览器
+python3 dashboard.py --open --detach      # 后台运行（关掉终端也不会停）+ 打开浏览器
+python3 dashboard.py --status             # 看板是否在运行
+python3 dashboard.py --stop               # 停止后台看板
+make web                                  # 只打开看板（前台，开发用）
+make start                                # 打开看板 + 按上次页面设置自动抓取
 ```
+
+> **日常使用建议 `--detach`**：服务会脱离当前终端运行，把 `host/port/pid` 写进
+> `state/dashboard.json`；重复执行只会复用已在运行的实例（顺带解决「换了端口、
+> 旧标签页连不上」）。前台模式（`make web`）仍然可用 —— 那是开发/排障场景，
+> 关掉终端就停止服务，属预期行为。
 
 > 端口可用 `--port` 或环境变量 `NEWSPAPER_PORT` 覆盖（`scripts/dashboard.command` /
 > `scripts/dashboard.cmd` 会读取后者）。`make web` / `make start` 和双击启动器在默认端口
 > 被占用时会自动改用系统分配的空闲端口；直接运行 `dashboard.py` 时请显式传
-> `--port 0` 或换一个端口。
+> `--port 0` 或换一个端口。以 `--detach` 启动时，端口回退在服务内部完成（先探测、
+> 被占用就直接改用系统分配），实际地址以启动输出与 `state/dashboard.json` 为准。
 
 - **数据来源**：`hits/archive.json`（历史命中）与 `state/seen.json`（已判定文章数）。修改
   关键词只影响当前筛选和后续扫描，**不会删除历史归档**；可随时点击「查看全部历史」清除
@@ -158,8 +167,11 @@ make start                         # 打开看板 + 按上次页面设置自动�
   先在 VPS 启动看板，再从自己的电脑执行 `ssh -L 8788:127.0.0.1:8788 user@vps`，最后访问
   `http://127.0.0.1:8788`，不要把看板端口直接暴露到公网。
 - **端口**：默认 `8788`；`make web` / `make start` 和双击启动器会在端口冲突时
-  自动回退到系统分配的空闲端口。直接运行 `dashboard.py` 可用 `--port 0`，或用
-  `--port` / `NEWSPAPER_PORT` 指定其他端口。
+  自动回退到系统分配的空闲端口（`--detach` 模式下由服务内部先探测再回退，不会白等）。
+  直接运行 `dashboard.py` 可用 `--port 0`，或用 `--port` / `NEWSPAPER_PORT` 指定其他端口。
+- **进程与终端解耦**：`dashboard --detach` 启动的服务脱离控制台，关掉窗口不会停；
+  运行状态落在 `state/dashboard.json`（`host/port/pid`），`--status` / `--stop` 据此工作。
+  页面在连不上服务时会给出明确的恢复指引与「重新连接看板」按钮，而不是只报一句错。
 
 ## 点击即用启动器（零命令行）
 
@@ -172,8 +184,10 @@ make start                         # 打开看板 + 按上次页面设置自动�
 
 - `scan.*`：调用 `scripts/run_scan.*` 跑一次「今天 + 昨天」的**无状态**扫描，结果打印在
   窗口里，结束前暂停等你查看。
-- `dashboard.*`：启动本地看板并自动打开浏览器（可在页面里一键触发扫描）；**端口被占用时
-  自动改用空闲端口**。
+- `dashboard.*`：启动本地看板并自动打开浏览器（可在页面里一键触发扫描）；**后台运行**
+  （关掉窗口不会停止服务），**端口被占用时自动改用空闲端口**。
+  停止看板：`python3 dashboard.py --stop`（Windows 便携版：
+  `NewspaperAuto.exe dashboard --stop`）。
 
 > macOS 首次双击 `.command` 若提示「无法打开，因为它来自身份不明的开发者」，
 > 右键 → **打开**，并在弹窗里确认一次即可；之后可正常双击。
@@ -185,10 +199,14 @@ make start                         # 打开看板 + 按上次页面设置自动�
    - 处理：确认没有 `git` 进程在跑后，`rm -f .git/index.lock`，或直接 `make unlock`。
 2. **端口被占用**：看板默认 `8788`；被占用时启动器与 `make web` 会自动回退到系统分配的
    空闲端口并打印实际地址。也可用 `--port` / `NEWSPAPER_PORT` 显式指定。
-3. **看板不是只读的**：看板会写 `state/`（含 `web_config.json`、`seen.json`）与 `hits/`；
+3. **页面提示「无法连接看板服务」**：说明看板服务已经不在了（电脑重启、服务被关、
+   或页面停在旧端口）。重新运行启动器（Windows 双击 `NewspaperAuto.exe`），
+   再点页面里的「重新连接看板」。用 `dashboard --status` 可确认服务状态，
+   `dashboard --stop` 可停止后台服务。
+4. **看板不是只读的**：看板会写 `state/`（含 `web_config.json`、`seen.json`）与 `hits/`；
    「报社」卡片里的「试抓」会真实联网。
-4. **`--only` 的语义**：CLI 部分匹配（如 `--only 湛江日报,打错的报`）会警告后只扫命中的报社；
+5. **`--only` 的语义**：CLI 部分匹配（如 `--only 湛江日报,打错的报`）会警告后只扫命中的报社；
    零匹配会以退出码 2 拒绝。看板采用更严格的交互校验，只要包含未知报社就会在启动前提示
    刷新列表，不会先启动后台任务再失败。
-5. **扫描进行中无法停止**：看板是在自身进程的线程里跑扫描，无法中途强杀；如需强制停止请
+6. **扫描进行中无法停止**：看板是在自身进程的线程里跑扫描，无法中途强杀；如需强制停止请
    关闭看板进程（Ctrl+C / 关窗口）。

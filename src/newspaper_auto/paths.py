@@ -73,6 +73,16 @@ def hits_dir(data_dir: Path) -> Path:
     return data_dir / config.HITS_DIRNAME
 
 
+def dashboard_file(data_dir: Path) -> Path:
+    """后台看板的运行状态文件：``state/dashboard.json``。"""
+    return data_dir / config.STATE_DIRNAME / config.DASHBOARD_FILENAME
+
+
+def dashboard_log_file(data_dir: Path) -> Path:
+    """后台看板的运行日志：``logs/dashboard.log``。"""
+    return data_dir / config.LOGS_DIRNAME / config.DASHBOARD_LOG_FILENAME
+
+
 def archive_file(data_dir: Path) -> Path:
     return hits_dir(data_dir) / config.ARCHIVE_FILENAME
 

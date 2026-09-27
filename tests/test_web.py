@@ -1695,3 +1695,56 @@ def test_scan_events_streams_running_until_terminal(tmp_path):
         assert statuses[0] == "running"
         assert statuses[-1] == "done"
         assert any("湛江日报" in entry for entry in logs)
+
+
+# ---------------------------------------------------------------- 后台运行（--detach/--stop/--status）
+def test_main_status_reports_not_running(tmp_path, capsys):
+    assert web.main(["--status", "--data-dir", str(tmp_path)]) == 1
+    assert "未在运行" in capsys.readouterr().out
+
+
+def test_main_stop_without_running_instance(tmp_path, capsys):
+    assert web.main(["--stop", "--data-dir", str(tmp_path)]) == 1
+    assert "未停止" in capsys.readouterr().out
+
+
+def test_main_status_reports_running_instance(tmp_path, capsys, monkeypatch):
+    web.web_daemon.write_state(tmp_path, "127.0.0.1", 8788)
+    monkeypatch.setattr(web.web_daemon, "pid_alive", lambda pid: True)
+    monkeypatch.setattr(web.web_daemon, "health", lambda *a, **k: {"ok": True, "version": "9.9.9"})
+
+    assert web.main(["--status", "--data-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "看板正在运行" in out
+    assert "http://127.0.0.1:8788/" in out
+    assert "9.9.9" in out
+
+
+def test_main_stop_reports_success(tmp_path, capsys, monkeypatch):
+    web.web_daemon.write_state(tmp_path, "127.0.0.1", 8788)
+    monkeypatch.setattr(web.web_daemon, "pid_alive", lambda pid: True)
+    monkeypatch.setattr(web.web_daemon.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(web.web_daemon, "POLL_INTERVAL", 0.001)
+
+    # pid_alive 一直为真 → 走强制杀分支，但对外仍是「已停止」
+    assert web.main(["--stop", "--data-dir", str(tmp_path)]) == 0
+    assert "已停止后台看板" in capsys.readouterr().out
+
+
+def test_main_writes_and_clears_dashboard_state(tmp_path, capsys, monkeypatch):
+    """前台服务也要落运行状态（这样 --stop 对前台实例同样有效），退出时清理。"""
+    captured: dict[str, object] = {}
+
+    def fake_serve_forever(self):
+        captured["state"] = web.web_daemon.read_state(tmp_path)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(web.DashboardServer, "serve_forever", fake_serve_forever)
+
+    assert web.main(["--data-dir", str(tmp_path), "--host", "127.0.0.1", "--port", "0"]) == 0
+    state = captured["state"]
+    assert isinstance(state, dict)
+    assert state["port"] > 0
+    assert state["pid"] == web.os.getpid()
+    assert "看板已启动" in capsys.readouterr().out
+    assert web.web_daemon.read_state(tmp_path) is None, "退出时应清理状态文件"

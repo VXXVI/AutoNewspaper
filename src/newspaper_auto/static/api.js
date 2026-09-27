@@ -45,7 +45,17 @@
     }).catch(function (error) {
       if (error && error.name === "AbortError") throw new ApiError("请求超时，请稍后重试", 0, null);
       if (error instanceof ApiError) throw error;
-      if (error instanceof TypeError) throw new ApiError("无法连接本地服务，请确认看板仍在运行", 0, null);
+      if (error instanceof TypeError || (error && error.name === "TypeError")) {
+        // fetch 抛 TypeError = 网络层就没连上：看板服务多半已经停了
+        var offline = new ApiError(
+          "无法连接看板服务：服务可能已停止或已换端口。请重新运行 NewspaperAuto.exe" +
+            "（或双击 Start-Dashboard.cmd），然后点「重新连接看板」。",
+          0,
+          null
+        );
+        offline.offline = true;
+        throw offline;
+      }
       throw error;
     }).finally(function () {
       if (timer) window.clearTimeout(timer);

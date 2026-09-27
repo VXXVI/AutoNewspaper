@@ -183,6 +183,7 @@ import { shiftDate } from "./format.js";
     $("reset").addEventListener("click", function () {
       dispatch({ type: A.RESET_VIEW });
     });
+    if ($("service-retry")) $("service-retry").addEventListener("click", system.reconnect);
 
     system.loadHealth();
     system.loadScanHistory();
