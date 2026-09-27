@@ -66,6 +66,49 @@ def test_build_windows_zip_copies_explicit_user_files():
         assert name in zip_block, f"zip 组装段应显式包含 {name}"
 
 
+def test_build_windows_produces_and_smokes_both_exes():
+    """两个 exe 都要构建 + 冒烟：无窗口版（双击即用）与控制台版（命令行）。
+
+    回归：控制台版一旦漏掉构建，``.cmd`` 启动器与所有命令行用法会直接失效；
+    而只看 ``--version`` 的退出码又会让「无窗口版打不出字」变成假绿，
+    所以这里同时要求断言**输出版本号**、且两个 exe 都要过 /api/health。
+    """
+    text = (ROOT / "scripts/build_windows.ps1").read_text(encoding="utf-8")
+    assert "NEWSPAPERAUTO_CONSOLE" in text, "构建脚本应通过环境变量切换 console 产物"
+    assert "Invoke-PyInstaller 'NewspaperAuto'\n" in text.replace("\r\n", "\n")
+    assert "Invoke-PyInstaller 'NewspaperAuto-CLI' -Console" in text.replace("\r\n", "\n")
+    assert "$cliExePath" in text and "Copy-Item -LiteralPath $cliExePath -Destination $stage" in text
+
+    smoke = text.split("冒烟测试", 1)[1]
+    assert "NewspaperAuto-CLI.exe --version 失败" in smoke
+    assert "没有输出版本号" in smoke, "必须断言 --version 真的打印了内容（否则是假绿）"
+    assert "api/health" in smoke and "static/store.js" in smoke
+    for label in ("NewspaperAuto-CLI", "NewspaperAuto"):
+        assert f"Label = '{label}'" in smoke, f"冒烟测试应覆盖 {label}"
+
+
+def test_windows_launchers_and_installer_use_the_right_exe():
+    """启动器与安装包必须把自己指向正确的那个 exe。
+
+    - 需要看输出的（扫描、起看板排障）→ 控制台版 ``NewspaperAuto-CLI.exe``；
+    - 「双击即用」的入口 → 无窗口版 ``NewspaperAuto.exe``，不然又弹出黑窗口。
+    """
+    for name in ("Run-Scan.cmd", "Start-Dashboard.cmd"):
+        script = (ROOT / "packaging" / "windows" / name).read_text(encoding="utf-8-sig")
+        assert "NewspaperAuto-CLI.exe" in script, f"{name} 应调用控制台版 exe"
+
+    iss = (ROOT / "packaging" / "windows" / "installer.iss").read_text(encoding="utf-8")
+    assert r"{#SourceDir}\NewspaperAuto-CLI.exe" in iss, "安装包必须同时装上控制台版"
+    assert r"{#SourceDir}\NewspaperAuto.exe" in iss
+    # 「打开看板」直接指向无窗口版：用户明确要求双击别弹终端
+    assert r'Name: "{group}\打开看板"; Filename: "{app}\NewspaperAuto.exe"' in iss
+    assert "SetupIconFile={#IconFile}" in iss, "安装包自身的品牌图标不能丢"
+
+    readme = (ROOT / "packaging" / "windows" / "README.txt").read_text(encoding="utf-8")
+    for name in ("NewspaperAuto.exe", "NewspaperAuto-CLI.exe"):
+        assert name in readme, f"使用说明未提到 {name}"
+
+
 def _make_isolated_project(tmp_path: Path) -> tuple[Path, Path]:
     """复制 run_scan.sh 到 tmp 项目，并造一个回显 argv 的桩 Python。"""
     scripts = tmp_path / "scripts"

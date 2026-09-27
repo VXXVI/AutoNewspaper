@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from newspaper_auto import __version__, exe, paths, web
@@ -40,6 +41,45 @@ def test_web_static_dir_falls_back_to_bundle(monkeypatch, tmp_path):
     monkeypatch.setattr(web, "__file__", str(tmp_path / "nonexistent" / "web.py"))
     monkeypatch.setattr(web.sys, "_MEIPASS", str(bundle), raising=False)
     assert web._static_dir() == static_in_bundle
+
+
+# ---------------------------------------------------------------- 无窗口版流兜底
+def test_ensure_console_streams_restores_none_streams():
+    """无窗口版（``console=False``）下 stdout/stderr/stdin 可能是 None。
+
+    回归：任何 ``print`` 都会 ``AttributeError`` 把进程打崩 —— 而双击启动恰恰是
+    最不能崩的场景。兜底后必须可写、且不抛异常。
+    """
+    saved = (sys.stdout, sys.stderr, sys.stdin)
+    sys.stdout = sys.stderr = sys.stdin = None  # type: ignore[assignment]
+    try:
+        exe._ensure_console_streams()
+        assert sys.stdout is not None and sys.stderr is not None and sys.stdin is not None
+        print("无窗口版也能安全 print")  # 真实断言：这一行不抛异常
+        sys.stdout.flush()
+    finally:
+        sys.stdout, sys.stderr, sys.stdin = saved
+
+
+def test_ensure_console_streams_is_noop_when_streams_are_ready():
+    """控制台版 / 源码运行：流已就绪时必须原样保留，不能换成 devnull 把输出吃掉。"""
+    before = (sys.stdout, sys.stderr, sys.stdin)
+    exe._ensure_console_streams()
+    assert (sys.stdout, sys.stderr, sys.stdin) == before
+
+
+def test_report_fatal_is_silent_outside_frozen_windows():
+    """源码运行与测试环境绝不能弹窗（否则 CI 会挂住）。"""
+    exe._report_fatal(RuntimeError("boom"))  # 不抛异常即为通过
+
+
+def test_main_dispatches_through_the_guard(monkeypatch):
+    """``main`` 必须先接好流再分发 —— 否则无窗口版在第一次 print 就崩。"""
+    called: list[str] = []
+    monkeypatch.setattr(exe, "_ensure_console_streams", lambda: called.append("streams"))
+    monkeypatch.setattr(exe, "_dispatch", lambda argv=None: 0)
+    assert exe.main(["--version"]) == 0
+    assert called == ["streams"]
 
 
 # ---------------------------------------------------------------- 子命令分发
@@ -119,12 +159,8 @@ def test_entry_py_is_valid_python():
     compile((ROOT / "packaging" / "entry.py").read_text(encoding="utf-8"), "entry.py", "exec")
 
 
-def test_pyinstaller_spec_wires_entry_and_static():
-    """用桩符号执行 spec，校验入口与静态资源路径。
-
-    注意 PyInstaller 注入的 ``SPECPATH`` 是 spec **所在目录**（不是文件本身）——
-    这里按同样语义注入，守护「路径算错一级」这类只在打包时才暴露的错误。
-    """
+def _run_spec(monkeypatch, *, console: bool) -> dict[str, object]:
+    """用桩符号执行 spec，返回捕获到的关键字参数。"""
     spec = ROOT / "packaging" / "NewspaperAuto.spec"
     captured: dict[str, object] = {}
 
@@ -144,14 +180,49 @@ def test_pyinstaller_spec_wires_entry_and_static():
     class _EXE:
         def __init__(self, *args, **kwargs):
             captured["exe_name"] = kwargs.get("name")
+            captured["exe_console"] = kwargs.get("console")
+            captured["exe_icon"] = kwargs.get("icon")
+
+    if console:
+        monkeypatch.setenv("NEWSPAPERAUTO_CONSOLE", "1")
+    else:
+        monkeypatch.delenv("NEWSPAPERAUTO_CONSOLE", raising=False)
 
     exec(
         compile(spec.read_text(encoding="utf-8"), str(spec), "exec"),
         {"SPECPATH": str(spec.parent), "Analysis": _Analysis, "PYZ": _PYZ, "EXE": _EXE},
     )
+    return captured
+
+
+def test_pyinstaller_spec_wires_entry_and_static(monkeypatch):
+    """用桩符号执行 spec，校验入口与静态资源路径。
+
+    注意 PyInstaller 注入的 ``SPECPATH`` 是 spec **所在目录**（不是文件本身）——
+    这里按同样语义注入，守护「路径算错一级」这类只在打包时才暴露的错误。
+    """
+    captured = _run_spec(monkeypatch, console=False)
 
     assert captured["scripts"] == [str(ROOT / "packaging" / "entry.py")]
     assert captured["pathex"] == [str(ROOT / "src")]
     assert captured["datas"] == [(str(ROOT / "src" / "newspaper_auto" / "static"), "newspaper_auto/static")]
     assert (ROOT / "src" / "newspaper_auto" / "static").is_dir()
     assert captured["exe_name"] == "NewspaperAuto"
+    assert captured["exe_console"] is False, "默认产物必须是无窗口版，否则双击会弹终端"
+
+
+def test_pyinstaller_spec_builds_a_console_variant(monkeypatch):
+    """同一个 spec 靠 NEWSPAPERAUTO_CONSOLE 出控制台版，供全部命令行用法使用。
+
+    回归：用户要求「便携版别弹终端」，但 CLI 不能因此丢掉输出能力 ——
+    两个 exe 必须来自同一份 Analysis 配置，避免静态资源/图标两处漂移。
+    """
+    windowed = _run_spec(monkeypatch, console=False)
+    console = _run_spec(monkeypatch, console=True)
+
+    assert console["exe_name"] == "NewspaperAuto-CLI"
+    assert console["exe_console"] is True
+    # 除名字与 console 外，其余（入口 / 数据文件 / 图标）必须逐项相同
+    for key in ("scripts", "pathex", "datas", "exe_icon"):
+        assert windowed[key] == console[key], f"两个 exe 的 {key} 必须一致"
+    assert console["exe_icon"] == str(ROOT / "src" / "newspaper_auto" / "static" / "favicon.ico")
