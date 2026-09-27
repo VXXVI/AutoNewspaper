@@ -128,7 +128,8 @@ if (-not $SkipInstaller) {
         Write-Host "使用 ISCC：$iscc"
         # Inno 要求 VersionInfoVersion 是 x.y.z.w 四段纯数字；三段（如 0.5.0）在
         # Inno Setup 6.7.1 上会直接报 invalid（CI 用的就是 6.7.1）。
-        $numeric = @($Version -split '[.\-+]' | Where-Object { $_ -match '^\d+$' })
+        # 注意 $Version 可能是 tag 名（v0.5.0）：先去掉前缀 v，否则会算成 5.0.0.0。
+        $numeric = @(($Version -replace '^[vV]', '') -split '[.\-+]' | Where-Object { $_ -match '^\d+$' })
         while ($numeric.Count -lt 4) { $numeric += '0' }
         $versionInfo = ($numeric[0..3] -join '.')
 
