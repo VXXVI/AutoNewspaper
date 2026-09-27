@@ -137,9 +137,9 @@ def test_merge_papers_excludes_disabled_builtin_override_and_custom():
     assert merged == [{"name": "乙", "style": "ymd", "tpl": "https://b/{a}"}]
 
 
-# ---------------------------------------------------------------- load_custom
-def test_load_custom_missing_file_returns_empty(tmp_path):
-    assert papers.load_custom(tmp_path) == []
+# ---------------------------------------------------------------- load_settings
+def test_load_settings_missing_file_returns_empty(tmp_path):
+    assert papers.load_settings(tmp_path) == papers.PaperSettings()
 
 
 def test_load_settings_legacy_file_without_disabled_is_compatible(tmp_path):
@@ -155,7 +155,7 @@ def test_load_settings_legacy_file_without_disabled_is_compatible(tmp_path):
     assert papers.load_settings_for_update(tmp_path) == expected
 
 
-def test_version_one_file_ignores_unknown_paper_fields_but_api_validation_is_strict(tmp_path):
+def test_version_one_file_ignores_unknown_paper_fields_on_lenient_read(tmp_path):
     entry = _valid(name="旧扩展报")
     extended = {**entry, "note": "历史版本自定义备注"}
     (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
@@ -164,23 +164,35 @@ def test_version_one_file_ignores_unknown_paper_fields_but_api_validation_is_str
     )
 
     assert papers.load_settings(tmp_path).custom == (entry,)
-    assert papers.load_settings_for_update(tmp_path).custom == (entry,)
     assert papers.validate_paper(extended)[1] == "不支持的字段：note"
 
 
-def test_load_custom_corrupt_json_returns_empty(tmp_path, capsys):
+def test_load_settings_for_update_rejects_unknown_paper_fields(tmp_path):
+    """严格读取必须拒绝拼写错误的字段，否则保存会把用户原字段静默丢掉。"""
+    entry = _valid(name="旧扩展报")
+    extended = {**entry, "note": "历史版本自定义备注"}
+    (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
+        json.dumps({"version": 1, "papers": [extended]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(papers.CustomPapersError, match="不支持的字段"):
+        papers.load_settings_for_update(tmp_path)
+
+
+def test_load_settings_corrupt_json_returns_empty(tmp_path, capsys):
     (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text("{ oops", encoding="utf-8")
-    assert papers.load_custom(tmp_path) == []
+    assert papers.load_settings(tmp_path) == papers.PaperSettings()
     assert "警告" in capsys.readouterr().err
 
 
-def test_load_custom_wrong_top_level_returns_empty(tmp_path, capsys):
+def test_load_settings_wrong_top_level_returns_empty(tmp_path, capsys):
     (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text("[1, 2, 3]", encoding="utf-8")
-    assert papers.load_custom(tmp_path) == []
+    assert papers.load_settings(tmp_path) == papers.PaperSettings()
     assert "警告" in capsys.readouterr().err
 
 
-def test_load_custom_skips_invalid_entries(tmp_path, capsys):
+def test_load_settings_skips_invalid_entries(tmp_path, capsys):
     payload = {
         "version": 1,
         "papers": [
@@ -192,22 +204,22 @@ def test_load_custom_skips_invalid_entries(tmp_path, capsys):
     (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
         json.dumps(payload, ensure_ascii=False), encoding="utf-8"
     )
-    loaded = papers.load_custom(tmp_path)
+    loaded = papers.load_settings(tmp_path).custom
     assert [p["name"] for p in loaded] == ["好报社", "也好"]
     assert "已跳过" in capsys.readouterr().err
 
 
-def test_load_custom_skips_duplicate_names_and_unsupported_version(tmp_path, capsys):
+def test_load_settings_skips_duplicate_names_and_unsupported_version(tmp_path, capsys):
     path = tmp_path / config.CUSTOM_PAPERS_FILENAME
     path.write_text(
         json.dumps({"version": 1, "papers": [_valid(name="甲"), _valid(name="甲")]}, ensure_ascii=False),
         encoding="utf-8",
     )
-    assert papers.load_custom(tmp_path) == [_valid(name="甲")]
+    assert papers.load_settings(tmp_path).custom == (_valid(name="甲"),)
     assert "同名" in capsys.readouterr().err
 
     path.write_text(json.dumps({"version": 2, "papers": [_valid(name="乙")]}), encoding="utf-8")
-    assert papers.load_custom(tmp_path) == []
+    assert papers.load_settings(tmp_path) == papers.PaperSettings()
     assert "不支持" in capsys.readouterr().err
 
 
@@ -218,12 +230,12 @@ def test_load_custom_skips_duplicate_names_and_unsupported_version(tmp_path, cap
         ({"version": 1, "papers": [_valid(name="甲"), _valid(name="甲")]}, "重复"),
     ],
 )
-def test_load_custom_for_update_rejects_ambiguous_files(tmp_path, payload, message):
+def test_load_settings_for_update_rejects_ambiguous_files(tmp_path, payload, message):
     (tmp_path / config.CUSTOM_PAPERS_FILENAME).write_text(
         json.dumps(payload, ensure_ascii=False), encoding="utf-8"
     )
     with pytest.raises(papers.CustomPapersError, match=message):
-        papers.load_custom_for_update(tmp_path)
+        papers.load_settings_for_update(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -245,24 +257,8 @@ def test_load_settings_for_update_strictly_validates_disabled(tmp_path, disabled
         papers.load_settings_for_update(tmp_path)
 
 
-def test_custom_names(tmp_path):
-    papers.save_custom(tmp_path, [_valid(name="甲"), _valid(name="乙")])
-    assert papers.custom_names(tmp_path) == {"甲", "乙"}
-
-
-# ---------------------------------------------------------------- save_custom
-def test_save_custom_roundtrip(tmp_path):
-    entries = [_valid(name="甲", style="dash", timeout=10, retries=1, node_exclude="/pad/")]
-    papers.save_custom(tmp_path, entries)
-    path = tmp_path / config.CUSTOM_PAPERS_FILENAME
-    assert path.exists()
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    assert raw["version"] == 1
-    assert raw["papers"] == entries
-    assert papers.load_custom(tmp_path) == entries
-
-
-def test_save_settings_roundtrip_and_save_custom_preserves_disabled(tmp_path):
+# ---------------------------------------------------------------- save_settings
+def test_save_settings_roundtrip(tmp_path):
     entries = [_valid(name="甲报", timeout=20)]
     papers.save_settings(tmp_path, entries, [" 光明日报 ", "甲报", "光明日报"])
 
@@ -278,15 +274,19 @@ def test_save_settings_roundtrip_and_save_custom_preserves_disabled(tmp_path):
         "disabled": ["光明日报", "甲报"],
     }
 
-    replacement = [_valid(name="乙报")]
-    papers.save_custom(tmp_path, replacement)
-    assert papers.load_settings_for_update(tmp_path) == papers.PaperSettings(
-        custom=tuple(replacement),
-        disabled=("光明日报", "甲报"),
-    )
+
+def test_save_settings_roundtrip_optional_fields(tmp_path):
+    entries = [_valid(name="甲", style="dash", timeout=10, retries=1, node_exclude="/pad/")]
+    papers.save_settings(tmp_path, entries)
+    path = tmp_path / config.CUSTOM_PAPERS_FILENAME
+    assert path.exists()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["version"] == 1
+    assert raw["papers"] == entries
+    assert papers.load_settings(tmp_path).custom == tuple(entries)
 
 
-def test_save_custom_creates_parent_dirs(tmp_path):
+def test_save_settings_creates_parent_dirs(tmp_path):
     root = tmp_path / "nested" / "root"
-    papers.save_custom(root, [_valid(name="甲")])
+    papers.save_settings(root, [_valid(name="甲")])
     assert (root / config.CUSTOM_PAPERS_FILENAME).exists()

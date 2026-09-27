@@ -5,29 +5,32 @@
 
 from __future__ import annotations
 
-import contextlib
 import csv
 import html as _html
 import io
 import json
 import os
-import tempfile
 from collections.abc import Iterable
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-# 结构化输出字段（保持与历史 hits 记录一致，便于下游消费）
-JSON_FIELDS = ("paper", "date", "section", "section_no", "title", "url", "text_len", "snippets", "matched")
-CSV_FIELDS = ("paper", "date", "section", "title", "url", "text_len", "matched")
+from . import fsutil
+
+# CSV 列与 JSON 记录字段保持一致：section 与 section_no 同时输出，
+# 后者是规范化版号，便于下游排序/去重。
+CSV_FIELDS = ("paper", "date", "section", "section_no", "title", "url", "text_len", "matched")
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _csv_safe_text(value: Any) -> str:
-    """Escape text that spreadsheet applications could interpret as a formula."""
+    """Escape text that spreadsheet applications could interpret as a formula.
+
+    公式前缀判定前先去掉前导空白：``"  =1+1"`` 在部分表格软件里同样会被当公式执行，
+    但转义时仍保留原始内容，只在最前面加一个撇号。
+    """
     text = "" if value is None else str(value)
-    if text.startswith(CSV_FORMULA_PREFIXES):
+    if text.startswith(CSV_FORMULA_PREFIXES) or text.lstrip().startswith(CSV_FORMULA_PREFIXES):
         return f"'{text}"
     return text
 
@@ -62,26 +65,8 @@ def geometry_label(geometry: Any) -> str:
 
 
 def write_text(path: str | os.PathLike[str], content: str) -> None:
-    """原子写入文本文件（自动建父目录）。
-
-    先在同目录写入唯一临时文件，``flush`` + ``fsync`` 后再替换目标，
-    避免进程中断留下半截 JSON / HTML。
-    """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_name, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_name)
-        raise
+    """原子写入文本文件（兼容转发到 :func:`newspaper_auto.fsutil.write_text`）。"""
+    fsutil.write_text(path, content)
 
 
 def hits_to_json(hits: list[dict[str, Any]]) -> str:
@@ -100,6 +85,7 @@ def hits_to_csv(hits: list[dict[str, Any]]) -> str:
                 "paper": _csv_safe_text(hit.get("paper", "")),
                 "date": _csv_safe_text(hit.get("date", "")),
                 "section": _csv_safe_text(hit.get("section", "")),
+                "section_no": _csv_safe_text(hit.get("section_no", "")),
                 "title": _csv_safe_text(hit.get("title", "")),
                 "url": _csv_safe_text(hit.get("url", "")),
                 "text_len": _csv_safe_len(hit.get("text_len", 0)),
@@ -143,13 +129,14 @@ def render_md(
         hit_by_paper[key] = hit_by_paper.get(key, 0) + 1
     for item in stats:
         count = hit_by_paper.get((item["paper"], item["date"]), 0)
+        # note 必须落在最后一个单元格的竖线之内，否则 GFM 会把整行当成多出一列而错乱。
         note = f" *{item['note']}*" if item["note"] else ""
         sec_fail = item.get("sections_failed", 0)
         art_fail = item.get("articles_failed", 0)
         fail_cell = f"{sec_fail}版/{art_fail}文" if (sec_fail or art_fail) else "—"
         lines.append(
             f"| {item['paper']} | {item['date']} | {item['sections']} | "
-            f"{item['scanned']}/{item['articles']} | {count} | {fail_cell} |" + note
+            f"{item['scanned']}/{item['articles']} | {count} | {fail_cell}{note} |"
         )
     lines.append("")
 

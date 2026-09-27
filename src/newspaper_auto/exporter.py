@@ -1,7 +1,7 @@
 """把可信的扫描/归档记录导出到用户指定目录。
 
 目录可以由 CLI 或本地看板传入，但文件名始终由程序生成，避免关键词、报社名等
-外部文本参与路径拼接。最终文件通过 :func:`report.write_text` 原子替换。
+外部文本参与路径拼接。最终文件通过 :func:`newspaper_auto.fsutil.write_text` 原子替换。
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from . import report
+from .fsutil import write_text
 
 EXPORT_FORMATS = ("csv", "json")
 MAX_DIRECTORY_LENGTH = 4096
@@ -100,5 +101,5 @@ def export_hits(
         content = "\ufeff" + report.hits_to_csv(hits)
     else:
         content = report.hits_to_json(hits) + "\n"
-    report.write_text(target, content)
+    write_text(target, content)
     return target

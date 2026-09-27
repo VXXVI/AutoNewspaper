@@ -30,7 +30,8 @@ from string import Formatter
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import config, report
+from . import config
+from .fsutil import write_text
 
 MAX_NAME_LEN = 30
 STYLES = ("ymd", "dash", "custom")
@@ -246,9 +247,9 @@ def _parse_settings(data: Any, *, strict: bool, path_name: str) -> PaperSettings
     custom: list[dict[str, Any]] = []
     names: set[str] = set()
     for index, item in enumerate(raw_papers, 1):
-        # version=1 的历史语义是忽略额外字段。文件读取保持这一兼容性；
-        # Web 新增/编辑接口仍会严格拒绝未知字段，防止拼写错误被静默忽略。
-        paper, error = validate_paper(item, allow_unknown_fields=True)
+        # 容错扫描（strict=False）保持 version=1 的兼容语义：忽略额外字段；
+        # 写接口（strict=True）严格拒绝未知字段，避免拼写错误被静默丢字段后覆盖原文件。
+        paper, error = validate_paper(item, allow_unknown_fields=not strict)
         if error:
             if strict:
                 raise CustomPapersError(f"{path_name} 第 {index} 条无效：{error}")
@@ -307,11 +308,6 @@ def load_settings(root: Path) -> PaperSettings:
     return _parse_settings(data, strict=False, path_name=path.name)
 
 
-def load_custom(root: Path) -> list[dict[str, Any]]:
-    """兼容接口：只返回 ``papers`` 列表。"""
-    return [dict(paper) for paper in load_settings(root).custom]
-
-
 def load_settings_for_update(root: Path) -> PaperSettings:
     """严格读取设置，供 Web 写接口执行“读—改—写”。
 
@@ -332,11 +328,6 @@ def load_settings_for_update(root: Path) -> PaperSettings:
     except ValueError as exc:
         raise CustomPapersError(f"{path.name} JSON 解析失败：{exc}") from exc
     return _parse_settings(data, strict=True, path_name=path.name)
-
-
-def load_custom_for_update(root: Path) -> list[dict[str, Any]]:
-    """兼容接口：严格读取后只返回 ``papers`` 列表。"""
-    return [dict(paper) for paper in load_settings_for_update(root).custom]
 
 
 def merge_papers(
@@ -403,15 +394,4 @@ def save_settings(
     path = _custom_path(root)
     payload = {"version": 1, "papers": normalized_papers, "disabled": normalized_disabled}
     text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    report.write_text(path, text)
-
-
-def save_custom(root: Path, custom_papers: Iterable[dict[str, Any]]) -> None:
-    """兼容接口：保存自定义报社，并保留现有停用列表。"""
-    disabled = load_settings_for_update(root).disabled
-    save_settings(root, custom_papers, disabled)
-
-
-def custom_names(root: Path) -> set[str]:
-    """自定义文件里出现的报社名集合（供「内置 / 自定义 / 覆盖」标注用）。"""
-    return {paper["name"] for paper in load_custom(root)}
+    write_text(path, text)

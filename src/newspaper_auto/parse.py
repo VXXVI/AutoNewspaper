@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import math
 import re
-from datetime import datetime
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urljoin
@@ -345,8 +344,3 @@ def snippet(text: str, match: re.Match[str], span: int = 70) -> str:
     start = max(0, match.start() - span)
     end = min(len(text), match.end() + span)
     return ("…" if start > 0 else "") + text[start:end] + ("…" if end < len(text) else "")
-
-
-def date_path(day: datetime, style: str) -> str:
-    """按报社风格生成日期目录片段。"""
-    return day.strftime("%Y%m/%d") if style == "ymd" else day.strftime("%Y-%m/%d")

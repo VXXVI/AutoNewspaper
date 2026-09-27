@@ -18,9 +18,10 @@ import uuid
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from . import config, report
+from . import config, paths
+from .fsutil import write_text
 
 # 文章 URL 内含日期目录，如 /2026-09/22/ 或 /202609/22/
 _URL_DATE_RE = re.compile(r"/(\d{4})-?(\d{2})/")
@@ -49,7 +50,7 @@ def load_seen(path: str | os.PathLike[str]) -> SeenMap:
 
 def save_seen(path: str | os.PathLike[str], seen: SeenMap) -> None:
     """原子写入增量状态。"""
-    report.write_text(path, json.dumps(seen, ensure_ascii=False, indent=1))
+    write_text(path, json.dumps(seen, ensure_ascii=False, indent=1))
 
 
 @contextmanager
@@ -85,12 +86,13 @@ def exclusive_lock(state_path: str | os.PathLike[str], *, timeout: float = 30.0,
     try:
         yield
     finally:
+        # 只有确认锁文件内容仍是自己的 token 才删除。读取失败（权限/占用/已被替换）
+        # 时一律保留：宁可可被回收的残留锁，也不能误删其他进程正在持有的活锁。
         try:
-            if lock_path.read_text(encoding="utf-8") == token:
-                lock_path.unlink()
-        except FileNotFoundError:
-            pass
+            owns_lock = lock_path.read_text(encoding="utf-8") == token
         except OSError:
+            owns_lock = False
+        if owns_lock:
             with suppress(OSError):
                 lock_path.unlink()
 
@@ -139,3 +141,110 @@ def compute_new_hits(
         elif not any(hit["url"] in bucket for bucket in seen.values()):
             new_hits.append(hit)
     return new_hits
+
+
+# ---------------------------------------------------------------- 命中归档
+def update_archive(
+    data_dir: os.PathLike[str] | str,
+    all_hits: list[dict[str, Any]],
+    *,
+    keep_days: int = 0,
+    now: datetime | None = None,
+    log: Callable[..., None] | None = None,
+) -> list[dict[str, Any]]:
+    """把本次命中并入 ``archive.json``，返回合并（并按需修剪）后的归档。
+
+    旧归档中的局部脏数据会被跳过；同 URL 再次命中时更新标题、版面与
+    几何信息，并对 ``matched`` 取有序并集，避免新关键词永远不进看板。
+
+    ``keep_days > 0`` 时顺带丢弃 ``date`` 早于该天数的条目（见 :func:`prune_archive`），
+    默认 ``0`` 表示归档只增不删，保留完整审计历史。
+    """
+    archive_path = paths.archive_file(data_dir)
+    try:
+        with open(archive_path, encoding="utf-8") as handle:
+            raw_archive = json.load(handle)
+    except (OSError, ValueError):
+        raw_archive = []
+    archive = (
+        [item for raw in raw_archive if (item := normalize_archive_item(raw)) is not None]
+        if isinstance(raw_archive, list)
+        else []
+    )
+    by_url = {item["url"]: index for index, item in enumerate(archive)}
+    for hit in all_hits:
+        normalized_hit = normalize_archive_item(hit)
+        if normalized_hit is None:
+            continue
+        url = normalized_hit["url"]
+        if url not in by_url:
+            by_url[url] = len(archive)
+            archive.append(normalized_hit)
+            continue
+        index = by_url[url]
+        previous = archive[index]
+        merged = {**previous, **normalized_hit}
+        merged["matched"] = list(
+            dict.fromkeys([*(previous.get("matched") or []), *(normalized_hit.get("matched") or [])])
+        )
+        archive[index] = merged
+
+    archive, dropped = prune_archive(archive, keep_days, now)
+    write_text(archive_path, json.dumps(archive, ensure_ascii=False, indent=1))
+    if dropped and log:
+        log(f"  （已清理 {dropped} 条早于最近 {keep_days} 天的归档记录）")
+    return archive
+
+
+def prune_archive(
+    archive: list[dict[str, Any]], keep_days: int, now: datetime | None = None
+) -> tuple[list[dict[str, Any]], int]:
+    """丢弃 ``date`` 早于最近 ``keep_days`` 天的归档条目，返回 ``(保留, 删除数)``。
+
+    ``keep_days <= 0`` 时原样返回（默认保留完整历史）。``date`` 缺失或非法的条目一律保留，
+    避免脏数据被误删。仅影响看板/报告用的 ``archive.json``，与 ``seen.json`` 的增量判定无关。
+    """
+    if keep_days <= 0:
+        return archive, 0
+    now = now or datetime.now()
+    cutoff = (now - timedelta(days=keep_days)).strftime("%Y-%m-%d")
+    kept: list[dict[str, Any]] = []
+    dropped = 0
+    for item in archive:
+        date = item.get("date") if isinstance(item, dict) else None
+        if isinstance(date, str) and date and date < cutoff:
+            dropped += 1
+            continue
+        kept.append(item)
+    return kept, dropped
+
+
+def normalize_archive_item(item: Any) -> dict[str, Any] | None:
+    """把归档条目收敛为报告渲染必需的安全形状。"""
+    if not isinstance(item, dict):
+        return None
+    url = item.get("url")
+    if not isinstance(url, str) or not url:
+        return None
+    normalized = dict(item)
+    normalized.update(
+        {
+            "paper": str(item.get("paper") or ""),
+            "date": str(item.get("date") or ""),
+            "section": str(item.get("section") or ""),
+            "section_no": str(item.get("section_no") or ""),
+            "title": str(item.get("title") or ""),
+            "url": url,
+            "snippets": [str(value) for value in item.get("snippets", []) if value]
+            if isinstance(item.get("snippets"), list)
+            else [],
+            "matched": [str(value) for value in item.get("matched", []) if value]
+            if isinstance(item.get("matched"), list)
+            else [],
+        }
+    )
+    try:
+        normalized["text_len"] = int(item.get("text_len") or 0)
+    except (TypeError, ValueError):
+        normalized["text_len"] = 0
+    return normalized

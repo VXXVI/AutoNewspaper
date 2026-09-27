@@ -15,22 +15,33 @@ CONTENT_RE = r"content_\w+\.html?$"
 Fetcher = Callable[[str], tuple[int, str]]
 
 
-def _classify_entry_failure(code: int, body_len: int) -> str:
+def _classify_entry_failure(code: int, body_len: int) -> tuple[str, str]:
+    """把入口失败同时收敛为 ``(failure_kind, 给用户看的中文说明)``。
+
+    仅在判定为失败时调用（``code != 200`` 或正文过短），故必然命中某一分支；
+    合并成一个函数避免「种类」与「说明」两套 if 链各自漂移。
+    """
     if code == 0:
-        return "网络层失败：curl 无响应（代理/网络异常，或该站已改地址）"
+        return "network", "网络层失败：curl 无响应（代理/网络异常，或该站已改地址）"
     if code != 200:
-        return f"入口 HTTP {code}（站点侧拒绝，或当天报纸尚未上线）"
-    return f"入口内容异常（仅 {body_len} 字节）"
+        return "http", f"入口 HTTP {code}（站点侧拒绝，或当天报纸尚未上线）"
+    return "too_short", f"入口内容异常（仅 {body_len} 字节）"
 
 
-def _entry_failure_kind(code: int, body_len: int) -> str:
-    if code == 0:
-        return "network"
-    if code != 200:
-        return "http"
-    if body_len < config.MIN_HTML_BYTES:
-        return "too_short"
-    return ""
+def _open_paper(
+    paper: dict[str, Any], day: datetime, base_fetcher: Fetcher
+) -> tuple[Fetcher, str, str, str, str]:
+    """打开一条报社配置，返回两处入口逻辑共用的五元组。
+
+    ``(fetch, date_part, entry, node_pattern, article_pattern)``：
+    ``fetch`` 已按报社覆盖应用 timeout/retries；``entry`` 是当日入口 URL。
+    """
+    fetch = _paper_fetch(paper, base_fetcher)
+    date_part = papers.format_date_path(paper, day)
+    entry = paper["tpl"].format(a=date_part)
+    node_pattern = str(paper.get("node_pattern") or NODE_RE)
+    article_pattern = str(paper.get("article_pattern") or CONTENT_RE)
+    return fetch, date_part, entry, node_pattern, article_pattern
 
 
 def _paper_fetch(paper: dict[str, Any], base_fetcher: Fetcher) -> Fetcher:
@@ -55,6 +66,70 @@ def _paper_fetch(paper: dict[str, Any], base_fetcher: Fetcher) -> Fetcher:
     return wrapped
 
 
+def _layout_source(
+    rects: dict[str, tuple[int, int, int, int]],
+    mapping: dict[str, tuple[float, float, float, float]],
+    articles: list[str],
+) -> tuple[str, float | None, list[dict[str, Any]]]:
+    """挑选本版文章的可用几何并给出归一化基准与排序后的条目。
+
+    返回 ``(basis, aspect_ratio, items)``：
+
+    - ``basis``：``"area"`` / ``"mapping"`` / ``""``（前两级都不可用）；
+    - ``aspect_ratio``：area 用原图宽高比，mapping 固定 0.72，无可用项为 None；
+    - ``items``：按版面位置排序的条目（area 按 ``y1``；mapping 按 top、left、原始顺序），
+      每项含 ``url`` 与归一化后的 ``left/top/right/bottom``；area 条目额外保留
+      原始 ``x1/y1/x2/y2``。
+
+    只对本版文章过滤与归一化：跨日期 / 非本版 area 若混进来会把 ``total`` 撑大、
+    让编号出现空号。area 不可用（无匹配或基准非正）时降级到 mapping。
+    """
+    article_set = set(articles)
+
+    if rects:
+        usable_rects = [(url, rect) for url, rect in rects.items() if url in article_set]
+        max_x2 = max((rect[2] for _url, rect in usable_rects), default=0)
+        max_y2 = max((rect[3] for _url, rect in usable_rects), default=0)
+        if max_x2 > 0 and max_y2 > 0:
+            ordered = sorted(usable_rects, key=lambda item: item[1][1])
+            items = [
+                {
+                    "url": url,
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "left": round(x1 / max_x2, 4),
+                    "top": round(y1 / max_y2, 4),
+                    "right": round(x2 / max_x2, 4),
+                    "bottom": round(y2 / max_y2, 4),
+                }
+                for url, (x1, y1, x2, y2) in ordered
+            ]
+            return "area", round(max_x2 / max_y2, 4), items
+
+    if mapping:
+        usable_mapping = [(url, box) for url, box in mapping.items() if url in article_set]
+        if usable_mapping:
+            ordered_mapping = sorted(
+                enumerate(usable_mapping),
+                key=lambda entry: (entry[1][1][1], entry[1][1][0], entry[0]),
+            )
+            items = [
+                {
+                    "url": url,
+                    "left": round(left, 4),
+                    "top": round(top, 4),
+                    "right": round(right, 4),
+                    "bottom": round(bottom, 4),
+                }
+                for _orig_idx, (url, (left, top, right, bottom)) in ordered_mapping
+            ]
+            return "mapping", 0.72, items
+
+    return "", None, []
+
+
 def merge_geometry(
     target: dict[str, dict[str, Any]],
     rects: dict[str, tuple[int, int, int, int]],
@@ -74,54 +149,35 @@ def merge_geometry(
     3. **纯链接式兜底**（优先级 3）：前两级都没有可用项时，按 ``articles`` 的出现顺序编号，
        只写 ``index`` / ``total`` / ``basis="order"``，绝不编造坐标。
     """
-    article_set = set(articles)
-
-    if rects:
-        # 只对本版文章做归一化与编号：否则跨日期 / 非本版 area 会把 total 撑大、
-        # 让 index 出现空号（与 build_section_layout 的口径也会不一致）。
-        usable_rects = {url: rect for url, rect in rects.items() if url in article_set}
-        if usable_rects:
-            max_x2 = max(rect[2] for rect in usable_rects.values())
-            max_y2 = max(rect[3] for rect in usable_rects.values())
-            if max_x2 > 0 and max_y2 > 0:
-                ordered = sorted(usable_rects.items(), key=lambda item: item[1][1])
-                total = len(ordered)
-                for index, (url, (x1, y1, x2, y2)) in enumerate(ordered, 1):
-                    target[url] = {
-                        "x1": x1,
-                        "y1": y1,
-                        "x2": x2,
-                        "y2": y2,
-                        "left": round(x1 / max_x2, 4),
-                        "top": round(y1 / max_y2, 4),
-                        "right": round(x2 / max_x2, 4),
-                        "bottom": round(y2 / max_y2, 4),
-                        "index": index,
-                        "total": total,
-                        "basis": "area",
-                    }
-                return
-
-    if mapping:
-        usable_mapping = {url: box for url, box in mapping.items() if url in article_set}
-        if usable_mapping:
-            raw_items = list(usable_mapping.items())
-            ordered_mapping = sorted(
-                enumerate(raw_items),
-                key=lambda entry: (entry[1][1][1], entry[1][1][0], entry[0]),
-            )
-            total = len(ordered_mapping)
-            for index, (_orig_idx, (url, (left, top, right, bottom))) in enumerate(ordered_mapping, 1):
-                target[url] = {
-                    "left": round(left, 4),
-                    "top": round(top, 4),
-                    "right": round(right, 4),
-                    "bottom": round(bottom, 4),
-                    "index": index,
-                    "total": total,
-                    "basis": "mapping",
-                }
-            return
+    basis, _aspect_ratio, items = _layout_source(rects, mapping, articles)
+    if basis == "area":
+        for index, item in enumerate(items, 1):
+            target[item["url"]] = {
+                "x1": item["x1"],
+                "y1": item["y1"],
+                "x2": item["x2"],
+                "y2": item["y2"],
+                "left": item["left"],
+                "top": item["top"],
+                "right": item["right"],
+                "bottom": item["bottom"],
+                "index": index,
+                "total": len(items),
+                "basis": "area",
+            }
+        return
+    if basis == "mapping":
+        for index, item in enumerate(items, 1):
+            target[item["url"]] = {
+                "left": item["left"],
+                "top": item["top"],
+                "right": item["right"],
+                "bottom": item["bottom"],
+                "index": index,
+                "total": len(items),
+                "basis": "mapping",
+            }
+        return
 
     total = len(articles)
     if total == 0:
@@ -140,52 +196,18 @@ def build_section_layout(
     只有站点提供 ``<area>`` 或百分比 mapping 时才返回布局。纯链接顺序无法推导
     二维位置，必须返回 None，避免看板画出一个看似精确、实为猜测的版面图。
     """
-    article_set = set(articles)
-    if rects:
-        usable = [(url, rect) for url, rect in rects.items() if url in article_set]
-        if not usable:
-            return None
-        max_x2 = max(rect[2] for _url, rect in usable)
-        max_y2 = max(rect[3] for _url, rect in usable)
-        if max_x2 <= 0 or max_y2 <= 0:
-            return None
-        items = [
-            {
-                "url": url,
-                "left": round(x1 / max_x2, 4),
-                "top": round(y1 / max_y2, 4),
-                "right": round(x2 / max_x2, 4),
-                "bottom": round(y2 / max_y2, 4),
-            }
-            for url, (x1, y1, x2, y2) in usable
-        ]
-        return {
-            "basis": "area",
-            "aspect_ratio": round(max_x2 / max_y2, 4),
-            "items": items,
-        }
-
-    if mapping:
-        usable_mapping = [(url, box) for url, box in mapping.items() if url in article_set]
-        if not usable_mapping:
-            return None
-        return {
-            "basis": "mapping",
-            # mappingOriginal 不提供原图宽高；0.72 是常见报纸版面比例，只影响
-            # 容器外形，不影响每个矩形的相对坐标。
-            "aspect_ratio": 0.72,
-            "items": [
-                {
-                    "url": url,
-                    "left": round(left, 4),
-                    "top": round(top, 4),
-                    "right": round(right, 4),
-                    "bottom": round(bottom, 4),
-                }
-                for url, (left, top, right, bottom) in usable_mapping
-            ],
-        }
-    return None
+    basis, aspect_ratio, items = _layout_source(rects, mapping, articles)
+    # 与 merge_geometry 不同：本函数只在「有 area 且能用」或「无 area 但有 mapping」时出图。
+    # 有 area 却一条都落不到本版文章上时，退回 None（不拿 mapping 猜版面），保持既有语义。
+    if basis == "mapping" and rects:
+        return None
+    if not items:
+        return None
+    return {
+        "basis": basis,
+        "aspect_ratio": aspect_ratio,
+        "items": [{key: item[key] for key in ("url", "left", "top", "right", "bottom")} for item in items],
+    }
 
 
 def probe_paper(
@@ -199,11 +221,7 @@ def probe_paper(
     用于自定义报社表单的“试抓”。
     """
     base_fetcher: Fetcher = fetcher or http.fetch
-    fetch = _paper_fetch(paper, base_fetcher)
-    date_part = papers.format_date_path(paper, day)
-    entry = paper["tpl"].format(a=date_part)
-    node_pattern = str(paper.get("node_pattern") or NODE_RE)
-    article_pattern = str(paper.get("article_pattern") or CONTENT_RE)
+    fetch, _date_part, entry, node_pattern, article_pattern = _open_paper(paper, day, base_fetcher)
 
     code, html = fetch(entry)
     result: dict[str, Any] = {
@@ -214,7 +232,7 @@ def probe_paper(
         "note": "",
     }
     if code != 200 or len(html) < config.MIN_HTML_BYTES:
-        result["note"] = _classify_entry_failure(code, len(html))
+        result["note"] = _classify_entry_failure(code, len(html))[1]
         return result
 
     base = entry.rsplit("/", 1)[0] + "/"
@@ -266,15 +284,11 @@ def scan_paper(
     「单个在途请求」。已提交的请求无法中断，但排队中的任务会立即空转结束。
     """
     base_fetcher: Fetcher = fetcher or http.fetch
-    _fetch = _paper_fetch(paper, base_fetcher)
+    _fetch, date_part, entry, node_pattern, article_pattern = _open_paper(paper, day, base_fetcher)
 
     def _cancelled() -> bool:
         return cancel is not None and cancel()
 
-    date_part = papers.format_date_path(paper, day)
-    entry = paper["tpl"].format(a=date_part)
-    node_pattern = str(paper.get("node_pattern") or NODE_RE)
-    article_pattern = str(paper.get("article_pattern") or CONTENT_RE)
     stats: dict[str, Any] = {
         "paper": paper["name"],
         "date": day.strftime("%Y-%m-%d"),
@@ -294,8 +308,9 @@ def scan_paper(
     code, html = _fetch(entry)
     stats["entry_code"] = code
     if code != 200 or len(html) < config.MIN_HTML_BYTES:
-        stats["note"] = _classify_entry_failure(code, len(html))
-        stats["failure_kind"] = _entry_failure_kind(code, len(html))
+        failure_kind, message = _classify_entry_failure(code, len(html))
+        stats["note"] = message
+        stats["failure_kind"] = failure_kind
         return [], [], stats
 
     base = entry.rsplit("/", 1)[0] + "/"
@@ -353,7 +368,10 @@ def scan_paper(
         section_title = (
             parse.page_section(section_html, node_url)[:40] or parse.extract_title(section_html)[:40]
         )
-        articles = [a for a in parse.links(section_html, section_base, article_pattern) if date_part in a]
+        section_articles = parse.links(section_html, section_base, article_pattern)
+        # 与 nodes 相同的兜底：日期过滤若把本版链接全删光（站点换了日期目录写法），
+        # 宁可保留全部链接继续扫描，也不要把它当成「本版无文章」。
+        articles = [a for a in section_articles if date_part in a] or section_articles
         rects = parse.area_rects(section_html, section_base, article_pattern)
         mapping = parse.layout_mapping(section_html, section_base, article_pattern)
         return node_url, section_title, articles, rects, mapping, section_code, ""
@@ -402,7 +420,9 @@ def scan_paper(
             )
             return None
         blob = title + " " + text
-        found = [match for match in (kr.search(blob) for kr in kw_res.values()) if match]
+        # 一次遍历同时带回关键词与命中位置：matched / snippets 都从这里派生，
+        # 不再对同一 blob 跑第二遍正则。
+        found = [(keyword, match) for keyword, kr in kw_res.items() if (match := kr.search(blob))]
         section = article_section.get(article_url, "")
         record: dict[str, Any] = {
             "paper": paper["name"],
@@ -420,8 +440,8 @@ def scan_paper(
         if layout:
             record["layout"] = layout
         if found:
-            record["snippets"] = [parse.snippet(blob, match) for match in found[:3]]
-            record["matched"] = [k for k, kr in kw_res.items() if kr.search(blob)]
+            record["snippets"] = [parse.snippet(blob, match) for _keyword, match in found[:3]]
+            record["matched"] = [keyword for keyword, _match in found]
         return record
 
     with ThreadPoolExecutor(max_workers=workers) as pool:

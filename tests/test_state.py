@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 from newspaper_auto import state
 
@@ -46,6 +47,25 @@ def test_exclusive_lock_is_released(tmp_path):
     with state.exclusive_lock(path):
         assert lock_path.exists()
     assert not lock_path.exists()
+
+
+def test_exclusive_lock_keeps_foreign_lock_on_read_error(tmp_path, monkeypatch):
+    """读取锁内容失败时不得 unlink：那可能是其他进程正在持有的活锁。"""
+    path = tmp_path / "state" / "seen.json"
+    lock_path = path.with_suffix(".lock")
+    original = Path.read_text
+
+    def flaky_read_text(self, *args, **kwargs):
+        if self == lock_path:
+            raise PermissionError("模拟读取失败")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", flaky_read_text)
+
+    with state.exclusive_lock(path):
+        assert lock_path.exists()
+
+    assert lock_path.exists(), "读取失败时不应删除锁文件"
 
 
 def test_prune_seen_drops_old_but_keeps_recent_and_dateless():

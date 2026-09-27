@@ -39,6 +39,17 @@ def test_render_md_without_new_hits():
     assert "无新增命中" in md
 
 
+def test_render_md_keeps_note_inside_last_cell():
+    """note 必须在最后一个单元格的 ``|`` 之内，否则 GFM 会把整行当成多一列。"""
+    stats = [{**STATS[0], "note": "dry-run"}]
+
+    md = report.render_md("kw", [DATE], stats, [], [], "增量")
+    row = next(line for line in md.splitlines() if line.startswith("| 湛江日报 |"))
+
+    assert row.endswith("*dry-run* |")
+    assert row.count("|") == 7  # 6 个单元格 + 首尾包围的竖线
+
+
 def test_render_md_history_section_excludes_new():
     known = {
         "paper": "湛江日报",
@@ -61,9 +72,16 @@ def test_hits_to_json_roundtrip():
 
 def test_hits_to_csv_header_and_semicolon_join():
     lines = report.hits_to_csv(HITS).strip().splitlines()
-    assert lines[0] == "paper,date,section,title,url,text_len,matched"
+    assert lines[0] == "paper,date,section,section_no,title,url,text_len,matched"
     assert lines[1].endswith("广东海洋大学")
     assert len(lines) == 2
+
+
+def test_hits_to_csv_emits_section_no_like_json():
+    """CSV 与 JSON 的字段口径一致：section_no 必须出现在 CSV 里。"""
+    hit = {**HITS[0], "section_no": "第02版"}
+    row = next(csv.DictReader(io.StringIO(report.hits_to_csv([hit]))))
+    assert row["section_no"] == "第02版"
 
 
 @pytest.mark.parametrize("dangerous", ["=1+1", "+cmd", "-2+3", "@SUM(A1)", "\t=1+1", "\r=1+1"])
@@ -92,11 +110,22 @@ def test_hits_to_csv_escapes_all_text_fields_but_preserves_numeric_text_len():
         "paper": "'=paper",
         "date": "'+date",
         "section": "'-section",
+        "section_no": "",
         "title": "'@title",
         "url": "'\turl",
         "text_len": "-42",
         "matched": "'\rkeyword",
     }
+
+
+@pytest.mark.parametrize("dangerous", [" =1+1", "  +cmd", " @SUM(A1)"])
+def test_hits_to_csv_escapes_formula_prefixes_after_leading_spaces(dangerous):
+    """前导空白挡不住公式注入：``"  =1+1"`` 仍会被表格软件当公式执行。"""
+    hit = {**HITS[0], "title": dangerous}
+
+    row = next(csv.DictReader(io.StringIO(report.hits_to_csv([hit]))))
+
+    assert row["title"] == f"'{dangerous}"
 
 
 def test_render_html_escapes_untrusted_content():

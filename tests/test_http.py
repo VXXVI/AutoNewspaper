@@ -74,6 +74,86 @@ def test_fetch_retries_until_min_bytes(monkeypatch):
     assert code == 200 and len(body) == 500 and len(calls) == 2
 
 
+# ---------------------------------------------------------------- charset 解码
+def test_decode_body_prefers_content_type_charset():
+    assert http._decode_body("广东海洋大学".encode("gbk"), "", "text/html; charset=gbk") == "广东海洋大学"
+
+
+def test_decode_body_sniffs_meta_charset():
+    payload = '<meta charset="gb2312"><body>广东海洋大学</body>'.encode("gb2312")
+    assert "广东海洋大学" in http._decode_body(payload, "")
+
+
+def test_decode_body_sniffs_meta_http_equiv_charset():
+    payload = (
+        '<meta http-equiv="Content-Type" content="text/html; charset=gbk"><body>广东海洋大学</body>'
+    ).encode("gbk")
+    assert "广东海洋大学" in http._decode_body(payload, "")
+
+
+def test_decode_body_defaults_to_utf8():
+    assert http._decode_body("中文正文".encode(), "") == "中文正文"
+
+
+def test_decode_body_falls_back_to_gb18030_without_declaration():
+    """未声明 charset 的 GBK 页面：严格 UTF-8 失败后应退 GB18030，而不是丢字节。"""
+    assert http._decode_body("广东海洋大学".encode("gbk"), "") == "广东海洋大学"
+
+
+def test_decode_body_never_drops_undecodable_bytes():
+    # 既不合法 UTF-8 也不合法 GB18030 的字节以替换字符保留，而不是整段消失
+    assert http._decode_body(b"\xff", "") == "\ufffd"
+
+
+def test_curl_once_decodes_body_bytes_and_parses_code(monkeypatch):
+    proc = type("P", (), {"stdout": "广东海洋大学".encode("gbk") + b"\n@@HTTP:200"})()
+    monkeypatch.setattr(http.subprocess, "run", lambda *args, **kwargs: proc)
+    assert http._curl_once("http://x", 5) == (200, "广东海洋大学")
+
+
+def test_curl_once_without_marker_is_network_failure(monkeypatch):
+    proc = type("P", (), {"stdout": "正文".encode()})()
+    monkeypatch.setattr(http.subprocess, "run", lambda *args, **kwargs: proc)
+    assert http._curl_once("http://x", 5) == (0, "正文")
+
+
+# ---------------------------------------------------------------- 重试策略
+def _drive_fetch(monkeypatch, results):
+    calls: list[int] = []
+    iterator = iter(results)
+
+    def _fake(url: str, timeout: int):
+        calls.append(1)
+        return next(iterator)
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(http, "_fetch_once", _fake)
+    monkeypatch.setattr(http.time, "sleep", lambda seconds: sleeps.append(seconds))
+    return calls, sleeps
+
+
+def test_fetch_does_not_retry_deterministic_4xx(monkeypatch):
+    """404/403/410 是站点给出的确定答案，只抓一次、不 sleep。"""
+    calls, sleeps = _drive_fetch(monkeypatch, [(404, "")])
+    assert http.fetch("http://x", retries=2) == (404, "")
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("code", [0, 429, 500, 503])
+def test_fetch_retries_transient_failures(monkeypatch, code):
+    calls, _sleeps = _drive_fetch(monkeypatch, [(code, ""), (200, "y" * 500)])
+    assert http.fetch("http://x", retries=2) == (200, "y" * 500)
+    assert len(calls) == 2
+
+
+def test_fetch_gives_up_after_all_retries(monkeypatch):
+    calls, sleeps = _drive_fetch(monkeypatch, [(500, ""), (500, ""), (500, "")])
+    assert http.fetch("http://x", retries=2) == (500, "")
+    assert len(calls) == 3
+    assert len(sleeps) == 2
+
+
 # ---------------------------------------------------------------- 本地回环桩
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:

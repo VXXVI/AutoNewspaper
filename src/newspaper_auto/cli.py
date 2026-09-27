@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -47,8 +46,20 @@ def _parse_keyword(text: str) -> str:
     return value
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="daily_scan.py", description="数字报关键词每日监测")
+def _default_prog() -> str:
+    """取调用脚本名作为 ``--help`` / ``--version`` 里的程序名。
+
+    打包成 exe 或经兼容入口调用时，脚本名各不相同；用真实的 ``argv[0]`` 比写死
+    ``daily_scan.py`` 更贴近用户看到的东西。取不到时回退到稳定名字。
+    """
+    try:
+        return Path(sys.argv[0]).name or "newspaper-scan"
+    except (AttributeError, IndexError, TypeError):
+        return "newspaper-scan"
+
+
+def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog or _default_prog(), description="数字报关键词每日监测")
     default_keywords = "、".join(config.DEFAULT_KEYWORDS)
     parser.add_argument(
         "--kw",
@@ -190,112 +201,6 @@ def select_papers(
     return selected, unmatched
 
 
-def update_archive(
-    data_dir: os.PathLike[str] | str,
-    all_hits: list[dict[str, Any]],
-    *,
-    keep_days: int = 0,
-    now: datetime | None = None,
-    log: Callable[..., None] | None = None,
-) -> list[dict[str, Any]]:
-    """把本次命中并入 ``archive.json``，返回合并（并按需修剪）后的归档。
-
-    旧归档中的局部脏数据会被跳过；同 URL 再次命中时更新标题、版面与
-    几何信息，并对 ``matched`` 取有序并集，避免新关键词永远不进看板。
-
-    ``keep_days > 0`` 时顺带丢弃 ``date`` 早于该天数的条目（见 :func:`prune_archive`），
-    默认 ``0`` 表示归档只增不删，保留完整审计历史。
-    """
-    archive_path = paths.archive_file(data_dir)
-    try:
-        with open(archive_path, encoding="utf-8") as handle:
-            raw_archive = json.load(handle)
-    except (OSError, ValueError):
-        raw_archive = []
-    archive = (
-        [item for raw in raw_archive if (item := _normalize_archive_item(raw)) is not None]
-        if isinstance(raw_archive, list)
-        else []
-    )
-    by_url = {item["url"]: index for index, item in enumerate(archive)}
-    for hit in all_hits:
-        normalized_hit = _normalize_archive_item(hit)
-        if normalized_hit is None:
-            continue
-        url = normalized_hit["url"]
-        if url not in by_url:
-            by_url[url] = len(archive)
-            archive.append(normalized_hit)
-            continue
-        index = by_url[url]
-        previous = archive[index]
-        merged = {**previous, **normalized_hit}
-        merged["matched"] = list(
-            dict.fromkeys([*(previous.get("matched") or []), *(normalized_hit.get("matched") or [])])
-        )
-        archive[index] = merged
-
-    archive, dropped = prune_archive(archive, keep_days, now)
-    report.write_text(archive_path, json.dumps(archive, ensure_ascii=False, indent=1))
-    if dropped and log:
-        log(f"  （已清理 {dropped} 条早于最近 {keep_days} 天的归档记录）")
-    return archive
-
-
-def prune_archive(
-    archive: list[dict[str, Any]], keep_days: int, now: datetime | None = None
-) -> tuple[list[dict[str, Any]], int]:
-    """丢弃 ``date`` 早于最近 ``keep_days`` 天的归档条目，返回 ``(保留, 删除数)``。
-
-    ``keep_days <= 0`` 时原样返回（默认保留完整历史）。``date`` 缺失或非法的条目一律保留，
-    避免脏数据被误删。仅影响看板/报告用的 ``archive.json``，与 ``seen.json`` 的增量判定无关。
-    """
-    if keep_days <= 0:
-        return archive, 0
-    now = now or datetime.now()
-    cutoff = (now - timedelta(days=keep_days)).strftime("%Y-%m-%d")
-    kept: list[dict[str, Any]] = []
-    dropped = 0
-    for item in archive:
-        date = item.get("date") if isinstance(item, dict) else None
-        if isinstance(date, str) and date and date < cutoff:
-            dropped += 1
-            continue
-        kept.append(item)
-    return kept, dropped
-
-
-def _normalize_archive_item(item: Any) -> dict[str, Any] | None:
-    """把归档条目收敛为报告渲染必需的安全形状。"""
-    if not isinstance(item, dict):
-        return None
-    url = item.get("url")
-    if not isinstance(url, str) or not url:
-        return None
-    normalized = dict(item)
-    normalized.update(
-        {
-            "paper": str(item.get("paper") or ""),
-            "date": str(item.get("date") or ""),
-            "section": str(item.get("section") or ""),
-            "section_no": str(item.get("section_no") or ""),
-            "title": str(item.get("title") or ""),
-            "url": url,
-            "snippets": [str(value) for value in item.get("snippets", []) if value]
-            if isinstance(item.get("snippets"), list)
-            else [],
-            "matched": [str(value) for value in item.get("matched", []) if value]
-            if isinstance(item.get("matched"), list)
-            else [],
-        }
-    )
-    try:
-        normalized["text_len"] = int(item.get("text_len") or 0)
-    except (TypeError, ValueError):
-        normalized["text_len"] = 0
-    return normalized
-
-
 def main(
     argv: Sequence[str] | None = None,
     default_data_dir: str | os.PathLike[str] | None = None,
@@ -310,6 +215,7 @@ def main(
     ``cancel`` 是协作式取消回调，在每个「报社 × 日期」单元开始前检查，返回真则停止扫描
     并以退出码 130 结束（看板据此把任务标为 ``cancelled``），且**不写入** state/ 与 hits/。
     """
+    _configure_output_encoding()
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -372,9 +278,16 @@ def main(
             if cancel is not None and cancel():
                 cancelled = True
                 break
-            hits, articles, stats = scanner.scan_paper(
-                paper, day, kw_res, args.workers, dry=args.dry, fetcher=fetcher, cancel=cancel
-            )
+            try:
+                hits, articles, stats = scanner.scan_paper(
+                    paper, day, kw_res, args.workers, dry=args.dry, fetcher=fetcher, cancel=cancel
+                )
+            except Exception as exc:  # 单家内部错误不能拖垮整轮扫描
+                # 一家报社的意外异常（解析 bug、被站点打断等）只记为失败样本并继续，
+                # 保证其余报社/日期照常产出；退出码最终由 entry_failures 决定。
+                stats = _internal_failure_stats(paper, day, exc)
+                log(f"  ⚠️ 内部错误 {paper['name']} {day:%m-%d}：{exc}")
+                hits, articles = [], []
             all_stats.append(stats)
             all_hits += hits
             all_articles += articles
@@ -389,6 +302,8 @@ def main(
                 cancelled = True
                 break
 
+    entry_failures = [s for s in all_stats if not s.get("ok", s.get("entry_code", 200) == 200)]
+
     if cancelled:
         log("-" * 72)
         log("扫描已取消（未写入 state/ 与 hits/）")
@@ -399,6 +314,9 @@ def main(
         log("-" * 72)
         log("dry-run 结束（未抓取文章）")
         _emit_structured(args, [])
+        if entry_failures:
+            _report_entry_failures(log, entry_failures)
+            return 1
         return 0
 
     md_path: Any = None
@@ -414,7 +332,7 @@ def main(
             with state.exclusive_lock(state_path):
                 seen = state.load_seen(state_path)
                 new_hits = state.compute_new_hits(all_hits, seen, full=args.full)
-                archive = update_archive(data_dir, all_hits, keep_days=args.archive_keep_days, log=log)
+                archive = state.update_archive(data_dir, all_hits, keep_days=args.archive_keep_days, log=log)
                 stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
                 md_path = paths.hits_dir(data_dir) / f"{stamp}.md"
                 report.write_md(
@@ -435,7 +353,7 @@ def main(
                     state.save_seen(state_path, seen)
                     if dropped:
                         log(f"  （已清理 {dropped} 条过期增量记录）")
-        except (OSError, TimeoutError) as exc:
+        except (OSError, TimeoutError, TypeError, ValueError) as exc:
             new_hits = state.compute_new_hits(all_hits, {}, full=True)
             persistence_error = str(exc) or exc.__class__.__name__
 
@@ -477,12 +395,53 @@ def main(
 
     # 入口失败 → 非零退出，让 Actions 步骤变红；但增量状态/报告已在上面写完，
     # Actions 的"提交结果"步骤应设  if: always()  确保提交仍然发生。
-    entry_failures = [s for s in all_stats if not s.get("ok", s.get("entry_code", 200) == 200)]
     if entry_failures:
-        names = "、".join(s["paper"] for s in entry_failures)
-        log(f"\n  ⚠️  {len(entry_failures)} 个报社/日期出现入口失败或扫描异常（{names}），结果可能漏报！")
+        _report_entry_failures(log, entry_failures)
         return 1
     return 0
+
+
+def _report_entry_failures(log: Callable[..., None], entry_failures: list[dict[str, Any]]) -> None:
+    """汇总「入口失败 / 扫描异常」的报社与日期，提示结果可能漏报。"""
+    names = "、".join(s["paper"] for s in entry_failures)
+    log(f"\n  ⚠️  {len(entry_failures)} 个报社/日期出现入口失败或扫描异常（{names}），结果可能漏报！")
+
+
+def _internal_failure_stats(paper: dict[str, Any], day: datetime, exc: Exception) -> dict[str, Any]:
+    """把单家报社的意外异常收敛成与 ``scan_paper`` 同形状的失败统计。"""
+    try:
+        entry = paper["tpl"].format(a=papers.format_date_path(paper, day))
+    except Exception:  # 连入口都拼不出来时退化为原始模板，保持统计可渲染
+        entry = str(paper.get("tpl", ""))
+    return {
+        "paper": paper["name"],
+        "date": day.strftime("%Y-%m-%d"),
+        "entry": entry,
+        "entry_code": 0,
+        "sections": 0,
+        "articles": 0,
+        "scanned": 0,
+        "sections_failed": 0,
+        "articles_failed": 0,
+        "failed_urls": [],
+        "note": f"内部错误：{exc}",
+        "ok": False,
+        "failure_kind": "internal",
+    }
+
+
+def _configure_output_encoding() -> None:
+    """让中文 Windows（cp936）控制台也能安全打印 UTF-8 日志。
+
+    固定为 ``utf-8`` + ``backslashreplace``：编码不了的字符退化为转义序列，
+    而不是抛 ``UnicodeEncodeError`` 把整次扫描打断。测试里的捕获流或老式流
+    没有 ``reconfigure``，忽略即可。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (AttributeError, ValueError):
+            continue
 
 
 def _make_logger(stream) -> Callable[..., None]:

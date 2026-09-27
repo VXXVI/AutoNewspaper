@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 
 import pytest
 
@@ -222,12 +221,6 @@ def test_snippet_adds_ellipsis_on_both_sides():
 def test_snippet_without_ellipsis_when_short():
     match = re.search("KEY", "KEY")
     assert parse.snippet("KEY", match) == "KEY"
-
-
-# ---------------------------------------------------------------- date_path
-@pytest.mark.parametrize("style,expected", [("ymd", "202609/22"), ("dash", "2026-09/22")])
-def test_date_path(style, expected):
-    assert parse.date_path(datetime(2026, 9, 22), style) == expected
 
 
 # ---------------------------------------------------------------- area_rects

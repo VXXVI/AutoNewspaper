@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 
-from newspaper_auto import cli, config, exporter, papers, report
+from newspaper_auto import cli, config, exporter, papers, report, state
 
 ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "广东海洋大学"]
 ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "广东海洋大学"]
@@ -88,7 +88,7 @@ def test_csv_stdout(tmp_path, capsys, site_fetcher, today):
     out, _err = capsys.readouterr()
     lines = [line for line in out.strip().splitlines() if line]
     assert code == 0
-    assert lines[0] == "paper,date,section,title,url,text_len,matched"
+    assert lines[0] == "paper,date,section,section_no,title,url,text_len,matched"
     assert len(lines) == 4
 
 
@@ -247,7 +247,7 @@ def test_archive_skips_dirty_rows_and_refreshes_existing_metadata(tmp_path):
         ),
         encoding="utf-8",
     )
-    merged = cli.update_archive(
+    merged = state.update_archive(
         tmp_path,
         [{"url": "u1", "title": "新", "matched": ["新词"], "geometry": {"index": 1, "total": 1}}],
     )
@@ -335,6 +335,58 @@ def test_dry_run_json_returns_empty_array(tmp_path, capsys, site_fetcher, today)
     assert code == 0
     assert json.loads(out) == []
     assert "dry-run 结束" in err
+
+
+def test_dry_run_entry_failure_returns_nonzero(tmp_path, capsys):
+    """--dry 也可能入口失败：应让退出码变红，而不是一律返回 0。"""
+    code = cli.main(
+        ["--only", "光明日报", "--days", "1", "--dry", "--no-state", "--data-dir", str(tmp_path)],
+        fetcher=lambda _url: (404, ""),
+    )
+    out, _err = capsys.readouterr()
+    assert code == 1
+    assert "dry-run 结束" in out
+    assert "入口失败" in out
+
+
+def test_internal_error_in_one_paper_is_recorded_and_scan_continues(tmp_path, capsys, today):
+    """单家报社抛异常只记为失败并继续，不得拖垮其余报社。"""
+    requested: list[str] = []
+
+    def fetcher(url: str):
+        requested.append(url)
+        if "gdzjdaily" in url:
+            raise RuntimeError("模拟内部错误")
+        return (404, "")
+
+    code = cli.main(
+        [
+            "--only",
+            "湛江日报,南方日报",
+            "--days",
+            "1",
+            "--kw",
+            "广东海洋大学",
+            "--no-state",
+            "--data-dir",
+            str(tmp_path),
+        ],
+        fetcher=fetcher,
+    )
+    out, _err = capsys.readouterr()
+    assert code == 1
+    assert "内部错误" in out
+    assert any("gdzjdaily" in url for url in requested)
+    assert any("nfnews" in url for url in requested), "一家内部错误后应继续扫描其余报社"
+
+
+def test_build_parser_prog_defaults_to_script_name(monkeypatch):
+    monkeypatch.setattr(cli.sys, "argv", ["/some/path/newspaper-scan"])
+    assert cli.build_parser().prog == "newspaper-scan"
+
+
+def test_build_parser_prog_can_be_overridden():
+    assert cli.build_parser("custom-prog").prog == "custom-prog"
 
 
 def test_entry_failure_exits_nonzero(tmp_path, capsys, today):
@@ -662,12 +714,12 @@ def test_prune_archive_by_keep_days_keeps_recent_and_dateless():
         {"url": "u4"},
         {"url": "u5", "date": "2025-01-01"},
     ]
-    kept, dropped = cli.prune_archive(archive, 30, now=now)
+    kept, dropped = state.prune_archive(archive, 30, now=now)
 
     assert dropped == 1
     assert [item["url"] for item in kept] == ["u1", "u2", "u3", "u4"]
     # keep_days <= 0：原样保留（默认不删，守住审计历史）
-    kept_all, dropped_all = cli.prune_archive(archive, 0, now=now)
+    kept_all, dropped_all = state.prune_archive(archive, 0, now=now)
     assert dropped_all == 0 and kept_all == archive
 
 
@@ -678,7 +730,7 @@ def test_update_archive_with_keep_days_prunes_old_entries(tmp_path):
         json.dumps([{"url": "old", "date": "2020-01-01", "matched": ["k"]}]), encoding="utf-8"
     )
 
-    merged = cli.update_archive(
+    merged = state.update_archive(
         tmp_path,
         [{"url": "new", "date": "2026-09-25", "matched": ["k"]}],
         keep_days=30,
@@ -696,7 +748,7 @@ def test_update_archive_default_keeps_full_history(tmp_path):
     (hits_dir / "archive.json").write_text(
         json.dumps([{"url": "old", "date": "2020-01-01"}]), encoding="utf-8"
     )
-    merged = cli.update_archive(tmp_path, [{"url": "new", "date": "2026-09-25"}])
+    merged = state.update_archive(tmp_path, [{"url": "new", "date": "2026-09-25"}])
     assert [item["url"] for item in merged] == ["old", "new"]
 
 

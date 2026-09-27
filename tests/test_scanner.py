@@ -101,6 +101,29 @@ def test_entry_failure_classification(zhanjiang_paper, fixed_day, code, body, ex
     assert stats["entry_code"] == code
 
 
+def test_classify_entry_failure_returns_kind_and_message():
+    """kind 与说明由同一函数产出，避免两条 if 链各自漂移。"""
+    assert scanner._classify_entry_failure(0, 0)[0] == "network"
+    assert scanner._classify_entry_failure(404, 0)[0] == "http"
+    assert scanner._classify_entry_failure(200, 10)[0] == "too_short"
+    assert "入口内容异常" in scanner._classify_entry_failure(200, 10)[1]
+
+
+def test_article_filter_falls_back_when_date_part_removes_all(fixed_day):
+    """版面链接都不含当前日期目录时，不能把整版误判成「无文章」。"""
+    paper = {"name": "测试报", "style": "ymd", "tpl": "https://x/{a}/node_1.html"}
+    entry = '<a href="https://other.example.com/archive/content_1.html">文章</a>' + "x" * 400
+    article = "<html><body><h1>广东海洋大学发布消息</h1><p>正文内容</p></body></html>" + "x" * 400
+
+    def fetch(url: str):
+        return (200, article) if "content_" in url else (200, entry)
+
+    hits, articles, stats = scanner.scan_paper(paper, fixed_day, KW, workers=2, fetcher=fetch)
+    assert stats["failure_kind"] == ""
+    assert len(articles) == 1 and len(hits) == 1
+    assert articles[0]["url"] == "https://other.example.com/archive/content_1.html"
+
+
 def test_http_200_challenge_page_is_structural_failure(zhanjiang_paper, fixed_day):
     """HTTP 200 + 足够长不等于数字报页，不得静默当成「无命中」。"""
     challenge = "<html><body>" + "访问挑战页" * 80 + "</body></html>"
@@ -474,6 +497,23 @@ def test_merge_geometry_area_without_usable_entry_falls_back_to_mapping():
     )
     assert target["http://x/a.html"]["basis"] == "mapping"
     assert target["http://x/a.html"]["total"] == 1
+
+
+def test_build_section_layout_returns_none_when_area_present_but_unusable():
+    """有 area 却一条都落不到本版文章上时返回 None（不拿 mapping 猜版面）。"""
+    assert (
+        scanner.build_section_layout(
+            rects={"http://x/z.html": (0, 0, 10, 10)},
+            mapping={"http://x/a.html": (0.0, 0.1, 0.5, 0.4)},
+            articles=["http://x/a.html"],
+        )
+        is None
+    )
+    # 无 area 时 mapping 正常出图
+    layout = scanner.build_section_layout(
+        rects={}, mapping={"http://x/a.html": (0.0, 0.1, 0.5, 0.4)}, articles=["http://x/a.html"]
+    )
+    assert layout is not None and layout["basis"] == "mapping"
 
 
 def test_merge_geometry_without_any_usable_geometry_falls_back_to_order():
