@@ -25,6 +25,14 @@
   #define SourceDir "..\..\dist"
 #endif
 
+#ifndef VersionInfoVersion
+  ; VersionInfoVersion 必须是 x.y.z.w 四段纯数字：
+  ; Inno Setup 6.7.1（CI 用 choco 装的就是它）遇到 "0.5.0" 会直接报
+  ; 「Value of [Setup] section directive "VersionInfoVersion" is invalid」。
+  ; 构建脚本会传入更精确的值，这里是手动编译时的兜底。
+  #define VersionInfoVersion AppVersion + ".0"
+#endif
+
 #define AppName "NewspaperAuto"
 #define AppTitle "NewspaperAuto · 数字报关键词监测"
 #define AppPublisher "VXXVI"
@@ -40,7 +48,7 @@ AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
 AppUpdatesURL={#AppURL}/releases
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#VersionInfoVersion}
 DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

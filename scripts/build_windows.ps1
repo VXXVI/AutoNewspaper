@@ -126,8 +126,14 @@ if (-not $SkipInstaller) {
         Write-Host '如需构建：winget install JRSoftware.InnoSetup（CI 里由 chocolatey 安装）。'
     } else {
         Write-Host "使用 ISCC：$iscc"
+        # Inno 要求 VersionInfoVersion 是 x.y.z.w 四段纯数字；三段（如 0.5.0）在
+        # Inno Setup 6.7.1 上会直接报 invalid（CI 用的就是 6.7.1）。
+        $numeric = @($Version -split '[.\-+]' | Where-Object { $_ -match '^\d+$' })
+        while ($numeric.Count -lt 4) { $numeric += '0' }
+        $versionInfo = ($numeric[0..3] -join '.')
+
         $issPath = Join-Path $ProjectDir 'packaging\windows\installer.iss'
-        & $iscc "/DAppVersion=$Version" "/DSourceDir=$stage" $issPath
+        & $iscc "/DAppVersion=$Version" "/DVersionInfoVersion=$versionInfo" "/DSourceDir=$stage" $issPath
         if ($LASTEXITCODE -ne 0) { Die 'Inno Setup 编译失败' }
 
         $setupPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-setup.exe' -f $Version)
