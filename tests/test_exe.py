@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import sys
 from pathlib import Path
 
@@ -250,6 +251,53 @@ def test_run_scan_survives_unwritable_log_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(exe.paths, "scan_log_file", boom)
     monkeypatch.setattr(exe.cli, "main", lambda argv, default_data_dir=None: 3)
     assert exe._run_scan(["--days", "1"]) == 3
+
+
+class _FailingLog:
+    """模拟「打开成功、之后再也写不进去」的日志文件：磁盘满 / 被独占 / 盘被拔出。"""
+
+    def __init__(self) -> None:
+        self.writes: list[str] = []
+
+    def write(self, text: str) -> int:
+        self.writes.append(text)
+        raise OSError(28, "No space left on device")
+
+    def flush(self) -> None:
+        raise OSError(28, "No space left on device")
+
+    def close(self) -> None:
+        raise OSError(28, "No space left on device")
+
+
+def test_tee_keeps_console_output_when_the_log_write_fails():
+    """日志是旁路：写日志失败不能从每一次 print 里冒出来。"""
+    handle = _FailingLog()
+    stream = io.StringIO()
+    tee = exe._Tee(stream, handle)
+
+    assert tee.write("命中 3 条") == len("命中 3 条")
+    tee.flush()
+
+    assert stream.getvalue() == "命中 3 条", "控制台那侧必须照常拿到内容"
+    assert handle.writes == ["命中 3 条"], "日志那侧仍应尝试写入"
+
+
+def test_run_scan_survives_log_failure_midway(monkeypatch, tmp_path):
+    """日志打开成功、运行中写失败（满盘）时，扫描仍要跑完并返回真实退出码。"""
+    monkeypatch.setattr(exe.paths, "app_dir", lambda: tmp_path)
+    handle = _FailingLog()
+    monkeypatch.setattr(exe, "_open_scan_log", lambda: handle)
+    monkeypatch.setattr(exe.cli, "main", lambda argv, default_data_dir=None: print("命中 3 条") or 1)
+    before = (sys.stdout, sys.stderr)
+
+    assert exe._run_scan(["--days", "2"]) == 1
+
+    assert (sys.stdout, sys.stderr) == before, "退出时必须还原标准流"
+    joined = "".join(handle.writes)
+    assert "=== 开始监测扫描" in joined
+    assert "命中 3 条" in joined, "cli 的输出仍应尝试写进日志"
+    assert "=== 扫描结束" in joined and "退出码：1" in joined
 
 
 def test_scan_log_paths_match_the_shell_scripts():

@@ -29,6 +29,7 @@ Windows 包里**只有一个** exe：``NewspaperAuto.exe``，PyInstaller ``conso
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import os
 import sys
@@ -74,11 +75,24 @@ _ATTACH_PARENT_PROCESS = -1
 _MB_ICONERROR = 0x10
 
 
+def _log_side_effect(handle, action) -> None:
+    """日志是**旁路**：写不进去（磁盘满 / 文件被独占 / 盘被拔出）绝不能打断扫描本身。
+
+    ``_open_scan_log`` 只兜住了「打开失败」（只读目录、无权限），日志文件一旦打开成功，
+    运行中再写失败就会从每一次 ``print`` 里冒出来 —— 而 ``cli`` 逐家日报逐日期都在写日志，
+    一个满盘就能把定时任务的扫描打断在半路，增量状态没落盘，下次还会全部重报。
+    """
+    if handle is None:
+        return
+    with contextlib.suppress(OSError, ValueError):
+        action()
+
+
 class _Tee:
     """把写往某条流的内容**同时**落到日志文件。
 
     只实现 ``write`` / ``flush``，其余属性（``fileno`` / ``encoding`` / ``isatty`` …）
-    一律透传给被包装的流，避免某处代码因缺属性而炸。
+    一律透传给被包装的流，避免某处代码因缺属性而炸。落盘那侧是旁路，写不进去只丢日志。
     """
 
     def __init__(self, stream, handle) -> None:
@@ -86,11 +100,11 @@ class _Tee:
         self._handle = handle
 
     def write(self, text: str) -> int:
-        self._handle.write(text)
+        _log_side_effect(self._handle, lambda: self._handle.write(text))
         return self._stream.write(text)
 
     def flush(self) -> None:
-        self._handle.flush()
+        _log_side_effect(self._handle, self._handle.flush)
         self._stream.flush()
 
     def __getattr__(self, name: str):
@@ -125,8 +139,8 @@ def _run_scan(args: Sequence[str]) -> int:
         return cli.main(args, default_data_dir=paths.app_dir())
 
     started = datetime.datetime.now()
-    handle.write(f"=== 开始监测扫描：{started:%Y-%m-%d %H:%M:%S} ===\n")
-    handle.write("命令：NewspaperAuto scan " + " ".join(args) + "\n")
+    _log_side_effect(handle, lambda: handle.write(f"=== 开始监测扫描：{started:%Y-%m-%d %H:%M:%S} ===\n"))
+    _log_side_effect(handle, lambda: handle.write("命令：NewspaperAuto scan " + " ".join(args) + "\n"))
     original_stdout, original_stderr = sys.stdout, sys.stderr
     sys.stdout, sys.stderr = _Tee(original_stdout, handle), _Tee(original_stderr, handle)
     code = 0
@@ -138,8 +152,11 @@ def _run_scan(args: Sequence[str]) -> int:
     finally:
         sys.stdout, sys.stderr = original_stdout, original_stderr
         finished = datetime.datetime.now()
-        handle.write(f"=== 扫描结束：{finished:%Y-%m-%d %H:%M:%S}，退出码：{code} ===\n")
-        handle.close()
+        _log_side_effect(
+            handle, lambda: handle.write(f"=== 扫描结束：{finished:%Y-%m-%d %H:%M:%S}，退出码：{code} ===\n")
+        )
+        # close() 会 flush 缓冲区，满盘时同样会抛；它在 finally 里，还会顶掉原始异常
+        _log_side_effect(handle, handle.close)
     return code
 
 
