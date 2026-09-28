@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 「保存到文件夹」失败时的提示不再重复前缀：此前服务端和前端各加一次，界面显示成
+  「导出失败：导出失败：…」，现在由前端统一加。
+- 「保存到文件夹」失败时给出可读原因，不再直接把 OS 原文抛给使用者。以前是
+  `[Errno 1] Operation not permitted: '/…/.x.json.abc.tmp' -> '/…/x.json'`，现在是
+  「无法写入文件夹“…”：系统拒绝了写入 —— 目录只读、受管控（沙箱/安全软件）环境或
+  文件系统限制（EPERM）」，并覆盖权限、只读挂载、磁盘满等常见 errno
+  （新增 `fsutil.explain_oserror` 与 `exporter.ExportWriteError`）。
+
 ## [1.0.0] - 2026-09-28
 
 1.0 的含义：**数据格式与命令行契约冻结**。`hits/archive.json`（v2）、`state/seen.json`、

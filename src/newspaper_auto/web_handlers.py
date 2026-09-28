@@ -160,7 +160,11 @@ class _ApiHandlersMixin:
         self._send_json(200, cfg)
 
     def _handle_export(self, payload: Any) -> None:
-        """把服务端归档的受控筛选结果原子写入用户指定文件夹。"""
+        """把服务端归档的受控筛选结果原子写入用户指定文件夹。
+
+        错误消息只给**原因**，不带「导出失败：」这类动作前缀 —— 前缀由前端统一加，
+        否则两端各加一次会显示成「导出失败：导出失败：…」。
+        """
         request, error = validate_export_request(payload, base_dir=self.server.data_dir)
         if error:
             self._error_json(400, error)
@@ -191,7 +195,7 @@ class _ApiHandlersMixin:
             self._error_json(400, str(exc))
             return
         except OSError as exc:
-            self._error_json(500, f"导出失败：{exc}")
+            self._error_json(500, str(exc))
             return
         self._send_json(
             201,

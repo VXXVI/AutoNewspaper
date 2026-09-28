@@ -495,4 +495,44 @@ export const domTests = [
         },
       ),
   },
+  {
+    name: "导出失败：服务端只给原因，前端只加一次「导出失败：」前缀",
+    fn: () =>
+      withPage(
+        {
+          routes: (path, init) => {
+            if (path === "/api/export") {
+              return {
+                status: 500,
+                body: {
+                  error: "无法写入文件夹“/tmp/ro”：系统拒绝了写入 —— 目录只读、受管控环境或文件系统限制（EPERM）",
+                },
+              };
+            }
+            return defaultRoutes(path, init);
+          },
+        },
+        async (page) => {
+          const doc = page.document;
+          doc.getElementById("export").click();
+          await settle();
+
+          doc.getElementById("export-directory").value = "/tmp/ro";
+          doc.getElementById("export-form").dispatchEvent(
+            new page.window.Event("submit", { bubbles: true, cancelable: true }),
+          );
+          await settle();
+
+          const status = page.text("export-status");
+          assert.equal(
+            (status.match(/导出失败：/g) || []).length,
+            1,
+            "前缀只能有一处，别再拼成「导出失败：导出失败：…」",
+          );
+          assert.match(status, /无法写入文件夹/);
+          assert.match(status, /EPERM/);
+          assert.equal(doc.getElementById("export-directory").value, "/tmp/ro", "失败后保留已填写的路径");
+        },
+      ),
+  },
 ];

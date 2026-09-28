@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import errno
 import io
 import json
 import re
@@ -84,3 +85,45 @@ def test_invalid_format_does_not_create_directory(tmp_path):
 def test_normalize_format_rejects_unsupported_values(value):
     with pytest.raises(exporter.ExportValidationError, match="csv 或 json"):
         exporter.normalize_format(value)
+
+
+def test_write_failure_reports_folder_in_plain_language(tmp_path, monkeypatch):
+    """写盘失败要给出「往哪儿写、为什么写不进去」，而不是裸 OSError 原文。"""
+
+    def fail_write(*_args, **_kwargs):
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(exporter, "write_text", fail_write)
+
+    with pytest.raises(exporter.ExportWriteError) as exc_info:
+        exporter.export_hits(tmp_path, "csv", HITS)
+
+    error = exc_info.value
+    assert isinstance(error, OSError), "HTTP 层仍按 OSError 归类为 500"
+    message = str(error)
+    assert str(tmp_path) in message
+    assert "EPERM" in message
+    assert "[Errno" not in message, "不要把 OS 原文直接抛给使用者"
+
+
+def test_create_directory_failure_also_reports_in_plain_language(tmp_path, monkeypatch):
+    """建目录就失败时同样翻成人话（此时还拿不到规范化路径，用调用方给的原值）。"""
+
+    def fail_resolve(*_args, **_kwargs):
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(exporter, "resolve_directory", fail_resolve)
+
+    with pytest.raises(exporter.ExportWriteError) as exc_info:
+        exporter.export_hits(tmp_path, "csv", HITS)
+
+    message = str(exc_info.value)
+    assert str(tmp_path) in message
+    assert "EACCES" in message
+
+
+def test_validation_errors_are_not_reported_as_write_errors(tmp_path):
+    """参数不合法仍走 400，不能被包装成「写不进去」。"""
+
+    with pytest.raises(exporter.ExportValidationError):
+        exporter.export_hits(tmp_path, "xml", HITS)

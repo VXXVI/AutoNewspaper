@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from . import report
-from .fsutil import write_text
+from .fsutil import explain_oserror, write_text
 
 EXPORT_FORMATS = ("csv", "json")
 MAX_DIRECTORY_LENGTH = 4096
@@ -21,6 +21,20 @@ MAX_DIRECTORY_LENGTH = 4096
 
 class ExportValidationError(ValueError):
     """导出目录或格式不合法。"""
+
+
+class ExportWriteError(OSError):
+    """目标文件夹写不进去（权限、只读、磁盘满等）。
+
+    与 :class:`ExportValidationError`（参数不合法 → 400）刻意分开：这是**运行环境**
+    问题，HTTP 层应当回 500，CLI 应当报错而非静默重试。继承 ``OSError`` 是为了让既有
+    的 ``except OSError`` 分支（CLI 与 HTTP 层）继续生效，同时把提示换成可读的一句话。
+    """
+
+    def __init__(self, directory: str | os.PathLike[str], cause: OSError) -> None:
+        super().__init__(f"无法写入文件夹“{directory}”：{explain_oserror(cause)}")
+        self.directory = directory
+        self.cause = cause
 
 
 def resolve_directory(
@@ -92,8 +106,15 @@ def export_hits(
     内的其他导出。CSV 带 UTF-8 BOM，便于常见表格软件正确识别中文。
     """
     normalized_format = normalize_format(format_name)
-    # 先校验格式再创建目录：无效请求不应留下空文件夹。
-    target_dir = resolve_directory(directory, base_dir=base_dir, create=True)
+    try:
+        # 先校验格式再创建目录：无效请求不应留下空文件夹。
+        target_dir = resolve_directory(directory, base_dir=base_dir, create=True)
+    except ExportValidationError:
+        raise
+    except OSError as exc:
+        # 建目录就失败（权限、只读挂载、空间不足……）：此时还拿不到规范化路径，
+        # 用调用方传入的原值，至少是使用者认得出来的那个。
+        raise ExportWriteError(directory, exc) from exc
     timestamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
     token = uuid.uuid4().hex[:8]
     target = target_dir / f"newspaper-hits-{timestamp}-{token}.{normalized_format}"
@@ -101,5 +122,8 @@ def export_hits(
         content = "\ufeff" + report.hits_to_csv(hits)
     else:
         content = report.hits_to_json(hits) + "\n"
-    write_text(target, content)
+    try:
+        write_text(target, content)
+    except OSError as exc:
+        raise ExportWriteError(target_dir, exc) from exc
     return target

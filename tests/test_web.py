@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import re
 import threading
@@ -1077,7 +1078,29 @@ def test_export_api_write_failure_returns_500(tmp_path, monkeypatch):
         )
 
     assert status == 500
-    assert "导出失败" in json.loads(body)["error"]
+    # 只回原因，不加动作前缀 —— 前缀由前端统一加，两端各加一次会显示成「导出失败：导出失败：…」
+    assert json.loads(body)["error"] == "磁盘只读"
+
+
+def test_export_api_translates_filesystem_error(tmp_path, monkeypatch):
+    """真实导出路径上的写盘失败（走 fsutil）要给出可读原因，而不是 errno 原文。"""
+
+    def fail_write(*_args, **_kwargs):
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(web.exporter, "write_text", fail_write)
+    with _serve(tmp_path) as url:
+        status, body = _request(
+            "POST",
+            url + "/api/export",
+            {"directory": str(tmp_path / "exports"), "format": "csv"},
+        )
+
+    assert status == 500
+    error = json.loads(body)["error"]
+    assert "无法写入文件夹" in error
+    assert "EPERM" in error
+    assert not error.startswith("导出失败"), "服务端不自带前缀，交给前端加一次"
 
 
 def test_filter_export_records_matches_query_and_requested_sort():
