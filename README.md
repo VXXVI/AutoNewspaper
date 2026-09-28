@@ -40,9 +40,9 @@
 
 ## 安装
 
-项目支持 **macOS / Linux / Windows 10 1803+**；**Windows 7 请用专门的免安装便携版**
-（见下文「分发给别人用 → Windows 7」，或 `packaging/win7/`）。从 GitHub 获取源码需要 **Git**；
-程序运行时只需要 **Python 3.9+**（Windows 7 便携版已内置 Python 3.8.10，无需另装），
+项目支持 **macOS / Linux / Windows 10 1803+**；**Windows 7 用 Release 里专门的 `-win7-x64` 包**
+（见下文「分发给别人用 → Windows 7」）。从 GitHub 获取源码需要 **Git**；
+程序运行时只需要 **Python 3.9+**（Windows 7 的那个包已内置 Python 3.8.10，无需另装），
 不需要 `pip install`，也不需要先创建虚拟环境。
 抓取默认走标准库，**系统 `curl` 只是可选兜底**。
 
@@ -213,29 +213,30 @@ Shell 启动脚本语法检查；Windows job 另外验证 PowerShell 解析与 U
 
 完整分发方式、exe 用法与 CI 细节见 [docs/production-deployment.md](docs/production-deployment.md)。
 
-### Windows 7（免安装便携版）
+### Windows 7
 
 上面的 exe / zip 都是 **Python 3.12** 打的，而 Python 官方**从 3.9 起就不再支持
-Windows 7** —— 所以 Win7 需要单独一份便携版：
+Windows 7** —— 在 Win7 上双击会直接报「不是有效的 Win32 程序」。所以 Win7 走单独的
+**Python 3.8.10** 构建，有两条路径：
 
-- **打包**：`python3 packaging/win7/make_package.py`
-  → `dist/NewspaperAuto-<版本>-win7-x64-portable.zip`
-  （内置官方 **Python 3.8.10 embeddable**（Windows 7 能跑的最后一个版本）+ 项目源码；
-  运行时零第三方依赖，因此不需要 pip，也不需要 PyInstaller）。
-- **用法**：解压到任意**可写**目录，双击 `start-dashboard.vbs` —— **不弹命令行窗口**，
-  只在浏览器里打开看板。其余入口：`scan-now.cmd`（手动扫一次，窗口里能看进度与结果）、
-  `stop-dashboard.cmd`（停止看板）、`start-dashboard.cmd`（保留窗口的备用启动方式）。
-- **每日自动扫描**：任务计划程序里用 `python\pythonw.exe`，参数 `"<目录>\run.py" scan`
-  —— 必须用 `pythonw.exe` 才**不会闪黑窗口**，输出会写进 `logs\scan-<日期>.log`。
-- **前置条件**：Windows 7 **SP1** + **KB2533623** + UCRT（**KB2999226** 或 VC++ 2015-2022 x64），
-  通常随 Windows Update 装好。
+- **单文件 exe（推荐）**：Release 里的 `NewspaperAuto-<版本>-win7-x64.zip`，解压双击
+  `NewspaperAuto.exe` 即用 —— 和主线一样**无窗口、不弹黑框**，`scan` 的输出写
+  `logs\scan-<日期>.log`。打 tag 时由 `release.yml` 自动产出（复用 `build-windows.yml`，
+  `python-version=3.8.10` / `target=win7`）；也可在 **Actions → build-windows → Run workflow**
+  手填同样两个输入手动构建。
+- **免安装便携版（零依赖备选）**：`python3 packaging/win7/make_package.py`
+  → `dist/NewspaperAuto-<版本>-win7-x64-portable.zip`（内置官方 **Python 3.8.10 embeddable**
+  + 项目源码，不需要 pip、也不需要 PyInstaller）。解压到任意**可写**目录后双击
+  `start-dashboard.vbs`，由 `pythonw.exe` 启动，同样**不弹命令行窗口**；另有
+  `scan-now.cmd`（手动扫一次，窗口里能看进度与结果）、`stop-dashboard.cmd`、
+  `start-dashboard.cmd`（保留窗口的备用启动方式）。
+- **运行前提**（Python 3.8 自身的要求，通常随 Windows Update 装好）：Windows 7 **SP1** +
+  **KB2533623** + UCRT（**KB2999226** 或 VC++ 2015-2022 x64）。
+- **每日自动扫描**：exe 就在任务计划程序里填 `NewspaperAuto.exe` +
+  `scan --days 2 --no-state`（exe 本身无窗口，不闪黑框）；便携版则填 `python\pythonw.exe` +
+  `"<目录>\run.py" scan`，输出写进 `logs\scan-<日期>.log`。
 
-包内 `README-Win7.txt` 是面向使用者的完整说明；模板与构建脚本见
-[packaging/win7](packaging/win7)。
-
-> 为什么不做成 exe：PyInstaller 不能跨平台交叉编译，且 Win7 能跑的 exe 必须用 Python 3.8 构建，
-> 与主线的 3.9+ 打包链路不兼容。便携版把官方运行时与源码放在一起，由 `pythonw.exe` + `run.py`
-> 启动，**行为与 exe 一致（无窗口）**。
+模板与构建脚本见 [packaging/win7](packaging/win7)；包内 `README-Win7.txt` 是面向使用者的完整说明。
 
 ## 文档索引
 

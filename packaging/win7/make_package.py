@@ -50,7 +50,7 @@ EXCLUDED_NAMES = {"__pycache__", ".DS_Store"}
 
 def package_version() -> str:
     sys.path.insert(0, str(REPO / "src"))
-    import newspaper_auto  # noqa: PLC0415
+    import newspaper_auto
 
     return newspaper_auto.__version__
 
@@ -67,7 +67,7 @@ def fetch_embed() -> None:
     if EMBED.is_file():
         return
     print(f"下载 Python {EMBED_VERSION} embeddable …")
-    urllib.request.urlretrieve(EMBED_URL, EMBED)  # noqa: S310
+    urllib.request.urlretrieve(EMBED_URL, EMBED)
 
 
 def stage_tree(version: str) -> pathlib.Path:

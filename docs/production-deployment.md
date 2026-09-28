@@ -27,6 +27,11 @@ exe 最省事：CI 在打 `v*` tag 时构建 `NewspaperAuto-<tag>-windows-x64.zi
 也可在仓库 Actions 手动触发 `build-windows` 构建并下载。
 exe 只捆绑标准库，**运行时仍零第三方依赖**。
 
+**Windows 7 需要单独一份 exe**：Python 官方从 3.9 起不再支持 Win7，用 3.12 打的 exe 在
+Win7 上会报「不是有效的 Win32 程序」。同一个 `build-windows.yml` 带上
+`python-version=3.8.10` / `target=win7` 就能产出 `NewspaperAuto-<tag>-win7-x64.zip`
+（`release.yml` 打 tag 时已自动带上这一步），用法与主线完全一致。
+
 > exe 解决不了「谁每天来触发」——它自己不会定时启动；本机定时仍需 Windows 任务计划程序
 > （见 [scheduling.md](scheduling.md)）。exe 的定位是**便于手动使用与分发**。
 
@@ -36,8 +41,8 @@ exe 只捆绑标准库，**运行时仍零第三方依赖**。
 |---|---|---|
 | `ci.yml` | push / PR | Py3.9/3.12/3.13 上 ruff、格式检查、pytest；`node --check` 前端脚本 + 前端单测；Shell 启动脚本语法；Windows job 验证 PowerShell 解析与 UTF-8 BOM |
 | `scan.yml` | schedule / dispatch / 手动 | 每日扫描，结果归档到 `data` 分支（见下） |
-| `build-windows.yml` | 手动 / 被 release 复用 | 在 `windows-latest` 构建单文件 exe 并产出可分发的 zip |
-| `release.yml` | 打 `v*` tag | 构建 sdist / wheel / 便携源码 zip + Windows exe，统一发布到 GitHub Release |
+| `build-windows.yml` | 手动 / 被 release 复用 | 在 `windows-latest` 构建单文件 exe 并产出可分发的 zip。两个可选输入：`python-version`（默认 `3.12`）与 `target`（默认 `windows`，决定产物名里的平台标签）。非 3.12 时会先跑源码冒烟，把无窗口 exe 吞掉的 traceback 暴露出来 |
+| `release.yml` | 打 `v*` tag | 构建 sdist / wheel / 便携源码 zip + Windows exe（主线与 **Win7** 两份），统一发布到 GitHub Release |
 
 ### `main` 不再接收运行数据（`data` 分支）
 
@@ -74,6 +79,9 @@ exe 只捆绑标准库，**运行时仍零第三方依赖**。
    也可在仓库 **Actions → build-windows → Run workflow** 手动构建并下载 artifact，无需打 tag。
    本机自行构建：在 Windows 上执行 `scripts\build_windows.ps1`
    （`pip install pyinstaller` 属构建期依赖，不进入运行时）。
+   **Windows 7 用户**请用同一构建产出的 `NewspaperAuto-<tag>-win7-x64.zip`（用 **Python 3.8.10**
+   构建，双击同样不弹窗）；Win7 上运行需要 SP1 + KB2533623 + UCRT（KB2999226，或
+   VC++ 2015-2022 x64）。手动触发时把 `python-version` 填 `3.8.10`、`target` 填 `win7` 即可。
 2. **Windows 安装包（可选的便捷壳子）**：同一份构建产出的
    `NewspaperAuto-<tag>-setup.exe`，双击安装，装到
    `%LOCALAPPDATA%\Programs\NewspaperAuto`（**用户可写**，无需管理员权限），

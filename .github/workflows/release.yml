@@ -76,9 +76,19 @@ jobs:
     with:
       version: ${{ github.ref_name }}
 
+  windows-exe-win7:
+    name: 构建 Windows 7 单文件 exe
+    # Windows 7 必须用 Python 3.8 构建（3.9+ 的运行时在 Win7 上跑不起来），
+    # 其余流程与主线完全一致 —— 同一个可复用工作流，只是换了 python-version / target。
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      version: ${{ github.ref_name }}
+      python-version: "3.8.10"
+      target: "win7"
+
   release:
     name: 发布到 GitHub Release
-    needs: [build, windows-exe]
+    needs: [build, windows-exe, windows-exe-win7]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

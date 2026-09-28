@@ -6,25 +6,43 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-28
+
 ### Added
 
-- **Windows 7 免安装便携版**（`packaging/win7/`）。主线的 exe / zip 都是 Python 3.12 打的，
-  而 Python 官方**从 3.9 起就不再支持 Windows 7**，所以 Win7 需要单出一份：内置官方
-  **Python 3.8.10 embeddable**（Win7 能跑的最后一个版本）+ 项目源码，运行时零第三方依赖。
-  `python3 packaging/win7/make_package.py` 产出
-  `NewspaperAuto-<版本>-win7-x64-portable.zip`，解压即用。
-- `run.py`（便携版统一入口）：子命令与 `NewspaperAuto.exe` 完全一致，并把「项目根」钉死为
-  自身所在目录。它复用 `newspaper_auto.exe` 入口，因此双击时由 `pythonw.exe` 启动也**不会弹出
-  命令行窗口**（`pythonw` 下 `stdout/stderr` 为 `None`，入口会接回父控制台或指向 `devnull`），
-  且 `scan` 的输出照旧写进 `logs/scan-<日期>.log`。
-- `start-dashboard.vbs`（无窗口打开看板）、`scan-now.cmd`（手动扫描，可见结果）、
-  `stop-dashboard.cmd`、`start-dashboard.cmd`（保留窗口的备用启动方式）四个启动器。
+- **Windows 7 支持：Release 直接提供单文件 `NewspaperAuto.exe`**。Python 官方从 **3.9 起
+  不再支持 Windows 7**，主线的 exe（Python 3.12）在 Win7 上会直接报「不是有效的 Win32
+  程序」，所以 Release 现在额外挂一份 `NewspaperAuto-<版本>-win7-x64.zip`：用
+  **Python 3.8.10** 构建，双击即用、**不弹命令行窗口**，用法与主线完全一致
+  （`scan` 仍把输出写进 `logs\scan-<日期>.log`）。
+- **Windows 7 免安装便携版**（`packaging/win7/`，不用 exe 时的零依赖备选）。内置官方
+  Python 3.8.10 embeddable + 项目源码，`python3 packaging/win7/make_package.py` 产出
+  `NewspaperAuto-<版本>-win7-x64-portable.zip`，解压即用、不需要 pip / PyInstaller。
+  `run.py` 是与 exe 对齐的统一入口：由 `pythonw.exe` 启动时**不会弹出命令行窗口**
+  （`pythonw` 下 `stdout/stderr` 为 `None`，入口会接回父控制台或指向 `devnull`）。
+  另附 `start-dashboard.vbs`（无窗口开看板）、`scan-now.cmd`、`stop-dashboard.cmd`、
+  `start-dashboard.cmd`（保留窗口的备用启动器）。
+- exe 使用说明补充 Windows 7 运行前提（SP1 + KB2533623 + UCRT / KB2999226），
+  win7 包另附 `README-win7.txt`（CRLF + UTF-8 BOM，Win7 记事本可直接阅读）。
+
+### Fixed
+
+- **模块级类型别名在 Python 3.8 上直接崩**：`from __future__ import annotations` 只延迟
+  **注解**，`Fetcher = Callable[[str], tuple[int, str]]`、`SeenMap = dict[str, dict[str, int]]`
+  这类模块级赋值仍在导入时求值，Python 3.8 会抛
+  `TypeError: 'type' object is not subscriptable` —— Win7 版 exe 一启动就崩，而**无窗口版
+  看不到 traceback**（只表现为 `/api/health` 迟迟起不来）。两个别名都只在注解里使用，
+  已改为字符串常量，3.8 与 3.9+ 通用。
 
 ### Changed
 
+- `build-windows` 工作流新增两个**可选**输入 `python-version`（默认 `3.12`）与 `target`
+  （默认 `windows`），默认行为与之前完全一致；`build_windows.ps1` 新增 `-Target` 控制产物名，
+  非 `windows` 目标跳过 Inno 安装包。目标 Python 非 3.12 时会先跑一遍**源码冒烟**，
+  把无窗口 exe 会吞掉的 traceback 暴露到 CI 日志里。
 - `.gitattributes` 把 `*.vbs` 也钉成 CRLF 签出；`MANIFEST.in` 的 `packaging` 收录加入 `*.vbs`。
 - README 新增「重启电脑后要重新启动吗」：**看板是本地进程，重启后要再启动一次**；
-  计划任务 / launchd 与 GitHub Actions 不受影响。并新增「Windows 7（免安装便携版）」一节。
+  计划任务 / launchd 与 GitHub Actions 不受影响。并新增「Windows 7」一节。
 
 ## [0.9.0] - 2026-09-27
 
