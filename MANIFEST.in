@@ -7,7 +7,7 @@ include Makefile
 recursive-include src/newspaper_auto/static *.html *.css *.js *.svg *.ico *.png
 recursive-include tests *.py *.html
 recursive-include scripts *.sh *.ps1 *.template
-recursive-include packaging *.py *.spec *.cmd *.txt
+recursive-include packaging *.py *.spec *.cmd *.vbs *.txt
 recursive-include docs *.md
 
 # 运行期产物与缓存不进包

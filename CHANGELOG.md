@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Windows 7 免安装便携版**（`packaging/win7/`）。主线的 exe / zip 都是 Python 3.12 打的，
+  而 Python 官方**从 3.9 起就不再支持 Windows 7**，所以 Win7 需要单出一份：内置官方
+  **Python 3.8.10 embeddable**（Win7 能跑的最后一个版本）+ 项目源码，运行时零第三方依赖。
+  `python3 packaging/win7/make_package.py` 产出
+  `NewspaperAuto-<版本>-win7-x64-portable.zip`，解压即用。
+- `run.py`（便携版统一入口）：子命令与 `NewspaperAuto.exe` 完全一致，并把「项目根」钉死为
+  自身所在目录。它复用 `newspaper_auto.exe` 入口，因此双击时由 `pythonw.exe` 启动也**不会弹出
+  命令行窗口**（`pythonw` 下 `stdout/stderr` 为 `None`，入口会接回父控制台或指向 `devnull`），
+  且 `scan` 的输出照旧写进 `logs/scan-<日期>.log`。
+- `start-dashboard.vbs`（无窗口打开看板）、`scan-now.cmd`（手动扫描，可见结果）、
+  `stop-dashboard.cmd`、`start-dashboard.cmd`（保留窗口的备用启动方式）四个启动器。
+
+### Changed
+
+- `.gitattributes` 把 `*.vbs` 也钉成 CRLF 签出；`MANIFEST.in` 的 `packaging` 收录加入 `*.vbs`。
+- README 新增「重启电脑后要重新启动吗」：**看板是本地进程，重启后要再启动一次**；
+  计划任务 / launchd 与 GitHub Actions 不受影响。并新增「Windows 7（免安装便携版）」一节。
+
 ## [0.9.0] - 2026-09-27
 
 ### Changed

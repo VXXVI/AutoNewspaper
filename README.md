@@ -27,10 +27,23 @@
 因此可与 GitHub Actions **同时启用、互不覆盖**。调度与部署细节见
 [docs/scheduling.md](docs/scheduling.md) 与 [docs/production-deployment.md](docs/production-deployment.md)。
 
+### 重启电脑后要重新启动吗？
+
+- **看板**（`dashboard.py`，或便携版双击 `start-dashboard.vbs`）是本地后台**进程**，
+  关机就结束 —— **重启后要再启动一次**。所谓「后台运行」只是「关掉窗口不会停它」，
+  并不等于开机自启。
+- **每日自动扫描**（macOS `launchd` / Windows 任务计划程序）登记在**系统**里，
+  **重启后照常自动运行**，不需要手动启动；前提是机器开机且已登录（默认「仅在用户登录时运行」）。
+- **GitHub Actions** 跑在云端 runner 上，和你本机开不开机无关。
+
+漏掉一天不用管：默认每次都扫「今天 + 昨天」，第二天会自动补回来。
+
 ## 安装
 
-项目支持 **macOS / Linux / Windows 10 1803+**。从 GitHub 获取源码需要 **Git**；
-程序运行时只需要 **Python 3.9+**，不需要 `pip install`，也不需要先创建虚拟环境。
+项目支持 **macOS / Linux / Windows 10 1803+**；**Windows 7 请用专门的免安装便携版**
+（见下文「分发给别人用 → Windows 7」，或 `packaging/win7/`）。从 GitHub 获取源码需要 **Git**；
+程序运行时只需要 **Python 3.9+**（Windows 7 便携版已内置 Python 3.8.10，无需另装），
+不需要 `pip install`，也不需要先创建虚拟环境。
 抓取默认走标准库，**系统 `curl` 只是可选兜底**。
 
 macOS / Linux：
@@ -199,6 +212,30 @@ Shell 启动脚本语法检查；Windows job 另外验证 PowerShell 解析与 U
   `.whl` / `.tar.gz`（`pip install <whl>`）。
 
 完整分发方式、exe 用法与 CI 细节见 [docs/production-deployment.md](docs/production-deployment.md)。
+
+### Windows 7（免安装便携版）
+
+上面的 exe / zip 都是 **Python 3.12** 打的，而 Python 官方**从 3.9 起就不再支持
+Windows 7** —— 所以 Win7 需要单独一份便携版：
+
+- **打包**：`python3 packaging/win7/make_package.py`
+  → `dist/NewspaperAuto-<版本>-win7-x64-portable.zip`
+  （内置官方 **Python 3.8.10 embeddable**（Windows 7 能跑的最后一个版本）+ 项目源码；
+  运行时零第三方依赖，因此不需要 pip，也不需要 PyInstaller）。
+- **用法**：解压到任意**可写**目录，双击 `start-dashboard.vbs` —— **不弹命令行窗口**，
+  只在浏览器里打开看板。其余入口：`scan-now.cmd`（手动扫一次，窗口里能看进度与结果）、
+  `stop-dashboard.cmd`（停止看板）、`start-dashboard.cmd`（保留窗口的备用启动方式）。
+- **每日自动扫描**：任务计划程序里用 `python\pythonw.exe`，参数 `"<目录>\run.py" scan`
+  —— 必须用 `pythonw.exe` 才**不会闪黑窗口**，输出会写进 `logs\scan-<日期>.log`。
+- **前置条件**：Windows 7 **SP1** + **KB2533623** + UCRT（**KB2999226** 或 VC++ 2015-2022 x64），
+  通常随 Windows Update 装好。
+
+包内 `README-Win7.txt` 是面向使用者的完整说明；模板与构建脚本见
+[packaging/win7](packaging/win7)。
+
+> 为什么不做成 exe：PyInstaller 不能跨平台交叉编译，且 Win7 能跑的 exe 必须用 Python 3.8 构建，
+> 与主线的 3.9+ 打包链路不兼容。便携版把官方运行时与源码放在一起，由 `pythonw.exe` + `run.py`
+> 启动，**行为与 exe 一致（无窗口）**。
 
 ## 文档索引
 

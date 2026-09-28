@@ -10,10 +10,11 @@
 #   git check-attr text eol -- scripts/scan.cmd
 # ==============================================================================
 
-# ---- Windows 批处理 / PowerShell：CRLF 签出 ----
+# ---- Windows 批处理 / PowerShell / WSH：CRLF 签出 ----
 *.cmd  text eol=crlf
 *.bat  text eol=crlf
 *.ps1  text eol=crlf
+*.vbs  text eol=crlf
 
 # ---- 类 Unix 脚本：必须保持 LF ----
 # CRLF 会让 bash/sh 直接报 `\r: command not found`，且 launchd / Git Bash / WSL 全中招。
