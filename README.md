@@ -191,7 +191,8 @@ node run-dom.mjs                     # app.js 的 DOM 行为（jsdom）
 ```
 
 CI 在 Python 3.9 / 3.12 / 3.13 上跑 lint、格式检查和测试，并做前端脚本语法 / 单测与
-Shell 启动脚本语法检查；Windows job 另外验证 PowerShell 解析与 UTF-8 BOM。
+Shell 启动脚本语法检查；另有 `tests/test_py38_compat.py` 做 **Python 3.8 运行期语法**静态闸门
+（Win7 包是 3.8.10 构建的，见下节）；Windows job 另外验证 PowerShell 解析与 UTF-8 BOM。
 详见 [docs/production-deployment.md](docs/production-deployment.md)。
 
 ## 分发给别人用
@@ -236,6 +237,13 @@ Windows 7** —— 在 Win7 上双击会直接报「不是有效的 Win32 程序
 - **每日自动扫描**：exe 就在任务计划程序里填 `NewspaperAuto.exe` +
   `scan --days 2 --no-state`（exe 本身无窗口，不闪黑框）；便携版则填 `python\pythonw.exe` +
   `"<目录>\run.py" scan`，输出写进 `logs\scan-<日期>.log`。
+
+⚠️ **改 `src/` 时要盯住 Python 3.8**：上面两个 Win7 包都是 **3.8.10** 构建、并携带项目源码
+运行的，所以 `src/newspaper_auto/` 里**运行期求值**的语法必须兼容 3.8 —— `dict[str, int]`、
+`int | str`、`str.removeprefix(...)`、`zoneinfo` 这些都不行（写在**注解**里则没问题，全项目都有
+`from __future__ import annotations`）。ruff 的 `target-version` 与 CI 的解释器矩阵都**不会**
+替你发现这类写法，仓库改用 `tests/test_py38_compat.py` 静态扫描兜住：CI 直接失败，
+而不是等到手动构建 Win7 包时才炸。
 
 模板与构建脚本见 [packaging/win7](packaging/win7)；包内 `README-Win7.txt` 是面向使用者的完整说明。
 

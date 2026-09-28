@@ -244,8 +244,8 @@ src/newspaper_auto/
 |---|---|
 | `pyproject.toml` | 打包元数据（`dependencies = []`）、pytest、ruff 配置 |
 | `Makefile` | `install / test / lint / fmt / check / dry / scan / json / csv / plist / clean` |
-| `.github/workflows/ci.yml` | Python 3.9 / 3.12 / 3.13 上跑 ruff、format check、pytest、`bash -n` |
-| `tests/` | 76 个离线单元测试 + `tests/fixtures/*.htm(l)` |
+| `.github/workflows/ci.yml` | Python 3.9 / 3.12 / 3.13 上跑 ruff、format check、pytest、`bash -n`；另有 Python 3.8 运行期语法静态闸门（`tests/test_py38_compat.py`） |
+| `tests/` | 650+ 个离线单元测试 + `tests/fixtures/*.htm(l)` |
 | `LICENSE` | MIT |
 | `CHANGELOG.md` | 变更记录（Keep a Changelog） |
 | `.gitignore` | 追加 `.venv/`、`.pytest_cache/`、`.ruff_cache/`、`build/`、`dist/` |

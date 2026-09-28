@@ -60,6 +60,9 @@ jobs:
           node --test *.test.mjs
           node run-dom.mjs
 
+      - name: Python 3.8 运行期语法闸门（Win7 包用 3.8.10 构建）
+        run: pytest -q tests/test_py38_compat.py
+
       - name: 单元测试
         run: pytest -q
 
