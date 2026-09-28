@@ -12,7 +12,12 @@ from . import config, http, papers, parse
 NODE_RE = r"node_\w+\.html?$"
 CONTENT_RE = r"content_\w+\.html?$"
 
-Fetcher = Callable[[str], tuple[int, str]]
+# 模块级类型别名会在「导入时」求值 —— ``from __future__ import annotations`` 只延迟
+# 注解，管不了这种赋值 —— 所以这里不能写 PEP 585 的 ``tuple[int, str]``：Python 3.8 会
+# 抛 ``TypeError: 'type' object is not subscriptable``（Win7 版 exe 就是用 3.8 构建的）。
+# 写成字符串常量后 3.8 / 3.9+ 都能导入；该别名只在注解里使用，字符串形式对类型检查器
+# 同样有效。
+Fetcher = Callable[[str], "tuple[int, str]"]
 
 
 def partial_failure(stats: dict[str, Any]) -> bool:

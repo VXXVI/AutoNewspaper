@@ -26,7 +26,10 @@ from .fsutil import write_text
 # 文章 URL 内含日期目录，如 /2026-09/22/ 或 /202609/22/
 _URL_DATE_RE = re.compile(r"/(\d{4})-?(\d{2})/")
 
-SeenMap = dict[str, dict[str, int]]
+# 模块级类型别名在「导入时」求值（``from __future__ import annotations`` 只管注解），
+# 因此写成字符串常量：Python 3.8 也会 TypeError（Win7 版 exe 用 3.8 构建），3.9+ 同样
+# 可用。别名只在注解里使用，字符串形式对类型检查器有效。
+SeenMap = "dict[str, dict[str, int]]"
 
 
 def load_seen(path: str | os.PathLike[str]) -> SeenMap:
