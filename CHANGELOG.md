@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-28
+
+1.0 的含义：**数据格式与命令行契约冻结**。`hits/archive.json`（v2）、`state/seen.json`、
+`papers.custom.json` 与 `NewspaperAuto.exe` / `run.py` 的子命令与参数自本版起保持向后兼容，
+后续版本只允许**新增**字段与子命令。
+
 ### Added
 
 - 导出对话框新增「浏览…」：让**看板所在设备**弹出系统原生的文件夹选择窗口，选中的路径
