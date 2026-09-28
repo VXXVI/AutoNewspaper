@@ -80,9 +80,11 @@ jobs:
         run: |
           $v = "${{ inputs.version }}"
           $t = "${{ inputs.target }}"
-          $buildArgs = @()
-          if ($v) { $buildArgs += @('-Version', $v) }
-          if ($t) { $buildArgs += @('-Target', $t) }
+          # 注意：数组 splat（@array）是「位置参数」，不会把 '-Target' 当参数名；
+          # 具名参数必须用哈希表 splat，否则 '-Target' 会被当成 $Version 的值。
+          $buildArgs = @{}
+          if ($t) { $buildArgs['Target'] = $t }
+          if ($v) { $buildArgs['Version'] = $v }
           ./scripts/build_windows.ps1 @buildArgs
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
