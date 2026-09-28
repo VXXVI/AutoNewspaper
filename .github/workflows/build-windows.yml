@@ -75,6 +75,42 @@ jobs:
             exit 1
           }
 
+      - name: 源码冒烟（非主线 Python 时运行：把无窗口 exe 吞掉的 traceback 逼出来）
+        if: inputs.python-version != '3.12'
+        shell: pwsh
+        run: |
+          # 无窗口 exe 下 stdout/stderr 是 None，启动失败只会弹一个（在 CI 里没人点的）
+          # MessageBox，真正的原因看不到。所以先在**源码**上把同一套启动流程跑一遍。
+          $env:PYTHONPATH = Join-Path $PWD 'src'
+          $dataDir = Join-Path $PWD 'build\smoke-src'
+          New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+          $outFile = Join-Path $PWD 'build\smoke-src.out'
+          $errFile = Join-Path $PWD 'build\smoke-src.err'
+
+          Write-Host '1) 导入检查'
+          python -c "import newspaper_auto.web, newspaper_auto.cli, newspaper_auto.exe, newspaper_auto.scanner, newspaper_auto.report, newspaper_auto.state, newspaper_auto.http, newspaper_auto.web_server; print('imports OK')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Write-Host '2) 源码起看板（前台，输出重定向到文件）'
+          $proc = Start-Process -FilePath 'python' `
+            -ArgumentList @('-m', 'newspaper_auto.web', '--port', '8798', '--data-dir', $dataDir) `
+            -PassThru -NoNewWindow -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+          $ready = $false
+          for ($i = 0; $i -lt 20; $i++) {
+            Start-Sleep -Milliseconds 500
+            if ($proc.HasExited) { break }
+            try {
+              if ((Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8798/api/health' -TimeoutSec 2).StatusCode -eq 200) { $ready = $true; break }
+            } catch { }
+          }
+          if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          Write-Host '---- source stdout ----'
+          Get-Content -LiteralPath $outFile -ErrorAction SilentlyContinue
+          Write-Host '---- source stderr ----'
+          Get-Content -LiteralPath $errFile -ErrorAction SilentlyContinue
+          if (-not $ready) { Write-Host '::error::源码在目标 Python 下也起不来（见上面 stderr）'; exit 1 }
+          Write-Host '源码冒烟通过。'
+
       - name: 构建 exe（含冒烟测试与 zip 组装）
         shell: pwsh
         run: |
