@@ -1,9 +1,8 @@
-<img src="src/newspaper_auto/static/logo.svg" alt="数字报监测" width="96" align="right">
-
+<p align="right"><img src="src/newspaper_auto/static/logo.svg" alt="数字报监测" width="96"></p>
 
 # 数字报 · 关键词每日监测
 
-**内置媒体**：光明日报 / 南方日报 / 羊城晚报 / 中国教育报 / 湛江日报 / 人民日报（可自定义扩展）
+**内置媒体**：光明日报 / 南方日报 / 羊城晚报 / 中国教育报 / 湛江日报 / 人民日报（可自定义扩展）<br>
 **数据源**：各报社**官网数字报**（报纸电子版）—— 不是 Google/Bing News
 
 一个**本地单机监测工具**：既可用 CLI，也可在浏览器看板中一键抓取。项目会扫描当日全部版面
