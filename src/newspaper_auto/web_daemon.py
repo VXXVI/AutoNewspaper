@@ -32,7 +32,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import paths, procutil
+from . import fsutil, paths, procutil
 
 READY_TIMEOUT = 25.0
 POLL_INTERVAL = 0.25
@@ -74,9 +74,13 @@ def read_state(data_dir: str | os.PathLike[str]) -> dict | None:
 
 
 def write_state(data_dir: str | os.PathLike[str], host: str, port: int) -> None:
-    """写入运行状态（由正在监听的进程调用）。"""
+    """写入运行状态（由正在监听的进程调用）。
+
+    走共享的 :func:`newspaper_auto.fsutil.write_text`（唯一临时名 + ``fsync`` + 原子替换）：
+    此前用的是固定的 ``dashboard.json.tmp``，两个看板进程几乎同时启动时会抢同一个临时文件，
+    后一个 ``os.replace`` 直接 ``FileNotFoundError``，启动器把它当「启动失败」报给用户。
+    """
     path = paths.dashboard_file(Path(data_dir))
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "host": host,
         "port": int(port),
@@ -86,9 +90,7 @@ def write_state(data_dir: str | os.PathLike[str], host: str, port: int) -> None:
         "ppid": os.getppid() if getattr(sys, "frozen", False) else 0,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
+    fsutil.write_text(path, json.dumps(payload, ensure_ascii=False))
 
 
 def clear_state(data_dir: str | os.PathLike[str], pid: int | None = None) -> None:

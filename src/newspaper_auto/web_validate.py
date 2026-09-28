@@ -356,6 +356,8 @@ def filter_export_records(records: list[dict[str, Any]], filters: dict[str, Any]
     selected.sort(key=lambda item: (item["date"], item["url"]), reverse=True)
     sort = filters.get("sort")
     if sort == "date-asc":
+        # 完整降序表原地反转，等价于按 (date, url) 升序排 —— 两者严格互为镜像，
+        # 同一天内的并列顺序不会被"额外"打乱（别改成再排一次，没有区别）。
         selected.reverse()
     elif sort == "paper":
         selected.sort(key=lambda item: item["paper"])

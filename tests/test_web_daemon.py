@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import socketserver
@@ -61,6 +62,23 @@ def test_write_then_read_roundtrip(tmp_path):
     assert web_daemon.url_of(state) == "http://127.0.0.1:8788/"
     # 原子写不应留下临时文件
     assert not list(paths.dashboard_file(tmp_path).parent.glob("*.tmp"))
+
+
+def test_write_state_uses_the_shared_atomic_writer(tmp_path, monkeypatch):
+    """状态文件必须走 ``fsutil.write_text``（唯一临时名 + fsync + 原子替换）。
+
+    回归：此前用固定的 ``dashboard.json.tmp``，两个看板进程几乎同时启动会抢同一个临时文件，
+    后一个 ``os.replace`` 直接 FileNotFoundError，启动器把它当「启动失败」报给用户。
+    """
+    calls: list[tuple[object, str]] = []
+    monkeypatch.setattr(web_daemon.fsutil, "write_text", lambda path, content: calls.append((path, content)))
+
+    web_daemon.write_state(tmp_path, "127.0.0.1", 8788)
+
+    assert len(calls) == 1, "状态文件必须且只需经过一次原子写"
+    path, content = calls[0]
+    assert Path(path) == paths.dashboard_file(tmp_path)
+    assert json.loads(content)["port"] == 8788
 
 
 def test_write_state_records_parent_pid_only_when_frozen(tmp_path, monkeypatch):

@@ -23,8 +23,8 @@ from typing import Any, Callable
 from . import config, paths
 from .fsutil import write_text
 
-# 文章 URL 内含日期目录，如 /2026-09/22/ 或 /202609/22/
-_URL_DATE_RE = re.compile(r"/(\d{4})-?(\d{2})/")
+# 文章 URL 内含日期目录，如 /2026-09/22/ 或 /202609/22/；日可能缺失（形如仅 /2026-09/）
+_URL_DATE_RE = re.compile(r"/(\d{4})-?(\d{2})(?:/(\d{2}))?/")
 
 # 模块级类型别名在「导入时」求值（``from __future__ import annotations`` 只管注解），
 # 因此写成字符串常量：Python 3.8 也会 TypeError（Win7 版 exe 用 3.8 构建），3.9+ 同样
@@ -103,15 +103,33 @@ def exclusive_lock(state_path: str | os.PathLike[str], *, timeout: float = 30.0,
 def prune_seen(seen: SeenMap, keep_days: int = config.SEEN_KEEP_DAYS, now: datetime | None = None) -> int:
     """丢弃过老记录，返回删除条数。
 
-    文章 URL 里含日期目录，直接从中读日期，只保留最近 ``keep_days`` 天。
+    日期直接读文章 URL 里的日期目录，按情况分两档：
+
+    - **URL 带日**（``/2026-09/22/``、``/202609/22/``，六家实际都是这种）：按**整日**比较，
+      保留窗口正好是最近的 ``keep_days`` 天；
+    - **URL 只有年月**（少见）：退化为**整月**比较，只有当整个月都早于 cutoff 才丢，
+      宁可多留也不误删。
+
+    此前只按 ``strftime("%Y-%m")`` 做整月比较，实际窗口是
+    ``keep_days + (cutoff.day - 1)`` 天 —— 也就是 120 天到 150 天之间浮动（取决于
+    ``now - keep_days`` 落在月内哪一天），比这里的承诺最多多留一个月。
+    两种比较都是定长 ``YYYY-MM-DD`` / ``YYYY-MM`` 字符串比较，等价于日期比较。
     """
     now = now or datetime.now()
-    cutoff = (now - timedelta(days=keep_days)).strftime("%Y-%m")
+    cutoff = now - timedelta(days=keep_days)
+    cutoff_day = cutoff.strftime("%Y-%m-%d")
+    cutoff_month = cutoff.strftime("%Y-%m")
     dropped = 0
     for bucket in seen.values():
         for url in list(bucket):
             match = _URL_DATE_RE.search(url)
-            if match and f"{match.group(1)}-{match.group(2)}" < cutoff:
+            if not match:
+                continue
+            year, month, day = match.group(1), match.group(2), match.group(3)
+            # URL 带日就按日比；只有年月时退化为整月比（保守方向：整月保留，宁可多留）
+            url_key = f"{year}-{month}-{day}" if day else f"{year}-{month}"
+            limit = cutoff_day if day else cutoff_month
+            if url_key < limit:
                 del bucket[url]
                 dropped += 1
     return dropped

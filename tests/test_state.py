@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from newspaper_auto import state
@@ -84,6 +84,62 @@ def test_prune_seen_drops_old_but_keeps_recent_and_dateless():
         "http://x/2026-09/22/content_1.html",
         "http://x/nodate/content_3.html",
     }
+
+
+def test_prune_seen_window_is_exactly_keep_days_for_urls_with_a_day():
+    """回归：整月比较让实际窗口在 keep_days ~ keep_days+30 天之间浮动。
+
+    现在按 URL 里的**日**比较，窗口正好是 keep_days 天：第 keep 天前的那篇留，再往前一天丢。
+    """
+    now = datetime(2026, 9, 29)
+    keep = 120
+    inside = now - timedelta(days=keep - 1)  # 窗口内最后一天
+    boundary = now - timedelta(days=keep)  # 正好 keep 天前
+    outside = now - timedelta(days=keep + 1)  # 窗口外
+
+    def url(when: datetime, stem: str) -> str:
+        return f"http://x/{when:%Y-%m}/{when:%d}/{stem}.html"
+
+    seen = {"k": {url(inside, "a"): 1, url(boundary, "b"): 1, url(outside, "c"): 1}}
+
+    assert state.prune_seen(seen, keep_days=keep, now=now) == 1
+    assert set(seen["k"]) == {url(inside, "a"), url(boundary, "b")}
+
+
+def test_prune_seen_window_does_not_depend_on_where_cutoff_lands_in_the_month():
+    """无论 cutoff 落在月内哪一天，窗口都必须恰好是 keep_days 天，且绝不误删窗口内记录。"""
+    keep = 120
+    for day in range(1, 29):
+        now = datetime(2026, 8, day)
+        edge = now - timedelta(days=keep)
+        old = now - timedelta(days=keep + 1)
+        edge_url = f"http://x/{edge:%Y-%m}/{edge:%d}/a.html"
+        seen = {"k": {edge_url: 1, f"http://x/{old:%Y-%m}/{old:%d}/b.html": 1}}
+
+        state.prune_seen(seen, keep_days=keep, now=now)
+
+        assert set(seen["k"]) == {edge_url}, f"now={now:%F} 误删了仍在 {keep} 天窗口内的记录"
+
+
+def test_prune_seen_falls_back_to_month_granularity_when_url_has_no_day():
+    """URL 只有年月时保守处理：只有整个月都早于 cutoff 才丢，宁可多留。"""
+    # now - 120 天 = 2026-06-01 → cutoff 所在月 = 2026-06
+    seen = {
+        "k": {
+            "http://x/2026-05/content_a.html": 1,  # 整月都在窗口外 → 丢
+            "http://x/2026-06/content_b.html": 1,  # 与 cutoff 同月 → 保守保留
+            "http://x/nodate/content_c.html": 1,  # 读不出日期 → 保留
+        }
+    }
+    assert state.prune_seen(seen, keep_days=120, now=datetime(2026, 9, 29)) == 1
+    assert set(seen["k"]) == {"http://x/2026-06/content_b.html", "http://x/nodate/content_c.html"}
+
+
+def test_prune_seen_reads_compact_date_directories():
+    """/202609/29/ 这种紧凑日期目录也要能读出日期（正则的 ``-?`` 分支）。"""
+    seen = {"k": {"http://x/202609/29/a.html": 1, "http://x/202601/01/b.html": 1}}
+    assert state.prune_seen(seen, keep_days=120, now=datetime(2026, 9, 29)) == 1
+    assert set(seen["k"]) == {"http://x/202609/29/a.html"}
 
 
 def test_record_hits_marks_each_matched_keyword():
