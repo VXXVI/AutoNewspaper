@@ -101,7 +101,9 @@ def test_write_failure_reports_folder_in_plain_language(tmp_path, monkeypatch):
     error = exc_info.value
     assert isinstance(error, OSError), "HTTP 层仍按 OSError 归类为 500"
     message = str(error)
-    assert str(tmp_path) in message
+    # 导出会先把目录 resolve() 再写进消息；Windows 上 pytest 的 tmp_path 是 8.3 短名
+    # （C:\Users\RUNNER~1\…），不 resolve 就比不中。
+    assert str(tmp_path.resolve()) in message
     assert "EPERM" in message
     assert "[Errno" not in message, "不要把 OS 原文直接抛给使用者"
 
