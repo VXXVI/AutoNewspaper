@@ -700,6 +700,15 @@ function renderExportPanel(state) {
   setText($("export-save"), busy ? "正在保存…" : "保存到文件夹");
   $("export-format").disabled = busy;
   $("export-directory").disabled = busy;
+  // 系统窗口是看板那台机器弹的：它弹不出来时（VPS / 无图形界面）就把按钮收起来，
+  // 只留手动填写 —— 否则用户会反复点一个永远不会响应的按钮。
+  var picker = state.exportDialog.picker;
+  var browse = $("export-browse");
+  if (browse) {
+    browse.hidden = picker === "unsupported";
+    browse.disabled = busy || picker === "busy";
+    setText(browse, picker === "busy" ? "等待选择…" : "浏览…");
+  }
   var status = $("export-status");
   if (status) {
     setText(status, state.exportDialog.status);

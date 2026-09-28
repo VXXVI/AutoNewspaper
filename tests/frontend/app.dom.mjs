@@ -432,4 +432,67 @@ export const domTests = [
         assert.equal(find("光明日报").getAttribute("aria-pressed"), "false");
       }),
   },
+  {
+    name: "导出路径：「浏览…」请求服务端弹窗并把选中路径回填输入框",
+    fn: () =>
+      withPage(
+        {
+          routes: (path, init) => {
+            if (path === "/api/export/browse") {
+              return { body: { path: "/tmp/chosen", cancelled: false } };
+            }
+            return defaultRoutes(path, init);
+          },
+        },
+        async (page) => {
+          const doc = page.document;
+          doc.getElementById("export").click();
+          await settle();
+
+          const input = doc.getElementById("export-directory");
+          assert.equal(input.value, "/tmp/data/exports", "默认目录取数据目录下的 exports");
+
+          doc.getElementById("export-browse").click();
+          await settle();
+
+          const call = page.calls.find((c) => c.path === "/api/export/browse");
+          assert.ok(call, "点「浏览…」应请求服务端弹系统窗口，而不是只做前端选择");
+          assert.equal(call.method, "POST");
+          assert.equal(call.body.initial, "/tmp/data/exports", "把当前值当作窗口的预选位置");
+          assert.equal(input.value, "/tmp/chosen", "选中路径要回填输入框");
+          assert.match(page.text("export-status"), /已选择：\/tmp\/chosen/);
+          assert.match(page.text("export-path-preview"), /\/tmp\/chosen/);
+        },
+      ),
+  },
+  {
+    name: "导出路径：设备弹不出窗口时收起「浏览…」，只留手动填写",
+    fn: () =>
+      withPage(
+        {
+          routes: (path, init) => {
+            if (path === "/api/export/browse") {
+              return { status: 501, body: { error: "该设备没有图形界面", supported: false } };
+            }
+            return defaultRoutes(path, init);
+          },
+        },
+        async (page) => {
+          const doc = page.document;
+          doc.getElementById("export").click();
+          await settle();
+
+          const browse = doc.getElementById("export-browse");
+          assert.equal(browse.hidden, false, "默认应显示「浏览…」");
+
+          browse.click();
+          await settle();
+
+          assert.equal(browse.hidden, true, "501 后收起按钮，避免用户反复点一个不会响应的按钮");
+          assert.match(page.text("export-status"), /无法弹出系统文件夹选择窗口/);
+          assert.equal(doc.getElementById("export-directory").value, "/tmp/data/exports",
+            "弹不出窗口时仍保留手动填写的值");
+        },
+      ),
+  },
 ];

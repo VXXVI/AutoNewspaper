@@ -202,6 +202,7 @@ import { shiftDate } from "./format.js";
     $("export-close").addEventListener("click", exporter.close);
     $("export-cancel").addEventListener("click", exporter.close);
     $("export-browser").addEventListener("click", exporter.fallback);
+    $("export-browse").addEventListener("click", exporter.browse);
     $("export-directory").addEventListener("input", exporter.onDirectoryInput);
     $("export-dialog").addEventListener("cancel", function (event) {
       if (store.getState().exportDialog.busy) event.preventDefault();

@@ -49,6 +49,8 @@ export var A = {
   // 导出对话框
   EXPORT_BUSY: "EXPORT_BUSY",
   EXPORT_STATUS: "EXPORT_STATUS",
+  // 原生文件夹选择器状态：idle / busy / unsupported（这台设备弹不出窗口）
+  EXPORT_PICKER: "EXPORT_PICKER",
   // 头部服务状态 / 数据新鲜度
   SYSTEM_LOADING: "SYSTEM_LOADING",
   SYSTEM_ERROR: "SYSTEM_ERROR",
@@ -96,7 +98,9 @@ export function createInitialState() {
     exportDialog: {
       busy: false,
       status: "",
-      tone: ""
+      tone: "",
+      // picker: "idle" 可点 / "busy" 等窗口 / "unsupported" 该设备弹不出窗口
+      picker: "idle"
     },
     // 头部系统状态
     system: {
@@ -312,6 +316,8 @@ export function reducer(state, action) {
         status: String(action.text || ""),
         tone: action.tone || ""
       });
+    case A.EXPORT_PICKER:
+      return slicePatch(state, "exportDialog", { picker: String(action.value || "idle") });
 
     /* ---------------------------------------------------------- 系统状态 */
     case A.SYSTEM_LOADING:

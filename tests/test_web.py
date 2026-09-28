@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from newspaper_auto import config, papers, web
+from newspaper_auto import config, dialogs, papers, web
 
 ARCHIVE = [
     {
@@ -575,9 +575,14 @@ def test_start_scan_revalidates_paper_selection_and_releases_lock(tmp_path):
 
 
 # ---------------------------------------------------------------- 扫描：POST/GET /api/scan
+def _noop_picker(initial):
+    """默认不弹真实系统窗口：想看「选中路径」分支的用例必须显式注入 picker。"""
+    raise dialogs.DirectoryPickerUnavailable("测试环境不弹原生窗口")
+
+
 @contextmanager
-def _serve(tmp_path, scan_runner=None, paper_probe=None, papers_root=None):
-    """起一个注入了假 scan_runner / paper_probe 的回环看板（绝不碰网络）。
+def _serve(tmp_path, scan_runner=None, paper_probe=None, papers_root=None, folder_picker=None):
+    """起一个注入了假 scan_runner / paper_probe / folder_picker 的回环看板（绝不碰网络）。
 
     ``papers_root`` 默认指向 ``tmp_path``，确保自定义报社的读写落在测试目录，
     **绝不污染真实项目根的 papers.custom.json**。
@@ -590,6 +595,7 @@ def _serve(tmp_path, scan_runner=None, paper_probe=None, papers_root=None):
         scan_runner=scan_runner or _noop_runner,
         paper_probe=paper_probe,
         papers_root=papers_root or tmp_path,
+        folder_picker=folder_picker or _noop_picker,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -1107,6 +1113,96 @@ def test_filter_export_records_matches_query_and_requested_sort():
     result = web.filter_export_records(records, filters)
 
     assert [record["title"] for record in result] == ["Alpha needle", "Beta"]
+
+
+# -------------------------------------------- 导出目录选择：POST /api/export/browse
+def test_export_browse_returns_the_directory_picked_on_the_dashboard_machine(tmp_path):
+    """「浏览…」必须由**服务端**弹窗：浏览器给不出可写回服务端的绝对路径。"""
+    chosen = tmp_path / "chosen"
+    chosen.mkdir()
+    seen: dict[str, object] = {}
+
+    def picker(initial):
+        seen["initial"] = initial
+        return str(chosen)
+
+    with _serve(tmp_path, folder_picker=picker) as url:
+        status, body = _request("POST", url + "/api/export/browse", {"initial": "D:\\下载"})
+
+    assert status == 200
+    assert json.loads(body) == {"path": str(chosen.resolve()), "cancelled": False}
+    assert seen["initial"] == "D:\\下载"
+
+
+def test_export_browse_treats_cancel_as_success(tmp_path):
+    """用户点「取消」不是失败：不能回 4xx/5xx 让前端弹错误提示。"""
+    with _serve(tmp_path, folder_picker=lambda initial: None) as url:
+        status, body = _request("POST", url + "/api/export/browse", {})
+
+    assert status == 200
+    assert json.loads(body) == {"path": None, "cancelled": True}
+
+
+def test_export_browse_reports_501_when_the_device_has_no_dialog(tmp_path):
+    """VPS / 无图形界面：501 + supported=false，前端据此收起按钮而不是报错。"""
+    with _serve(tmp_path) as url:  # 默认注入的就是「弹不出窗口」的假实现
+        status, body = _request("POST", url + "/api/export/browse", {})
+
+    assert status == 501
+    payload = json.loads(body)
+    assert payload["supported"] is False
+    assert "无法打开系统文件夹选择窗口" in payload["error"]
+
+
+@pytest.mark.parametrize("chosen", ["missing-directory", "a-file"])
+def test_export_browse_rejects_a_path_that_cannot_be_exported_to(tmp_path, chosen):
+    """原生窗口的返回值同样过一遍导出校验，不能绕开 /api/export 的目录规则。"""
+    path = tmp_path / chosen
+    if chosen == "a-file":
+        path.write_text("x", encoding="utf-8")
+
+    with _serve(tmp_path, folder_picker=lambda initial: str(path)) as url:
+        status, body = _request("POST", url + "/api/export/browse", {})
+
+    assert status == 400
+    assert json.loads(body)["error"]
+
+
+@pytest.mark.parametrize("payload", [{"initial": 123}, {"initial": "a" * 5000}, {"nope": "x"}, "nope"])
+def test_export_browse_rejects_invalid_payloads(tmp_path, payload):
+    with _serve(tmp_path) as url:
+        status, body = _request("POST", url + "/api/export/browse", payload)
+
+    assert status == 400
+    assert json.loads(body)["error"]
+
+
+def test_export_browse_allows_only_one_window_at_a_time(tmp_path):
+    """原生窗口是模态的：第二个请求立刻拿 409，而不是排队等第一个窗口关掉。"""
+    started = threading.Event()
+    release = threading.Event()
+
+    def picker(initial):
+        started.set()
+        release.wait(10)
+        return None
+
+    with _serve(tmp_path, folder_picker=picker) as url:
+        first: list[tuple[int, bytes]] = []
+        worker = threading.Thread(
+            target=lambda: first.append(_request("POST", url + "/api/export/browse", {}))
+        )
+        worker.start()
+        try:
+            assert started.wait(5), "第一个请求应已进入选择器"
+            status, body = _request("POST", url + "/api/export/browse", {})
+        finally:
+            release.set()
+            worker.join(10)
+
+    assert status == 409
+    assert "已有一个" in json.loads(body)["error"]
+    assert first[0][0] == 200, "先到的那个请求应当正常完成"
 
 
 # ---------------------------------------------------------------- 配置：POST/GET /api/config

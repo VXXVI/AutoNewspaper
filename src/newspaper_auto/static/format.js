@@ -48,6 +48,23 @@ export function geomText(g) {
   return parts.join(" · ");
 }
 
+// 导出 CSV 的「上下文」列上限（字符数）。
+// 上游每个片段是命中位置前后各 70 字，一条命中最多 3 个片段；直接拼接会让每一行
+// 长到 150～400 字，Excel 里整张表被撑得没法看。这里压成一行、只留最有用的开头。
+export var CONTEXT_MAX_CHARS = 60;
+
+// 命中上下文：折叠成单行 + 截断，供 CSV 单元格使用。
+// 先拼接再折叠空白：若先折叠，每段首尾留下的单个空格会和连接符叠加成双空格。
+// 截断处补省略号；上游片段本身可能已带首尾省略号，会一并保留（不重复添加）。
+export function contextText(snippets, limit) {
+  var max = typeof limit === "number" && limit > 0 ? limit : CONTEXT_MAX_CHARS;
+  var text = (snippets || []).map(function (s) {
+    return s === undefined || s === null ? "" : String(s);
+  }).join(" ").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return text.slice(0, max).replace(/\s+$/, "") + "…";
+}
+
 // 关键词分隔：逗号（中英文）、顿号、换行；去空并去重
 export function splitKeywords(raw) {
   var result = [];

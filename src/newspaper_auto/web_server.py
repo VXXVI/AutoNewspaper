@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from . import __version__, config, papers, paths
+from . import __version__, config, dialogs, papers, paths
 from .web_handlers import _ApiHandlersMixin
 from .web_scan import (
     _SCAN_CANCEL,
@@ -54,6 +54,7 @@ _POST_ROUTES: dict[str, str] = {
     "/api/papers/status": "_handle_paper_status",
     "/api/papers/test": "_handle_paper_test",
     "/api/export": "_handle_export",
+    "/api/export/browse": "_handle_export_browse",
 }
 _GET_ROUTES: dict[str, str] = {
     "/api/hits": "_serve_hits",
@@ -78,6 +79,7 @@ class DashboardServer(ThreadingHTTPServer):
         scan_runner: Callable[[Path, dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
         paper_probe: Callable[[dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
         papers_root: Path | str | None = None,
+        folder_picker: Callable[[str | None], str | None] | None = None,
     ):
         # 直接构造也可用：与 create_server 一样只允许环回，方言（localhost/::1）归一到 IPv4。
         host = address[0]
@@ -90,12 +92,15 @@ class DashboardServer(ThreadingHTTPServer):
         # 执行器 / 探测可注入：测试用假实现，绝不碰网络
         self.scan_runner = scan_runner or default_scan_runner
         self.paper_probe = paper_probe or default_paper_probe
+        # 文件夹选择窗口同样可注入：测试用假实现，绝不在测试机上弹真窗口
+        self.folder_picker = folder_picker or dialogs.pick_directory
         # 自定义报社跟随**项目根**（配置层），与 data_dir（数据层）无关；
         # 显式传入 papers_root 仅用于测试隔离，避免污染真实项目根。
         self.papers_root = Path(papers_root) if papers_root is not None else paths.app_dir()
         self.scan_lock = threading.Lock()
         self.config_lock = threading.Lock()
         self.papers_lock = threading.Lock()
+        self.picker_lock = threading.Lock()
         self.scan_task = ScanTask(max_log_lines=MAX_LOG_LINES)
 
     def scan_units(self, params: dict[str, Any]) -> int:
@@ -404,12 +409,14 @@ def create_server(
     scan_runner: Callable[[Path, dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
     paper_probe: Callable[[dict[str, Any], Callable[[str], None]], dict[str, Any]] | None = None,
     papers_root: Path | str | None = None,
+    folder_picker: Callable[[str | None], str | None] | None = None,
 ) -> DashboardServer:
     """创建（但不启动）看板服务器；``port=0`` 可让系统分配空闲端口（便于测试）。
 
     ``scan_runner`` / ``paper_probe`` 可注入假实现，供测试离线驱动扫描与试抓
     （默认分别走 ``default_scan_runner`` / ``default_paper_probe``）；
-    ``papers_root`` 可注入自定义报社的文件根，供测试避免污染真实项目根。
+    ``papers_root`` 可注入自定义报社的文件根，供测试避免污染真实项目根；
+    ``folder_picker`` 可注入假的文件夹选择器，供测试避免弹真实系统窗口。
     """
     if host not in LOOPBACK_HOSTS:
         raise ValueError("看板没有登录鉴权，只允许监听 127.0.0.1 或 localhost")
@@ -424,4 +431,5 @@ def create_server(
         scan_runner=scan_runner,
         paper_probe=paper_probe,
         papers_root=papers_root,
+        folder_picker=folder_picker,
     )

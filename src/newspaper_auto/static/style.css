@@ -207,7 +207,7 @@ main {
   outline-offset: 2px;
 }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.field > span, .field > legend, .filter-group > legend, .option-row > legend {
+.field > span, .field > label, .field > legend, .filter-group > legend, .option-row > legend {
   color: var(--ink-soft);
   font-size: 13px;
   font-weight: 680;
@@ -552,6 +552,10 @@ td.title a:hover { color: var(--primary); text-decoration: underline; text-under
 .export-scope div { display: flex; flex-direction: column; }
 .export-scope b { color: #075f52; font-size: 13.5px; }
 .export-scope span { color: #356f67; font-size: 12px; }
+/* 路径输入 + 「浏览…」按钮：输入框吃掉剩余宽度，按钮不换行、不被压扁 */
+.path-input { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.path-input input { flex: 1 1 auto; min-width: 0; }
+.path-input .btn { flex: 0 0 auto; }
 .path-preview { display: flex; flex-direction: column; gap: 5px; padding: 11px 12px; border: 1px dashed #c6cfdd; border-radius: 10px; background: var(--surface-soft); }
 .path-preview > span { color: var(--muted); font-size: 11.5px; }
 .path-preview code { overflow-wrap: anywhere; color: var(--ink-soft); font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }

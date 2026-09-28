@@ -4,7 +4,7 @@
 import { A, selectScanNames, selectFiltered, selectSorted, selectExportFilters } from "./store.js";
 import { $, setText } from "./dom.js";
 import {
-  ISO_DATE_RE, csvCell, parseInt10, shiftDate, spanDays, splitKeywords, todayIso,
+  ISO_DATE_RE, contextText, csvCell, parseInt10, shiftDate, spanDays, splitKeywords, todayIso,
 } from "./format.js";
 
 var SCAN_POLL_MS = 1200;
@@ -395,6 +395,7 @@ export function createExportController(ctx) {
   }
   function setStatus(text, tone) { ctx.dispatch({ type: A.EXPORT_STATUS, text: text || "", tone: tone || "" }); }
   function setBusy(busy) { ctx.dispatch({ type: A.EXPORT_BUSY, busy: busy }); }
+  function setPicker(value) { ctx.dispatch({ type: A.EXPORT_PICKER, value: value }); }
 
   function open() {
     if (!ctx.getState().data) return;
@@ -421,7 +422,7 @@ export function createExportController(ctx) {
     selectSorted(state).forEach(function (r) {
       lines.push([r.paper, r.date, r.section || "", r.title, r.url,
         (r.matched || []).filter(function (kw) { return state.keywords.has(kw); }).join(";"),
-        (r.snippets || []).slice(0, 2).join(" ")].map(csvCell).join(","));
+        contextText(r.snippets)].map(csvCell).join(","));
     });
     var blob = new Blob(["\ufeff" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
     var a = document.createElement("a");
@@ -462,11 +463,49 @@ export function createExportController(ctx) {
     downloadCsv();
     setStatus("已交给浏览器下载当前筛选的 CSV；保存位置由浏览器的下载设置决定。", "success");
   }
+  /* 弹「看板所在设备」的系统文件夹选择窗口 —— 目录必须是那台机器上的真实路径，
+   * 浏览器给不了，所以这一步只能请求服务端。窗口是模态的：不设超时，等用户操作完。
+   */
+  function browse() {
+    var state = ctx.getState();
+    if (state.exportDialog.busy || state.exportDialog.picker === "busy" || !state.data) return;
+    setPicker("busy");
+    setStatus("已请求在看板所在设备上打开文件夹选择窗口，请到那里选择（也可以取消）。", "busy");
+    ctx.api.post("/api/export/browse", {
+      initial: $("export-directory").value.trim(),
+    }, { timeout: 0 }).then(function (result) {
+      setPicker("idle");
+      if (result && typeof result.path === "string" && result.path) {
+        $("export-directory").value = result.path;
+        updatePathPreview(result.path);
+        setStatus("已选择：" + result.path, "success");
+      } else {
+        setStatus("已取消选择，仍可手动填写路径。");
+      }
+    }).catch(function (err) {
+      var unsupported = err.status === 501 || Boolean(err.data && err.data.supported === false);
+      if (unsupported) {
+        // 这台设备弹不出窗口（VPS / 无图形界面）：收起按钮，别再让用户白点。
+        setPicker("unsupported");
+        setStatus("当前看板所在设备无法弹出系统文件夹选择窗口（常见于 VPS 或无图形界面）。"
+          + "请手动填写该设备上的完整路径。", "error");
+      } else if (err.status === 409) {
+        setPicker("idle");
+        setStatus("已有一个文件夹选择窗口在等待操作，请先完成它。", "error");
+      } else {
+        setPicker("idle");
+        setStatus("打开文件夹选择窗口失败：" + err.message, "error");
+      }
+    });
+  }
   function onDirectoryInput(event) {
     updatePathPreview(event.target.value.trim());
     if ($("export-status").getAttribute("data-state") === "error") setStatus("");
   }
-  return { open: open, close: close, save: save, fallback: fallback, onDirectoryInput: onDirectoryInput, downloadCsv: downloadCsv };
+  return {
+    open: open, close: close, save: save, fallback: fallback, browse: browse,
+    onDirectoryInput: onDirectoryInput, downloadCsv: downloadCsv,
+  };
 }
 
 /* ============================================================ 系统状态 */

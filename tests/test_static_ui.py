@@ -53,6 +53,9 @@ def test_result_and_dashboard_views_have_shared_filter_and_status_surfaces():
         "filter-toggle",
         "filter-panel",
         "filter-count",
+        # 导出对话框：目标目录可以手动填，也可以让看板所在设备弹系统窗口来选
+        "export-directory",
+        "export-browse",
         # 图形化看板
         "dashboard-section",
         "paper-rank",
@@ -163,6 +166,7 @@ def test_store_owns_the_new_state_slices_and_pure_reducer():
         "PAPERS_EDITING",
         "EXPORT_BUSY",
         "EXPORT_STATUS",
+        "EXPORT_PICKER",
         "SYSTEM_HEALTH",
         "SET_KEYWORDS",
     ):
@@ -207,6 +211,7 @@ def test_new_widget_and_legacy_tokens_are_styled():
         ".history-row",
         ".history-state",
         ".service-tip",
+        ".path-input",
     ):
         assert cls in css, f"style.css 缺少 {cls} 样式"
 

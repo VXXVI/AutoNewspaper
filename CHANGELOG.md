@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- 导出对话框新增「浏览…」：让**看板所在设备**弹出系统原生的文件夹选择窗口，选中的路径
+  直接回填输入框（新增 `POST /api/export/browse` 与 `newspaper_auto/dialogs.py`）。
+  Windows 用 `SHBrowseForFolderW`、macOS 用 `osascript` 的 Finder 面板、Linux 用
+  `zenity`/`kdialog`，全部零第三方依赖。看板跑在没有图形界面的设备上（VPS / SSH /
+  无桌面会话）时接口返回 `501`，界面会把按钮收起来并提示手动填写；原生窗口是模态的，
+  同一时刻只允许一个（重复请求 `409`），用户取消不算失败。
+
+### Changed
+
+- 浏览器下载的 CSV：`上下文` 列由「两条片段直接拼接」（每行 150～400 字）改为**折叠成
+  单行并截断到 60 字**（`format.js` 的 `CONTEXT_MAX_CHARS`），片段里的换行与连续空格会
+  压成单个空格，避免整张表被撑得没法看。
+
 ## [0.10.0] - 2026-09-28
 
 ### Added

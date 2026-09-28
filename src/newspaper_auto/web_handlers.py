@@ -8,12 +8,13 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from . import __version__, config, exporter, papers
+from . import __version__, config, dialogs, exporter, papers
 from .web_dashboard import build_dashboard, load_web_config, save_web_config
 from .web_papers import _resolve_paper_by_name, build_papers_view
 from .web_scan import ScanRequestError, load_task_history
@@ -196,6 +197,83 @@ class _ApiHandlersMixin:
             201,
             {"path": str(output_path), "count": len(records), "format": request["format"]},
         )
+
+    def _handle_export_browse(self, payload: Any) -> None:
+        """在看板**所在设备**上弹系统原生的文件夹选择窗口，把路径回填给前端。
+
+        只回填路径，不写任何文件 —— 真正的写入仍走 ``POST /api/export`` 的完整校验，
+        所以这里选出来的路径不会绕过导出逻辑。
+
+        状态码约定（前端据此决定是「隐藏按钮」还是「报错」）：
+
+        - ``200`` + ``{"path": ...}``：用户选了文件夹；
+        - ``200`` + ``{"path": null, "cancelled": true}``：用户取消（**不是**失败）；
+        - ``501``：这台设备根本弹不出窗口（无图形界面 / 缺 zenity）；
+        - ``409``：已经有一个选择窗口在等用户操作。
+        """
+        if not isinstance(payload, dict):
+            self._error_json(400, "请求体必须是 JSON 对象")
+            return
+        unknown = set(payload) - {"initial"}
+        if unknown:
+            self._error_json(400, f"不支持的字段：{'、'.join(sorted(unknown))}")
+            return
+
+        raw_initial = payload.get("initial")
+        initial: str | None = None
+        if raw_initial not in (None, ""):
+            if not isinstance(raw_initial, str):
+                self._error_json(400, "initial 必须是路径字符串")
+                return
+            initial = raw_initial.strip()
+            if len(initial) > exporter.MAX_DIRECTORY_LENGTH:
+                self._error_json(400, f"initial 不能超过 {exporter.MAX_DIRECTORY_LENGTH} 个字符")
+                return
+            if any(ord(char) < 32 or ord(char) == 127 for char in initial):
+                self._error_json(400, "initial 不能包含控制字符")
+                return
+            if not initial:
+                initial = None
+
+        # 原生窗口是模态的：同一次只允许一个，否则用户会面对叠在一起的窗口。
+        if not self.server.picker_lock.acquire(blocking=False):
+            self._error_json(409, "已有一个文件夹选择窗口在等待操作，请先完成它")
+            return
+        try:
+            try:
+                chosen = self.server.folder_picker(initial)
+            except dialogs.DirectoryPickerUnavailable as exc:
+                self._send_json(
+                    501,
+                    {
+                        "error": f"当前看板所在设备无法打开系统文件夹选择窗口（{exc}）。"
+                        "请手动填写该设备上的完整路径。",
+                        "supported": False,
+                    },
+                )
+                return
+            except OSError as exc:
+                self._error_json(500, f"打开文件夹选择窗口失败：{exc}")
+                return
+        finally:
+            self.server.picker_lock.release()
+
+        if chosen is None:
+            self._send_json(200, {"path": None, "cancelled": True})
+            return
+        # 原生窗口的返回值同样过一遍导出用的目录校验：可能指向刚开始就被删掉的目录。
+        try:
+            directory = exporter.resolve_directory(chosen, base_dir=self.server.data_dir, create=False)
+        except exporter.ExportValidationError as exc:
+            self._error_json(400, f"选择的路径不可用：{exc}")
+            return
+        if not directory.is_dir():
+            self._error_json(400, "选择的文件夹不存在，请重新选择")
+            return
+        if not os.access(directory, os.W_OK):
+            self._error_json(400, "选择的文件夹没有写入权限，请换一个")
+            return
+        self._send_json(200, {"path": str(directory), "cancelled": False})
 
     # -- 自定义报社 --------------------------------------------------
     def _with_papers_write(

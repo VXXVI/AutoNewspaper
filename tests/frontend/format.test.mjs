@@ -7,7 +7,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  CONTEXT_MAX_CHARS,
   ISO_DATE_RE,
+  contextText,
   csvCell,
   geomText,
   parseInt10,
@@ -44,6 +46,29 @@ test("geomText 渲染版内位置并容忍旧归档", () => {
   assert.equal(geomText({ index: 1, total: 3 }), "版内 1/3");
   assert.equal(geomText(null), "");
   assert.equal(geomText("nope"), "");
+});
+
+test("contextText 折叠空白并把 CSV 上下文压到上限", () => {
+  // 回归：上游每个片段是命中位置前后各 70 字，一条命中最多 3 段；直接拼接后
+  // 每行 150～400 字，导出表被撑得没法看。
+  var long = "。".repeat(200);
+  assert.equal(contextText([long]).length, CONTEXT_MAX_CHARS + 1, "截断后只多一个省略号");
+  assert.ok(contextText([long]).endsWith("…"));
+  // 未超限时不加省略号
+  assert.equal(contextText(["短片段"]), "短片段");
+  // 多段之间用空格连接，空白折叠成单空格（换行不能漏进 CSV 单元格）
+  assert.equal(contextText(["a\n\nb", "  c  "]), "a b c");
+  // 边界：恰好等于上限不加省略号
+  assert.equal(contextText(["x".repeat(CONTEXT_MAX_CHARS)]), "x".repeat(CONTEXT_MAX_CHARS));
+  assert.equal(contextText(["x".repeat(CONTEXT_MAX_CHARS + 1)]).length, CONTEXT_MAX_CHARS + 1);
+  // 截断处不留尾随空格
+  assert.equal(contextText(["a".repeat(30) + "     " + "b".repeat(60)], 30), "a".repeat(30) + "…");
+  // 缺字段 / 空值 / 非数组都要静默降级
+  assert.equal(contextText(null), "");
+  assert.equal(contextText(undefined), "");
+  assert.equal(contextText([]), "");
+  assert.equal(contextText([null, undefined, ""]), "");
+  assert.equal(contextText(["x"], 0), "x", "非正数上限回落到默认值");
 });
 
 test("splitKeywords 去重去空并支持中英文分隔", () => {

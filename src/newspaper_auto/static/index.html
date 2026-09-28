@@ -391,11 +391,14 @@
       </select>
     </label>
 
-    <label class="field">
-      <span>看板所在设备的保存文件夹</span>
-      <input id="export-directory" type="text" spellcheck="false" autocomplete="off" aria-describedby="export-directory-hint">
-      <small id="export-directory-hint">本机启动看板时是本机目录；VPS 启动时是 VPS 目录。请填写该设备上的完整路径。</small>
-    </label>
+    <div class="field">
+      <label for="export-directory">看板所在设备的保存文件夹</label>
+      <div class="path-input">
+        <input id="export-directory" type="text" spellcheck="false" autocomplete="off" aria-describedby="export-directory-hint">
+        <button class="btn ghost" id="export-browse" type="button">浏览…</button>
+      </div>
+      <small id="export-directory-hint">「浏览…」会在<b>看板所在设备</b>上打开系统文件夹选择窗口（本机启动就是本机，VPS 启动就是 VPS）；该设备弹不出窗口时可手动填写它的完整路径。</small>
+    </div>
 
     <div class="path-preview" aria-live="polite">
       <span id="export-path-label">目标文件夹</span>
