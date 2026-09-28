@@ -116,7 +116,9 @@ def _pick_linux(initial: str | None, prompt: str) -> str | None:
         argv = [zenity, "--file-selection", "--directory", "--title", prompt]
         if initial:
             # zenity 用「以分隔符结尾」表示预选目录本身，而不是它的父目录。
-            argv += ["--filename", os.path.join(initial, "")]
+            # 这里写死 POSIX 分隔符：zenity 只存在于 POSIX 主机，而 os.path.join 在
+            # Windows 上会拼出反斜杠（测试会在 Windows 上跑这段代码，语义会跑偏）。
+            argv += ["--filename", initial.rstrip("/") + "/"]
         return _run_dialog(argv, where="zenity", cancelled_on=(1,))
     kdialog = shutil.which("kdialog")
     if kdialog:
