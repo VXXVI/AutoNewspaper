@@ -6,6 +6,14 @@ name: build-windows
 # - workflow_call：由 release.yml 在打 v* tag 时复用，产物随 Release 一起发布。
 #
 # 构建 / 冒烟 / 打包逻辑均在 scripts/build_windows.ps1，两个入口共用同一份实现。
+#
+# 输入：
+#   version         版本标签（留空则用源码里的 __version__）
+#   python-version  构建用 Python。**Windows 7 必须填 3.8.10** —— Python 官方从 3.9
+#                   起不再支持 Win7，3.9+ 打出来的 exe 在 Win7 上会直接报
+#                   「不是有效的 Win32 程序」。默认 3.12 服务主线。
+#   target          产物平台标签，决定 zip 名 NewspaperAuto-<版本>-<target>-x64.zip，
+#                   并连带决定 artifact 名。非 windows 目标跳过 Inno 安装包。
 on:
   workflow_dispatch:
     inputs:
@@ -13,6 +21,14 @@ on:
         description: "版本标签（留空则使用源码中的版本号）"
         required: false
         default: ""
+      python-version:
+        description: "构建用 Python 版本（Windows 7 请填 3.8.10）"
+        required: false
+        default: "3.12"
+      target:
+        description: "产物平台标签（windows / win7），决定 zip 名"
+        required: false
+        default: "windows"
   workflow_call:
     inputs:
       version:
@@ -20,13 +36,23 @@ on:
         required: false
         type: string
         default: ""
+      python-version:
+        description: "构建用 Python 版本（Windows 7 请填 3.8.10）"
+        required: false
+        type: string
+        default: "3.12"
+      target:
+        description: "产物平台标签（windows / win7），决定 zip 名"
+        required: false
+        type: string
+        default: "windows"
 
 permissions:
   contents: read
 
 jobs:
   windows-exe:
-    name: 构建 Windows 单文件 exe
+    name: 构建 Windows 单文件 exe（${{ inputs.target }}）
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -34,9 +60,10 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "${{ inputs.python-version }}"
 
       - name: 安装 Inno Setup（构建安装包用）
+        if: inputs.target == 'windows'
         shell: pwsh
         run: |
           # 便携 zip 里已有 exe；安装包（setup.exe）需要 Inno Setup。
@@ -52,12 +79,16 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ inputs.version }}"
-          if ($v) { ./scripts/build_windows.ps1 -Version $v } else { ./scripts/build_windows.ps1 }
+          $t = "${{ inputs.target }}"
+          $buildArgs = @()
+          if ($v) { $buildArgs += @('-Version', $v) }
+          if ($t) { $buildArgs += @('-Target', $t) }
+          ./scripts/build_windows.ps1 @buildArgs
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: NewspaperAuto-windows-x64
+          name: NewspaperAuto-${{ inputs.target }}-x64
           path: |
-            dist/NewspaperAuto-*-windows-x64.zip
+            dist/NewspaperAuto-*-${{ inputs.target }}-x64.zip
             dist/NewspaperAuto-*-setup.exe
           if-no-files-found: error

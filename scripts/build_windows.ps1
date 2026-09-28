@@ -5,9 +5,14 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 #
 # 产物：
-#   dist\NewspaperAuto.exe                      无窗口版：双击即用，零控制台窗口
-#   dist\NewspaperAuto-<版本>-windows-x64.zip   （exe + 使用说明）
-#   dist\NewspaperAuto-<版本>-setup.exe         （安装包；需 Inno Setup，缺失则跳过）
+#   dist\NewspaperAuto.exe                             无窗口版：双击即用，零控制台窗口
+#   dist\NewspaperAuto-<版本>-<Target>-x64.zip         （exe + 使用说明）
+#   dist\NewspaperAuto-<版本>-setup.exe                （安装包；仅 -Target windows，需 Inno Setup）
+#
+# -Target 决定 zip 名里的平台标签（默认 windows）。Windows 7 用 -Target win7，
+# 且必须在 Python 3.8 下构建（3.9+ 的运行时在 Win7 上直接报「不是有效的 Win32 程序」），
+# 见 .github/workflows/build-windows.yml 的 python-version / target 输入。非 windows
+# 目标一律跳过 Inno 安装包。
 #
 # 只出一个 exe：PE 的 Subsystem 字段做不到「双击不弹窗」+「终端里 shell 会等它」两全。
 # 取舍是优先双击即用；命令行侧靠入口的 AttachConsole 回显 + scan 自己写
@@ -22,6 +27,7 @@
 [CmdletBinding()]
 param(
     [string]$Version = '',
+    [string]$Target = 'windows',
     [switch]$SkipInstall,
     [switch]$SkipSmoke,
     [switch]$SkipInstaller
@@ -37,6 +43,11 @@ function Die([string]$Message) {
     [Console]::Error.WriteLine("错误：$Message")
     exit 1
 }
+
+# 平台标签只用来拼产物名，必须干净（避免路径穿越 / 非法字符）
+if ($Target -notmatch '^[a-z0-9][a-z0-9-]*$') { Die "非法的 -Target：$Target（只允许小写字母、数字与连字符）" }
+# 安装包只服务主线 Windows 目标；win7 等目标不需要，也不该强依赖 Inno Setup
+if ($Target -ne 'windows') { $SkipInstaller = $true }
 
 # ---------------------------------------------------------------- 版本号
 $sourceVersion = (& python -c "import sys; sys.path.insert(0, 'src'); import newspaper_auto; print(newspaper_auto.__version__)").Trim()
@@ -104,18 +115,25 @@ if (-not $SkipSmoke) {
 }
 
 # ---------------------------------------------------------------- 组装 zip
-$stage = Join-Path $ProjectDir ('build\package-{0}' -f $Version)
+$stage = Join-Path $ProjectDir ('build\package-{0}-{1}' -f $Version, $Target)
 if (Test-Path -LiteralPath $stage) { Remove-Item -Recurse -Force -LiteralPath $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item -LiteralPath $exePath -Destination $stage
 # 只拷贝面向用户的文件：显式列举，避免 Copy-Item 通配把 packaging\windows\ 下的
 # 构建脚本（如 installer.iss）一起装进分发给最终用户的 zip。
 $userFiles = @('README.txt')
+# 非主线目标（如 win7）额外带一份针对该目标的使用说明（存在才带）。
+# 该文件在仓库里就以 CRLF + UTF-8 BOM 存储：老版本 Windows 记事本对 LF-only 与
+# 无 BOM 的 UTF-8 都会显示错乱（Win7 记事本尤其明显），这里原样拷贝即可。
+$targetReadme = 'README-{0}.txt' -f $Target
+if (Test-Path -LiteralPath (Join-Path $ProjectDir ('packaging\windows\' + $targetReadme))) {
+    $userFiles += $targetReadme
+}
 foreach ($name in $userFiles) {
     Copy-Item -LiteralPath (Join-Path $ProjectDir ('packaging\windows\' + $name)) -Destination $stage -Force
 }
 
-$zipPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-windows-x64.zip' -f $Version)
+$zipPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-{1}-x64.zip' -f $Version, $Target)
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -Force -LiteralPath $zipPath }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipPath -Force
 

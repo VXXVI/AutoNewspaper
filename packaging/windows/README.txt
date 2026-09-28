@@ -4,6 +4,12 @@ NewspaperAuto · Windows 使用说明
 本压缩包是「解压即用」的 Windows 版本，内置 Python 运行时，
 目标电脑无需安装 Python，也无需联网安装任何依赖（抓取时需能访问报社官网）。
 
+★ Windows 7 用户注意：本包在 Windows 10 1803+ 上开箱即用；在 Windows 7 上运行需要
+  Windows 7 **SP1** + **KB2533623** + 通用 C 运行时（**KB2999226**，或 VC++ 2015-2022
+  运行库 x64）。缺这些会报「计算机中丢失 api-ms-win-crt-*.dll / ucrtbase.dll」——
+  它们通常随 Windows Update 装好；实在没有就到微软官网搜 KB2999226 装上即可。
+  （Win7 请下载 `NewspaperAuto-*-win7-x64.zip`，那是用 Python 3.8 专门构建的版本。）
+
 包里只有一个程序：NewspaperAuto.exe
 ------------------------------------
 双击它就行：会在后台起看板，并自动打开浏览器。**不会弹出命令行黑窗口。**
