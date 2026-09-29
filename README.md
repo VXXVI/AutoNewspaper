@@ -256,6 +256,7 @@ Windows 7** —— 在 Win7 上双击会直接报「不是有效的 Win32 程序
 | [docs/architecture.md](docs/architecture.md) | 三段式抓取原理、版面几何、六家入口、已知边界 |
 | [docs/dashboard.md](docs/dashboard.md) | 本地看板、路由、导出、故障排查 |
 | [docs/custom-papers.md](docs/custom-papers.md) | 自定义报社配置与字段说明 |
+| [docs/jyb-tls-2026-09-29.md](docs/jyb-tls-2026-09-29.md) | 维护者向：中国教育报整家漏报的诊断过程与防复发闸门 |
 
 ## 许可
 
