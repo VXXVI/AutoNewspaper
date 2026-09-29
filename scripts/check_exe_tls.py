@@ -43,14 +43,22 @@ CA_BUNDLE = Path(__file__).resolve().parents[1] / "src" / "newspaper_auto" / "ca
 
 
 def parse_pyz_modules(data: bytes) -> set:
-    """从 exe 字节里读出 PYZ 目录表中的模块名集合；找不到 PYZ 返回空集合。"""
+    """从 exe 字节里读出 PYZ 目录表中的模块名集合；读不出就返回空集合。
+
+    这里刻意**吞掉所有解析异常**并统一返回空集合：调用方据此报「读不到目录表」，
+    而不是让栈回溯一路冒到 PowerShell —— 那条路径同样是非零退出，外层那句
+    `Die 'exe 缺少 TLS 修复模块'` 又会把「解析失败」说成「包里没修复」。
+    """
     marker = data.find(b"PYZ\x00")
-    if marker < 0:
+    if marker < 0 or len(data) < marker + 16:
         return set()
-    # 偏移量紧跟在 "PYZ\x00" + 4 字节魔数 + 4 字节 python 魔数之后，故从 +8 取
-    offset = struct.unpack(">I", data[marker + 8 : marker + 12])[0]
-    table = marshal.loads(data[marker + offset :])
-    return {entry[0] for entry in table if isinstance(entry, tuple) and isinstance(entry[0], str)}
+    try:
+        # 偏移量紧跟在 "PYZ\x00" + 4 字节魔数 + 4 字节 python 魔数之后，故从 +8 取
+        offset = struct.unpack(">I", data[marker + 8 : marker + 12])[0]
+        table = marshal.loads(data[marker + offset :])
+        return {entry[0] for entry in table if isinstance(entry, tuple) and isinstance(entry[0], str)}
+    except (struct.error, ValueError, TypeError, EOFError, MemoryError):
+        return set()
 
 
 def main(argv: list) -> int:

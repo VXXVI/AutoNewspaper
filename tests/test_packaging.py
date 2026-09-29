@@ -118,6 +118,11 @@ def test_check_exe_tls_reads_the_pyz_table():
 
     assert check_exe_tls.parse_pyz_modules(blob) == {"newspaper_auto.http", "newspaper_auto.tls"}
     assert check_exe_tls.parse_pyz_modules(b"not an exe at all") == set()
+    # 畸形 PYZ 也必须安静地返回空集合：栈回溯冒到 PowerShell 也是非零退出，
+    # 外层照样会报「exe 缺少 TLS 修复模块」，等于用一个假错因盖掉真错因。
+    truncated = blob[: len(blob) - 3]
+    assert check_exe_tls.parse_pyz_modules(truncated) == set()
+    assert check_exe_tls.parse_pyz_modules(blob[:-1] + b"\xff") == set()
     assert "newspaper_auto.tls" in check_exe_tls.REQUIRED_MODULES
     # 输出必须纯 ASCII：CI 的 Windows 控制台是 cp1252，print 中文就是 UnicodeEncodeError
     checker_src = (ROOT / "scripts" / "check_exe_tls.py").read_text(encoding="utf-8")
