@@ -75,6 +75,20 @@ Google News 是**标题级检索**，正文提及全漏。实测某日的 4 条�
   否则会静默漏掉光明日报（其余站点不受影响）。
   - 诊断手法：同一 URL 分别用 `curl --http1.1`、`curl --http2`、
     `python3 -c "import urllib.request;..."` 各抓一次对比。
+- ⚠️ **中国教育报需要放宽密码套件 + 随包根证书**：`paper.jyb.cn` 只提供
+  `AES128-SHA`（RSA 密钥交换 + SHA1）这类老套件，OpenSSL 3 的默认 `SECLEVEL=2`
+  直接禁用 → 握手被拒（`SSLV3_ALERT_HANDSHAKE_FAILURE`）；而它又把**整条证书链
+  （含自签根 `USERTrust RSA Certification Authority`）**都发了出来，Win7 的系统根库
+  没有这个锚点 → `CERTIFICATE_VERIFY_FAILED`。**两台机器卡在完全不同的环节**，
+  补根证书只能治好 Win7 那侧。`tls.py` 两件事一起做：系统根库之上**追加**随包
+  `cacert.pem`（补锚点），握手层被拒且**不是**证书问题时用
+  `DEFAULT@SECLEVEL=1` 重试一次（证书校验始终开着，降的只是套件强度）。
+  判据是「**没有 curl 也能抓到教育报**」——曾经主机完全靠系统自带 `curl.exe` 兜底才
+  看着正常，Win7 没有 curl（Win10 1803+ 才内置）就整家 0 版面。
+  - 诊断手法：`python3 -c "import ssl,urllib.request as u; ..."` 分别用
+    `ssl.create_default_context()` 与加了 `set_ciphers("DEFAULT@SECLEVEL=1")` 的上下文
+    各抓一次；`scripts/build_windows.ps1` 会在打包后读 exe 的 PYZ 模块目录表确认
+    `newspaper_auto.tls` 确实在包里（v1.0.2 漏发过一次「源码修好但没进包」）。
 - **对报社站点是轻量访问**：每天每站约 100~200 个请求、并发 8，属正常阅读量级。
   默认并发 8；若某家不稳可降到 4~5（`--workers 5`）。
 - **历史归档默认只增不删**：`hits/archive.json` 是审计用的全量历史，默认不做滚动清理；
@@ -98,6 +112,8 @@ Google News 是**标题级检索**，正文提及全漏。实测某日的 4 条�
 │   ├── papers.py                 #   自定义报社：papers.custom.json 读写/校验/合并
 │   ├── paths.py                  #   数据目录解析
 │   ├── http.py                   #   抓取层：标准库优先（HTTP/1.1）+ curl 兜底
+│   ├── tls.py                    #   TLS 兼容层：随包根证书 + 按需放宽密码套件
+│   │   └── cacert.pem            #     随包根证书（Mozilla，121 张根 CA）
 │   ├── parse.py                  #   HTML 解析与关键词匹配（纯函数）
 │   ├── scanner.py                #   扫描编排（入口→版面→文章）
 │   ├── state.py                  #   增量状态读写与「新增」判定

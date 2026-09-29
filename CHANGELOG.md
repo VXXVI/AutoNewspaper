@@ -6,6 +6,31 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **中国教育报整家漏报**（`0 版面 0 文章`）：该站只提供 `AES128-SHA`（RSA 密钥交换 +
+  SHA1）这类老套件，OpenSSL 3 的默认 `SECLEVEL=2` 直接禁用，握手阶段就被掐掉；它同时
+  把整条证书链（含自签根 `USERTrust RSA Certification Authority`）都发了出来，而 Win7
+  的系统根库没有这个锚点。**两台机器卡在完全不同的环节**，此前的表现还依赖系统是否
+  装有 `curl`：Win10 1803+ 自带 `curl.exe` 兜底所以「看着正常」，Win7 上没有 curl
+  （Win10 1803 才内置）就直接整家 0 版面。
+  现在抓取一律带上 `tls` 层：系统根库之上**追加**随包 `cacert.pem`（Mozilla 根证书包，
+  补系统缺的锚点），握手层被拒**且不是证书问题**时用 `DEFAULT@SECLEVEL=1` 重试一次
+  （证书校验始终开着，降的只是套件强度），并记住本机需要放宽、后续请求不再重复失败
+  握手。**判据：没有 curl 也能抓到教育报**。
+- 网络层失败提示不再一律说「curl 无响应」：机器上**压根没装 curl** 时（Win7、精简
+  系统、容器）改说「标准库抓取失败，且系统未安装 curl 无法兜底」——此前这句把排查
+  方向全带到「网络异常」上，而真实原因只是少了一条兜底路径。
+
+### Changed
+
+- 打包链路三处新增闸门，防止「源码修好但没进包」再次静默发生：`NewspaperAuto.spec`
+  的 `datas` 现在带上 `cacert.pem`，`pyproject.toml` 的 `package-data` 与
+  `MANIFEST.in` 同步收录（wheel / sdist 都要有），`scripts/build_windows.ps1` 在生成
+  exe 后读 PyInstaller 的 PYZ 模块目录表确认 `newspaper_auto.tls` 确实在包里，
+  `release.yml` 的 wheel 冒烟新增 `cacert.pem` 校验。均已由 `tests/test_packaging.py`
+  钉死。
+
 ## [1.0.2] - 2026-09-29
 
 ### Changed

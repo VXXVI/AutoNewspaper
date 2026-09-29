@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from newspaper_auto import config, parse, scanner
+from newspaper_auto import config, http, parse, scanner
 
 KW = {"示例大学": parse.make_kw_re("示例大学")}
 
@@ -107,6 +107,24 @@ def test_classify_entry_failure_returns_kind_and_message():
     assert scanner._classify_entry_failure(404, 0)[0] == "http"
     assert scanner._classify_entry_failure(200, 10)[0] == "too_short"
     assert "入口内容异常" in scanner._classify_entry_failure(200, 10)[1]
+
+
+def test_network_failure_mentions_curl_only_when_it_exists(monkeypatch):
+    """没有 curl 的机器（Win7 / 精简系统 / 容器）必须直说「没装 curl」。
+
+    此前一律说「curl 无响应」，把排查方向全带到「网络异常」上；而 Win7 上整家漏报
+    的真实原因只是**压根没装 curl**，网络本身没问题。
+    """
+    monkeypatch.setattr(http, "curl_available", lambda: False)
+    kind, message = scanner._classify_entry_failure(0, 0)
+    assert kind == "network"
+    assert "未安装 curl" in message
+    assert "curl 无响应" not in message
+
+    monkeypatch.setattr(http, "curl_available", lambda: True)
+    kind, message = scanner._classify_entry_failure(0, 0)
+    assert kind == "network"
+    assert "curl 无响应" in message
 
 
 def test_article_filter_falls_back_when_date_part_removes_all(fixed_day):

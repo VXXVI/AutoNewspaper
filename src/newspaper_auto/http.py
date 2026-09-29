@@ -12,6 +12,14 @@
 curl 仍保留为**兜底**：当标准库遇到网络层失败（``code == 0``）时，若系统存在 curl
 则再试一次，覆盖个别站点的 TLS/重定向边角情况。抓取语义（重试、最小正文长度、
 ``(http_code, body)`` 返回）保持不变。
+
+TLS 边角情况交给 ``tls.py``
+----------------------------
+中国教育报（``paper.jyb.cn``）在不同 Windows 上会以**两种完全不同的方式**卡死：
+OpenSSL 3 的主机被默认套件的安全级别拒掉（握手层失败），Win7 的系统根库缺
+``USERTrust RSA Certification Authority`` 锚点（证书链失败）。因此标准库抓取一律
+带上 ``tls`` 模块给的上下文，并在**握手层**被拒时用放宽套件重试一次 ——
+详见 :mod:`newspaper_auto.tls` 的模块文档。
 """
 
 from __future__ import annotations
@@ -21,13 +29,14 @@ import gzip
 import logging
 import re
 import shutil
+import ssl
 import subprocess
 import time
 import urllib.error
 import urllib.request
 import zlib
 
-from . import config, procutil
+from . import config, procutil, tls
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,8 +102,12 @@ def _decode_body(data: bytes, content_encoding: str, content_type: str = "") -> 
     return _decode_bytes(data, charset)
 
 
-def _stdlib_once(url: str, timeout: int) -> tuple[int, str]:
-    """用标准库抓一次（HTTP/1.1，自动跟随重定向与 gzip/deflate）。"""
+def _stdlib_once(url: str, timeout: int, context: ssl.SSLContext | None = None) -> tuple[int, str]:
+    """用标准库抓一次（HTTP/1.1，自动跟随重定向与 gzip/deflate）。
+
+    ``context`` 省略时取 :func:`tls.context_for_fetch`；显式传入则用它且**不再重试**
+    放宽套件（放宽重试只发生一次，「显式传上下文」天然兜住递归）。
+    """
     request = urllib.request.Request(
         url,
         headers={
@@ -103,8 +116,13 @@ def _stdlib_once(url: str, timeout: int) -> tuple[int, str]:
             "Accept-Encoding": "gzip, deflate",
         },
     )
+    if context is None:
+        context = tls.context_for_fetch()
+        explicit_context = False
+    else:
+        explicit_context = True
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
             data = response.read()
             encoding = response.headers.get("Content-Encoding", "")
             content_type = response.headers.get("Content-Type", "")
@@ -117,11 +135,25 @@ def _stdlib_once(url: str, timeout: int) -> tuple[int, str]:
             content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
         return int(exc.code), _decode_body(data, encoding, content_type)
     except (urllib.error.URLError, OSError, ValueError) as exc:
+        if not explicit_context and tls.should_retry_relaxed(exc):
+            # 只有「还没验证书就断了」才降级重试一次；证书类失败降级无用，直接放弃。
+            _LOGGER.info("握手被拒，改用放宽套件重试 %s：%s", url, exc)
+            code, body = _stdlib_once(url, timeout, tls.relaxed_context())
+            if code == 0:
+                return 0, ""
+            tls.note_relaxed_works()
+            return code, body
         _LOGGER.warning("标准库抓取失败 %s：%s", url, exc)
         return 0, ""
 
 
-def _curl_available() -> bool:
+def curl_available() -> bool:
+    """系统是否装有 curl。
+
+    缺它不代表抓不了（标准库是主路径，TLS 边角由 :mod:`newspaper_auto.tls` 兜），
+    但失败提示必须区分「压根没有 curl」与「curl 也失败」—— 否则在没有 curl 的机器
+    （Win7、精简系统、容器）上会一直把排查方向带偏到「网络异常」上。
+    """
     return shutil.which("curl") is not None
 
 
@@ -166,7 +198,7 @@ def _fetch_once(url: str, timeout: int) -> tuple[int, str]:
     code, body = _stdlib_once(url, timeout)
     if code != 0:
         return code, body
-    if _curl_available():
+    if curl_available():
         curl_code, curl_body = _curl_once(url, timeout)
         if curl_code != 0:
             return curl_code, curl_body

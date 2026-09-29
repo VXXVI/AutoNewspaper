@@ -33,7 +33,7 @@ jobs:
         run: python -m build
         # 同上：`python -m build` 本身也不锁版本，仅由上面 pip 安装时的最新版决定。
 
-      - name: 冒烟验证 wheel（全新安装 + 版本 + 前端资源随包）
+      - name: 冒烟验证 wheel（全新安装 + 版本 + 前端资源随包 + 随包根证书随包）
         run: |
           python -m venv "$RUNNER_TEMP/wheel-venv"
           "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install --upgrade pip
@@ -43,9 +43,16 @@ jobs:
           import pathlib
           import newspaper_auto
 
-          static = pathlib.Path(newspaper_auto.__file__).parent / "static" / "app.js"
-          assert static.is_file(), "static/ 资源未随 wheel 安装"
-          print("static OK:", static)
+          home = pathlib.Path(newspaper_auto.__file__).parent
+          assert (home / "static" / "app.js").is_file(), "static/ 资源未随 wheel 安装"
+
+          # 随包根证书：漏了就只剩系统根库，Win7 一类缺锚点的机器会整家抓不到中国教育报。
+          bundle = home / "cacert.pem"
+          assert bundle.is_file(), "cacert.pem 未随 wheel 安装"
+          text = bundle.read_text(encoding="utf-8")
+          assert "BEGIN CERTIFICATE" in text, "cacert.pem 内容不像 PEM 证书包"
+          print("static OK:", home / "static" / "app.js")
+          print("cacert OK:", bundle)
           PY
 
       - name: 打包便携源码 zip（去掉 CI/历史方案与本机运行数据，解压即用）

@@ -57,9 +57,17 @@ def _classify_entry_failure(code: int, body_len: int) -> tuple[str, str]:
 
     仅在判定为失败时调用（``code != 200`` 或正文过短），故必然命中某一分支；
     合并成一个函数避免「种类」与「说明」两套 if 链各自漂移。
+
+    ``code == 0`` 还要再分一层：机器上**压根没有 curl** 与「有 curl 但也失败」是两回事，
+    混成一句话会让没有 curl 的机器（Win7、精简系统、容器）一直往「网络异常」方向
+    排查 —— 而真实原因只是少了一条兜底路径。
     """
     if code == 0:
-        return "network", "网络层失败：curl 无响应（代理/网络异常，或该站已改地址）"
+        if http.curl_available():
+            return "network", "网络层失败：curl 无响应（代理/网络异常，或该站已改地址）"
+        return "network", (
+            "网络层失败：标准库抓取失败，且系统未安装 curl 无法兜底（代理/网络异常，或该站已改地址）"
+        )
     if code != 200:
         return "http", f"入口 HTTP {code}（站点侧拒绝，或当天报纸尚未上线）"
     return "too_short", f"入口内容异常（仅 {body_len} 字节）"

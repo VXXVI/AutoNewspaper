@@ -46,7 +46,17 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-newspaper_auto = ["static/*.html", "static/*.js", "static/*.css", "static/*.svg", "static/*.ico", "static/*.png"]
+# cacert.pem 是随包根证书（tls.py）：wheel / sdist 都要带上，否则系统根库缺锚点的
+# 机器装完仍然抓不到中国教育报。tests/test_packaging.py 盯住这一行。
+newspaper_auto = [
+    "cacert.pem",
+    "static/*.html",
+    "static/*.js",
+    "static/*.css",
+    "static/*.svg",
+    "static/*.ico",
+    "static/*.png",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "newspaper_auto.__version__" }

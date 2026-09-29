@@ -5,6 +5,8 @@ include CHANGELOG.md
 include Makefile
 
 recursive-include src/newspaper_auto/static *.html *.css *.js *.svg *.ico *.png
+# 随包根证书（tls.py 用）：不进 sdist 的话，从 sdist 装出来的环境抓不到中国教育报。
+include src/newspaper_auto/cacert.pem
 recursive-include tests *.py *.html
 recursive-include scripts *.sh *.ps1 *.template
 recursive-include packaging *.py *.spec *.cmd *.vbs *.txt

@@ -196,13 +196,19 @@ def test_pyinstaller_spec_wires_entry_and_static():
 
     注意 PyInstaller 注入的 ``SPECPATH`` 是 spec **所在目录**（不是文件本身）——
     这里按同样语义注入，守护「路径算错一级」这类只在打包时才暴露的错误。
+    ``datas`` 里的 ``cacert.pem`` 同样是硬断言：漏了它，系统根库缺锚点的机器
+    （Win7）会整家抓不到中国教育报，而症状只表现为「0 版面」，极难定位。
     """
     captured = _run_spec()
 
     assert captured["scripts"] == [str(ROOT / "packaging" / "entry.py")]
     assert captured["pathex"] == [str(ROOT / "src")]
-    assert captured["datas"] == [(str(ROOT / "src" / "newspaper_auto" / "static"), "newspaper_auto/static")]
+    assert captured["datas"] == [
+        (str(ROOT / "src" / "newspaper_auto" / "static"), "newspaper_auto/static"),
+        (str(ROOT / "src" / "newspaper_auto" / "cacert.pem"), "newspaper_auto"),
+    ]
     assert (ROOT / "src" / "newspaper_auto" / "static").is_dir()
+    assert (ROOT / "src" / "newspaper_auto" / "cacert.pem").is_file()
     assert captured["exe_icon"] == str(ROOT / "src" / "newspaper_auto" / "static" / "favicon.ico")
 
 

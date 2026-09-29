@@ -18,6 +18,8 @@
 - 只打包 **标准库 + newspaper_auto 自身**，不引入任何第三方运行时依赖；
 - 把 ``src/newspaper_auto/static/`` 作为数据文件放进包内的
   ``newspaper_auto/static``，供看板在冻结运行时读取；
+- 一并放入 ``src/newspaper_auto/cacert.pem``（随包根证书，见 ``tls.py``）：系统根库
+  缺锚点的机器（典型是 Win7）靠它才能验通中国教育报的证书链；
 - ``excludes`` 仅剔除与运行无关的大块（Tk 等），避免误伤可选依赖。
 
 无窗口版没有 stdout/stderr，由 ``newspaper_auto.exe._ensure_console_streams()``
@@ -31,12 +33,15 @@ SPEC_DIR = Path(SPECPATH).resolve()  # packaging/
 PROJECT = SPEC_DIR.parent  # 仓库根
 SRC = PROJECT / "src"
 STATIC = SRC / "newspaper_auto" / "static"
+# 随包根证书：Win7 的系统根库缺 USERTrust RSA CA 锚点，不带它中国教育报整家抓不到。
+# tests/test_packaging.py 会盯住这一行，删了 CI 直接失败。
+CA_BUNDLE = SRC / "newspaper_auto" / "cacert.pem"
 
 a = Analysis(
     [str(SPEC_DIR / "entry.py")],
     pathex=[str(SRC)],
     binaries=[],
-    datas=[(str(STATIC), "newspaper_auto/static")],
+    datas=[(str(STATIC), "newspaper_auto/static"), (str(CA_BUNDLE), "newspaper_auto")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
