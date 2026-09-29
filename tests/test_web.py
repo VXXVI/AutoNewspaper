@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from newspaper_auto import config, dialogs, papers, web
+from newspaper_auto import clock, config, dialogs, papers, web
 
 ARCHIVE = [
     {
@@ -117,6 +117,40 @@ def test_build_dashboard_reads_seen_counts(tmp_path):
         json.dumps({"示例大学": {"http://x/a": 1, "http://x/b": 1}}, ensure_ascii=False), encoding="utf-8"
     )
     assert web.build_dashboard(tmp_path)["seen_counts"] == {"示例大学": 2}
+
+
+def test_build_dashboard_exposes_server_today(tmp_path):
+    """服务端「今天」随 payload 下发：前端据此对齐日期上限，避免跨时区各算各的。"""
+    _write_archive(tmp_path, ARCHIVE)
+    data = web.build_dashboard(tmp_path, now=datetime(2026, 9, 22, 10, 0, 0))
+    assert data["today"] == "2026-09-22"
+
+
+def test_build_dashboard_exposes_new_urls_and_invalidates_cache(tmp_path):
+    """「只看本次新增」的数据来源：state/last_new.json 的 URL 列表。"""
+    _write_archive(tmp_path, ARCHIVE)
+    assert web.build_dashboard(tmp_path)["new_urls"] == []
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "last_new.json").write_text(
+        json.dumps({"generated_at": "2026-09-22 10:00:00", "urls": ["http://x/2026-09/22/content_2.html"]}),
+        encoding="utf-8",
+    )
+    data = web.build_dashboard(tmp_path)
+    assert data["new_urls"] == ["http://x/2026-09/22/content_2.html"]
+    assert data["last_new_at"] == "2026-09-22 10:00:00"
+
+
+def test_build_dashboard_tolerates_corrupt_last_new(tmp_path):
+    """last_new.json 损坏时按「无新增信息」处理，绝不拖垮整份看板。"""
+    _write_archive(tmp_path, ARCHIVE)
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "last_new.json").write_text("not json", encoding="utf-8")
+    data = web.build_dashboard(tmp_path)
+    assert data["new_urls"] == []
+    assert data["last_new_at"] == ""
 
 
 def test_build_dashboard_exposes_empty_state_hints(tmp_path):
@@ -333,8 +367,27 @@ def test_scan_single_until_is_normalized_to_one_day():
     assert params["until"] == "2026-09-20"
 
 
+def test_scan_rejects_future_dates():
+    """未来日期必须被拒：报纸按出刊日走，明天的还没印出来。
+
+    「今天」以 :mod:`clock` 的应用时区为准（与 ``validate_scan_params`` 同一口径），
+    否则在 UTC 机器上跑测试会与服务端判定的「今天」差一天。
+    """
+    tomorrow = (clock.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    params, error = web.validate_scan_params({"keywords": ["x"], "until": tomorrow})
+    assert params is None
+    assert "未来报纸尚未发行" in error
+
+
+def test_scan_accepts_today():
+    """边界：今天本身是合法的（不能把上限写成「今天之前」）。"""
+    params, error = web.validate_scan_params({"keywords": ["x"], "until": clock.today_iso()})
+    assert error is None
+    assert params["until"] == clock.today_iso()
+
+
 def test_scan_single_since_enforces_range_limit():
-    too_old = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+    too_old = clock.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
         days=config.MAX_RANGE_DAYS
     )
     params, error = web.validate_scan_params({"keywords": ["x"], "since": too_old.strftime("%Y-%m-%d")})

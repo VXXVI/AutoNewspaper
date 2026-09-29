@@ -207,13 +207,15 @@ ssh user@your-vps '~/.newspaperauto/dispatch.sh; echo "exit=$?"; tail -n 2 ~/.ne
 gh run list -R VXXVI/AutoNewspaper --workflow=scan.yml --limit 3
 ```
 
-**时区说明**：crontab 用的是 **VPS 机器的本地时区**，而 workflow 内部固定
-`TZ=Asia/Shanghai`（10:00 北京 = 当日 02:00 UTC）。因此：
+**时区说明**：crontab 用 **VPS 机器的本地时区**决定「几点跑」；而「哪一天算今天」由本项目
+统一按**北京时间**判定（见 `newspaper_auto/clock.py`，缺省 +08:00，可用环境变量
+`NEWSPAPER_TZ` 覆盖）。workflow 内部固定 `TZ=Asia/Shanghai`（10:00 北京 = 当日 02:00 UTC）。因此：
 
 - VPS 时区为 `Asia/Shanghai`：写 `0 10 * * *`；
 - VPS 时区为 `UTC`（多数云主机默认）：写 `0 2 * * *`（= 当日北京 10:00）；
-- 不确定时先 `date`（或 `timedatectl`）确认，也可
-  `sudo timedatectl set-timezone Asia/Shanghai` 统一为北京时间。
+- 不确定时先 `date`（或 `timedatectl`）确认；即使 VPS 时区不是北京时间，「今天」也按北京
+  时间判定，不会去扫「昨天的报纸」，但**跑的时间点**仍要按 VPS 本地时区换算。
+  想让日志时间戳也统一，可 `sudo timedatectl set-timezone Asia/Shanghai`。
 
 **5. 日志与失败排查**
 

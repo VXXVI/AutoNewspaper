@@ -12,11 +12,10 @@ import json
 import re
 import threading
 from contextvars import ContextVar
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from . import cli, config, paths, report, scanner
+from . import cli, clock, config, paths, report, scanner
 from .web_static import MAX_TASK_HISTORY
 
 
@@ -157,7 +156,7 @@ def _system_exit_code(code: Any) -> int:
 
 def default_paper_probe(paper: dict[str, Any], log: Callable[[str], None]) -> dict[str, Any]:
     """默认试抓：验证入口、版面规则与文章规则，不抓正文也不写文件。"""
-    day = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    day = clock.now().replace(hour=0, minute=0, second=0, microsecond=0)
     log(f"试抓「{paper['name']}」（只验证结构，不抓正文）…")
     result = scanner.probe_paper(paper, day)
     entry_code = int(result.get("entry_code", 0))

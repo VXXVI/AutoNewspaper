@@ -44,6 +44,7 @@ STATIC_TYPES = {
     "format.js": "application/javascript; charset=utf-8",
     "render.js": "application/javascript; charset=utf-8",
     "store.js": "application/javascript; charset=utf-8",
+    "theme.js": "application/javascript; charset=utf-8",
     "style.css": "text/css; charset=utf-8",
 }
 # ⚠️ 白名单必须与 static/ 下实际提供的文件同步：漏一项浏览器就拿到 404。

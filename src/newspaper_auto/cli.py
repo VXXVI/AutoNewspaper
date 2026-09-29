@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import __version__, config, exporter, papers, parse, paths, report, scanner, state
+from . import __version__, clock, config, exporter, papers, parse, paths, report, scanner, state
 
 
 def _parse_date(text: str) -> datetime:
@@ -146,7 +146,7 @@ def resolve_dates(args: argparse.Namespace, parser: argparse.ArgumentParser | No
 
     ``dates[0]`` 恒为最新，``dates[-1]`` 恒为最旧，日志与报告依赖该顺序。
     """
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = clock.now().replace(hour=0, minute=0, second=0, microsecond=0)
     use_range = args.since is not None or args.until is not None
     if args.days is not None and use_range:
         p = parser or build_parser()
@@ -335,7 +335,7 @@ def main(
                 seen = state.load_seen(state_path)
                 new_hits = state.compute_new_hits(all_hits, seen, full=args.full)
                 archive = state.update_archive(data_dir, all_hits, keep_days=args.archive_keep_days, log=log)
-                stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                stamp = clock.now().strftime("%Y-%m-%d_%H%M%S")
                 md_path = paths.hits_dir(data_dir) / f"{stamp}.md"
                 report.write_md(
                     md_path,
@@ -347,6 +347,9 @@ def main(
                     "全量重报" if args.full else "增量",
                 )
                 report.write_html(paths.index_file(data_dir), kw_label, archive)
+                # 新增快照：给看板做「只看本次新增」。必须在 seen.json 之前写 ——
+                # seen.json 一旦落盘就再也分不出哪几条是新增了。
+                state.save_last_new(paths.last_new_file(data_dir), new_hits)
                 # seen.json 最后写：它是本次数据提交的标志。
                 # 中途任何写入失败时，下次仍会把命中视为新增，不会静默丢报。
                 if not args.full:

@@ -33,7 +33,8 @@ hits/
 state/
 
 # 配置例外：papers.custom.json 位于项目根，是有意入库的配置（见 README「自定义报社」）。
-# 注意：state/ 整体已被忽略（含 web_config.json / tasks.json / 锁文件与临时文件）。
+# 注意：state/ 整体已被忽略（含 seen.json / last_new.json / web_config.json / tasks.json /
+# 锁文件与临时文件）。
 
 # 原子写入/跨进程提交的短命临时文件（崩溃残留也不应被提交）。
 /.papers.custom.json.*.tmp

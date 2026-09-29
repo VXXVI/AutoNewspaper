@@ -6,6 +6,10 @@
 
 只记录**命中过**的文章 URL。判定「新增」时按 URL 是否已出现为准（存在即已报过），
 与具体是标题命中还是正文命中无关。
+
+此外还维护 ``state/last_new.json``：最近一次扫描的新增命中 URL 列表。``seen.json``
+在扫描结束时已把全部命中写进去，事后无法再反推「哪几条是新增」，因此单独留一份快照
+供看板做「只看本次新增」筛选。
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from . import config, paths
+from . import clock, config, paths
 from .fsutil import write_text
 
 # 文章 URL 内含日期目录，如 /2026-09/22/ 或 /202609/22/；日可能缺失（形如仅 /2026-09/）
@@ -115,7 +119,7 @@ def prune_seen(seen: SeenMap, keep_days: int = config.SEEN_KEEP_DAYS, now: datet
     ``now - keep_days`` 落在月内哪一天），比这里的承诺最多多留一个月。
     两种比较都是定长 ``YYYY-MM-DD`` / ``YYYY-MM`` 字符串比较，等价于日期比较。
     """
-    now = now or datetime.now()
+    now = now or clock.now()
     cutoff = now - timedelta(days=keep_days)
     cutoff_day = cutoff.strftime("%Y-%m-%d")
     cutoff_month = cutoff.strftime("%Y-%m")
@@ -162,6 +166,49 @@ def compute_new_hits(
         elif not any(hit["url"] in bucket for bucket in seen.values()):
             new_hits.append(hit)
     return new_hits
+
+
+# ---------------------------------------------------------------- 新增快照
+def save_last_new(
+    path: str | os.PathLike[str],
+    new_hits: list[dict[str, Any]],
+    *,
+    generated_at: datetime | None = None,
+) -> None:
+    """把本次新增命中的 URL 写成 ``last_new.json``（原子写入，供看板「只看新增」）。
+
+    只存 URL 列表即可：看板按 URL 与归档记录求交集，无需重复整条命中。
+    """
+    urls: list[str] = []
+    for hit in new_hits:
+        url = hit.get("url") if isinstance(hit, dict) else None
+        if isinstance(url, str) and url and url not in urls:
+            urls.append(url)
+    payload = {
+        "generated_at": (generated_at or clock.now()).strftime("%Y-%m-%d %H:%M:%S"),
+        "urls": urls,
+    }
+    write_text(path, json.dumps(payload, ensure_ascii=False, indent=1))
+
+
+def load_last_new(path: str | os.PathLike[str]) -> dict[str, Any] | None:
+    """读取 ``last_new.json``；缺失/损坏/形状不对返回 ``None``（看板按「无新增信息」处理）。"""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw_urls = data.get("urls")
+    if not isinstance(raw_urls, list):
+        return None
+    urls = [url for url in raw_urls if isinstance(url, str) and url]
+    generated_at = data.get("generated_at")
+    return {
+        "generated_at": generated_at if isinstance(generated_at, str) else "",
+        "urls": urls,
+    }
 
 
 # ---------------------------------------------------------------- 命中归档
@@ -326,7 +373,7 @@ def prune_archive(
     """
     if keep_days <= 0:
         return archive, 0
-    now = now or datetime.now()
+    now = now or clock.now()
     cutoff = (now - timedelta(days=keep_days)).strftime("%Y-%m-%d")
     kept: list[dict[str, Any]] = []
     dropped = 0

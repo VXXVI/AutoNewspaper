@@ -102,7 +102,9 @@ export function createScanController(ctx) {
     var only = selected.join(",");
     if ($("scan-mode").value === "range") {
       var since = $("scan-since").value, until = $("scan-until").value;
+      var today = todayIso();
       if (!ISO_DATE_RE.test(since) || !ISO_DATE_RE.test(until)) return { error: "请选择合法的起始与结束日期" };
+      if (since > today || until > today) return { error: "报纸尚未发行，不能选择未来日期" };
       if (since > until) return { error: "起始日期不能晚于结束日期" };
       if (spanDays(since, until) > 62) return { error: "日期跨度不能超过 62 天" };
       return { body: { keywords: keywords, workers: workers, mode: "range", since: since, until: until, only: only } };
@@ -176,10 +178,27 @@ export function createScanController(ctx) {
     });
   }
   function ensureRangeDefaults() {
-    var today = todayIso();
-    if (!$("scan-since").value && ISO_DATE_RE.test($("scan-until").value)) $("scan-since").value = shiftDate($("scan-until").value, -1);
-    else if (!$("scan-since").value) $("scan-since").value = shiftDate(today, -1);
-    if (!$("scan-until").value) $("scan-until").value = today;
+    // 「今天」优先用服务端下发值（应用时区），与后端校验同一口径；未加载时回落本地日期。
+    var data = ctx.getState().data;
+    var today = (data && data.today) || todayIso();
+    var sinceInput = $("scan-since");
+    var untilInput = $("scan-until");
+    if (sinceInput) {
+      sinceInput.max = today;
+      if (sinceInput.value && sinceInput.value > today) sinceInput.value = today;
+    }
+    if (untilInput) {
+      untilInput.max = today;
+      if (untilInput.value && untilInput.value > today) untilInput.value = today;
+    }
+    if (sinceInput && !sinceInput.value && untilInput && ISO_DATE_RE.test(untilInput.value)) {
+      sinceInput.value = shiftDate(untilInput.value, -1);
+    } else if (sinceInput && !sinceInput.value) {
+      sinceInput.value = shiftDate(today, -1);
+    }
+    if (untilInput && !untilInput.value) {
+      untilInput.value = today;
+    }
   }
   function updateModeUI() {
     var range = $("scan-mode").value === "range";

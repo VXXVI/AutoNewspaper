@@ -6,13 +6,12 @@
 #
 # 产物：
 #   dist\NewspaperAuto.exe                             无窗口版：双击即用，零控制台窗口
-#   dist\NewspaperAuto-<版本>-<Target>-x64.zip         （exe + 使用说明）
-#   dist\NewspaperAuto-<版本>-setup.exe                （安装包；仅 -Target windows，需 Inno Setup）
+#   dist\NewspaperAuto-<版本>-<Target>-x64.zip         （exe + 使用说明，唯一的 Windows 分发物）
 #
 # -Target 决定 zip 名里的平台标签（默认 windows）。Windows 7 用 -Target win7，
 # 且必须在 Python 3.8 下构建（3.9+ 的运行时在 Win7 上直接报「不是有效的 Win32 程序」），
-# 见 .github/workflows/build-windows.yml 的 python-version / target 输入。非 windows
-# 目标一律跳过 Inno 安装包。
+# 见 .github/workflows/build-windows.yml 的 python-version / target 输入。
+# 自 v1.0.4.1 起只维护便携版，不再产出 setup 安装包。
 #
 # 只出一个 exe：PE 的 Subsystem 字段做不到「双击不弹窗」+「终端里 shell 会等它」两全。
 # 取舍是优先双击即用；命令行侧靠入口的 AttachConsole 回显 + scan 自己写
@@ -29,8 +28,7 @@ param(
     [string]$Version = '',
     [string]$Target = 'windows',
     [switch]$SkipInstall,
-    [switch]$SkipSmoke,
-    [switch]$SkipInstaller
+    [switch]$SkipSmoke
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,8 +44,6 @@ function Die([string]$Message) {
 
 # 平台标签只用来拼产物名，必须干净（避免路径穿越 / 非法字符）
 if ($Target -notmatch '^[a-z0-9][a-z0-9-]*$') { Die "非法的 -Target：$Target（只允许小写字母、数字与连字符）" }
-# 安装包只服务主线 Windows 目标；win7 等目标不需要，也不该强依赖 Inno Setup
-if ($Target -ne 'windows') { $SkipInstaller = $true }
 
 # ---------------------------------------------------------------- 版本号
 $sourceVersion = (& python -c "import sys; sys.path.insert(0, 'src'); import newspaper_auto; print(newspaper_auto.__version__)").Trim()
@@ -132,7 +128,7 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -Recurse -Force -LiteralPath $s
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item -LiteralPath $exePath -Destination $stage
 # 只拷贝面向用户的文件：显式列举，避免 Copy-Item 通配把 packaging\windows\ 下的
-# 构建脚本（如 installer.iss）一起装进分发给最终用户的 zip。
+# 构建期脚本一起装进分发给最终用户的 zip。
 $userFiles = @('README.txt')
 # 非主线目标（如 win7）额外带一份针对该目标的使用说明（存在才带）。
 # 该文件在仓库里就以 CRLF + UTF-8 BOM 存储：老版本 Windows 记事本对 LF-only 与
@@ -149,50 +145,6 @@ $zipPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-{1}-x64.zip' -f $Versi
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -Force -LiteralPath $zipPath }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipPath -Force
 
-# ---------------------------------------------------------------- 安装包（Inno Setup，可选）
-# 便携 zip 直接可用；有 Inno Setup 时再产出「安装版」：装到 %LOCALAPPDATA%\Programs，
-# 建开始菜单/桌面快捷方式、带卸载，用户不必解压也不必挑 .cmd。
-$setupPath = $null
-if (-not $SkipInstaller) {
-    Write-Host ''
-    Write-Host '构建 Windows 安装包（Inno Setup）…'
-
-    $iscc = $null
-    $candidates = @(
-        (Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -ErrorAction SilentlyContinue),
-        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
-        'C:\Program Files\Inno Setup 6\ISCC.exe',
-        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
-    )
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate)) { $iscc = $candidate; break }
-    }
-
-    if (-not $iscc) {
-        Write-Host '未找到 Inno Setup（ISCC.exe），跳过安装包构建。'
-        Write-Host '如需构建：winget install JRSoftware.InnoSetup（CI 里由 chocolatey 安装）。'
-    } else {
-        Write-Host "使用 ISCC：$iscc"
-        # Inno 要求 VersionInfoVersion 是 x.y.z.w 四段纯数字；三段（如 0.5.0）在
-        # Inno Setup 6.7.1 上会直接报 invalid（CI 用的就是 6.7.1）。
-        # 注意 $Version 可能是 tag 名（v0.5.0）：先去掉前缀 v，否则会算成 5.0.0.0。
-        $numeric = @(($Version -replace '^[vV]', '') -split '[.\-+]' | Where-Object { $_ -match '^\d+$' })
-        while ($numeric.Count -lt 4) { $numeric += '0' }
-        $versionInfo = ($numeric[0..3] -join '.')
-
-        $issPath = Join-Path $ProjectDir 'packaging\windows\installer.iss'
-        # 安装包自身与 exe / 快捷方式共用同一份品牌图标（NewspaperAuto.spec 也用这个文件）。
-        $iconPath = Join-Path $ProjectDir 'src\newspaper_auto\static\favicon.ico'
-        if (-not (Test-Path -LiteralPath $iconPath)) { Die "缺少品牌图标 $iconPath" }
-        & $iscc "/DAppVersion=$Version" "/DVersionInfoVersion=$versionInfo" "/DSourceDir=$stage" "/DIconFile=$iconPath" $issPath
-        if ($LASTEXITCODE -ne 0) { Die 'Inno Setup 编译失败' }
-
-        $setupPath = Join-Path $ProjectDir ('dist\NewspaperAuto-{0}-setup.exe' -f $Version)
-        if (-not (Test-Path -LiteralPath $setupPath)) { Die "未生成安装包 $setupPath" }
-    }
-}
-
 Write-Host ''
 Write-Host "已生成：$zipPath"
-if ($setupPath) { Write-Host "已生成：$setupPath" }
 Write-Output $zipPath

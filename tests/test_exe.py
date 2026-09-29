@@ -6,7 +6,7 @@ import io
 import sys
 from pathlib import Path
 
-from newspaper_auto import __version__, exe, paths, web
+from newspaper_auto import __version__, clock, exe, paths, web
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -238,7 +238,7 @@ def test_run_scan_tees_output_into_the_daily_log(monkeypatch, tmp_path):
 
     assert exe._run_scan(["--days", "2"]) == 0
 
-    log = exe.paths.scan_log_file(tmp_path, exe.datetime.date.today().isoformat())
+    log = exe.paths.scan_log_file(tmp_path, clock.today_iso())
     text = log.read_text(encoding="utf-8")
     assert "=== 开始监测扫描" in text
     assert "命令：NewspaperAuto scan --days 2" in text

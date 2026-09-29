@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, config, paths, report, state
+from . import __version__, clock, config, paths, report, state
 from .state import layout_key
 from .web_static import MAX_KEYWORDS
 from .web_validate import _parse_iso_date, _valid_days, _valid_workers
@@ -168,6 +168,7 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
         _file_stamp(archive_path),
         _file_stamp(paths.state_file(data_dir)),
         _file_stamp(paths.web_config_file(data_dir)),
+        _file_stamp(paths.last_new_file(data_dir)),
     )
     if cacheable:
         with _DASHBOARD_CACHE_LOCK:
@@ -175,7 +176,7 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
             if cached is not None and cached[0] == stamp:
                 return deepcopy(cached[1])
 
-    now = now or datetime.now()
+    now = now or clock.now()
     raw_records, raw_layouts = _read_archive(archive_path)
     records = [rec for rec in (_normalize(item) for item in raw_records) if rec]
     # 版面布局一律走顶层共享表下发（v2 归档本就只存一份；v1 记录里逐条挂着的在这里抽出来去重）。
@@ -197,6 +198,7 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
     records.sort(key=lambda r: (r["date"], r["paper"], r["url"]), reverse=True)
 
     seen = state.load_seen(paths.state_file(data_dir))
+    last_new = state.load_last_new(paths.last_new_file(data_dir))
     saved_config = load_web_config(data_dir)
     seen_counts = {kw: len(bucket) for kw, bucket in seen.items() if isinstance(bucket, dict)}
 
@@ -208,6 +210,9 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
 
     result = {
         "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        # 服务端「今天」（应用时区）：前端用它给日期控件设上限、并把「今天」快捷区间
+        # 对齐到同一个口径，避免浏览器与服务端跨时区各算各的。
+        "today": now.strftime("%Y-%m-%d"),
         "version": __version__,
         "data_dir": str(data_dir),
         "archive_file": str(archive_path),
@@ -220,6 +225,9 @@ def build_dashboard(data_dir: Path | str, now: datetime | None = None) -> dict[s
         "records": records,
         # 版面布局按 layout_key 去重后的共享表；记录里不再重复携带 layout。
         "layouts": layouts,
+        # 「本次新增」URL 与快照时间：看板据此做「只看新增」筛选与角标。
+        "new_urls": last_new["urls"] if last_new else [],
+        "last_new_at": last_new["generated_at"] if last_new else "",
         # 空状态引导用：该数据目录是否已生成 web_config.json（判断是否全新环境），
         # 以及默认关键词（全新环境时提示用户「默认扫什么」）。
         "has_web_config": paths.web_config_file(data_dir).exists(),

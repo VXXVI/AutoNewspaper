@@ -10,6 +10,7 @@
  */
 import { A, createInitialState, createStore, reducer } from "./store.js";
 import { $ } from "./dom.js";
+import { initTheme } from "./theme.js";
 import { renderApp } from "./render.js";
 import {
   PAPERS_COMMIT_CMD,
@@ -18,7 +19,7 @@ import {
   createScanController,
   createSystemController,
 } from "./features.js";
-import { shiftDate } from "./format.js";
+import { shiftDate, todayIso } from "./format.js";
 
 (function () {
   "use strict";
@@ -110,6 +111,13 @@ import { shiftDate } from "./format.js";
     return ds.length ? [ds[0], ds[ds.length - 1]] : ["", ""];
   }
 
+  // 「今天」优先取服务端下发值（应用时区，见后端 clock），未加载时回落浏览器本地日期：
+  // 服务端跑在 UTC 的 VPS 上时，两边对「今天」的判定必须一致，否则会把今天当成未来。
+  function serverToday() {
+    var data = store.getState().data;
+    return (data && data.today) || todayIso();
+  }
+
   // 以「数据里最新的日期」为基准，避免用今天算导致历史数据筛不出东西。
   function applyPreset(kind) {
     var action = { type: A.SET_PRESET, preset: kind };
@@ -145,11 +153,92 @@ import { shiftDate } from "./format.js";
 
   function filtersOpen() { return store.getState().filtersOpen === true; }
 
+  /* -------------------------------------------------------------- 顶部导航高亮
+   * 滚动与点击锚点跟随：当用户滚动或点击顶栏跳转时，高亮当前正在阅读的区块。
+   * 采用 RAF 节流的滚动位置判定（相比单纯的 IntersectionObserver，能天然处理
+   * 页面底端区块高度不足以顶到视口上方、以及大卡片跨屏覆盖的边界情况）。 */
+  function watchSections() {
+    var nav = $("page-nav");
+    if (!nav) return;
+    var links = Array.prototype.slice.call(nav.querySelectorAll("a[href^='#']"));
+    if (!links.length) return;
+    var byId = {};
+    var sections = [];
+    links.forEach(function (link) {
+      var id = link.getAttribute("href").slice(1);
+      var target = document.getElementById(id);
+      if (!target) return;
+      byId[id] = link;
+      sections.push({ id: id, el: target });
+    });
+    if (!sections.length) return;
+
+    var ticking = false;
+    function updateActive() {
+      ticking = false;
+      var scrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+      var clientHeight = window.innerHeight || document.documentElement.clientHeight;
+      var isBottom = (scrollY + clientHeight) >= (scrollHeight - 40);
+
+      var activeId = sections[0].id;
+      if (isBottom) {
+        // 触底时，直接高亮最后一个可见的区块（避免底端区块高度小顶不到上方而无法点亮）
+        activeId = sections[sections.length - 1].id;
+      } else {
+        // 顶部预留导航栏净空高度（约 110px）
+        var targetLine = 110;
+        for (var i = 0; i < sections.length; i++) {
+          var rect = sections[i].el.getBoundingClientRect();
+          if (rect.top <= targetLine) {
+            activeId = sections[i].id;
+          } else {
+            break;
+          }
+        }
+      }
+
+      sections.forEach(function (sec) {
+        if (sec.id === activeId) byId[sec.id].setAttribute("aria-current", "true");
+        else byId[sec.id].removeAttribute("aria-current");
+      });
+    }
+
+    function onScroll() {
+      if (!ticking) {
+        ticking = true;
+        window.requestAnimationFrame(updateActive);
+      }
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    // 点击导航锚点时平滑滚动，滚动过程中实时更新高亮，保证点击与视觉无延迟对齐
+    links.forEach(function (link) {
+      link.addEventListener("click", function () {
+        var id = link.getAttribute("href").slice(1);
+        sections.forEach(function (sec) {
+          if (sec.id === id) byId[sec.id].setAttribute("aria-current", "true");
+          else byId[sec.id].removeAttribute("aria-current");
+        });
+      });
+    });
+    updateActive();
+  }
+
   /* -------------------------------------------------------------- 启动 */
   function init() {
+    initTheme();
     dispatch({ type: A.SET_FILTERS_OPEN, open: readFiltersOpen() });
+    watchSections();
     $("filter-toggle").addEventListener("click", function () { setFiltersOpen(!filtersOpen()); });
     // 浮层的两条退出口：Esc 与点面板外部。关闭后焦点回到触发按钮，键盘用户不会丢位置。
+    // 初始化日期控件的最大允许日期为「今天」（未来报纸尚未发行），口径同服务端
+    var todayStr = serverToday();
+    ["scan-since", "scan-until", "from", "to"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.max = todayStr;
+    });
     document.addEventListener("keydown", function (event) {
       if (event.key !== "Escape" || !filtersOpen()) return;
       setFiltersOpen(false);
@@ -167,6 +256,14 @@ import { shiftDate } from "./format.js";
       if (!store.getState().scan.running) scan.start();
     });
     $("scan-mode").addEventListener("change", scan.onModeChange);
+    $("scan-since").addEventListener("change", function (event) {
+      var today = serverToday();
+      if (event.target.value && event.target.value > today) event.target.value = today;
+    });
+    $("scan-until").addEventListener("change", function (event) {
+      var today = serverToday();
+      if (event.target.value && event.target.value > today) event.target.value = today;
+    });
     if ($("scan-cancel")) $("scan-cancel").addEventListener("click", scan.cancel);
 
     $("paper-add").addEventListener("click", papers.add);
@@ -188,10 +285,22 @@ import { shiftDate } from "./format.js";
       dispatch({ type: A.SET_QUERY, value: event.target.value });
     });
     $("from").addEventListener("change", function (event) {
-      dispatch({ type: A.SET_DATE_RANGE, from: event.target.value });
+      var val = event.target.value;
+      var today = serverToday();
+      if (val && val > today) {
+        val = today;
+        event.target.value = today;
+      }
+      dispatch({ type: A.SET_DATE_RANGE, from: val });
     });
     $("to").addEventListener("change", function (event) {
-      dispatch({ type: A.SET_DATE_RANGE, to: event.target.value });
+      var val = event.target.value;
+      var today = serverToday();
+      if (val && val > today) {
+        val = today;
+        event.target.value = today;
+      }
+      dispatch({ type: A.SET_DATE_RANGE, to: val });
     });
     $("sort").addEventListener("change", function (event) {
       dispatch({ type: A.SET_SORT, value: event.target.value }, { immediate: true });
@@ -216,6 +325,9 @@ import { shiftDate } from "./format.js";
     });
     Array.prototype.forEach.call($("preset-chips").querySelectorAll("[data-preset]"), function (btn) {
       btn.addEventListener("click", function () { applyPreset(btn.getAttribute("data-preset")); });
+    });
+    $("new-only").addEventListener("click", function () {
+      dispatch({ type: A.SET_NEW_ONLY, on: !store.getState().newOnly });
     });
     $("reset").addEventListener("click", function () {
       dispatch({ type: A.RESET_VIEW });

@@ -13,14 +13,15 @@ import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
+
+from . import clock
 
 _UNIT_LINE_RE = re.compile(r"^\s*[✓✗]\s+")
 
 
 def _now_stamp() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return clock.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 @dataclass

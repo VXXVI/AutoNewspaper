@@ -82,17 +82,12 @@ Win7 上会报「不是有效的 Win32 程序」。同一个 `build-windows.yml`
    **Windows 7 用户**请用同一构建产出的 `NewspaperAuto-<tag>-win7-x64.zip`（用 **Python 3.8.10**
    构建，双击同样不弹窗）；Win7 上运行需要 SP1 + KB2533623 + UCRT（KB2999226，或
    VC++ 2015-2022 x64）。手动触发时把 `python-version` 填 `3.8.10`、`target` 填 `win7` 即可。
-2. **Windows 安装包（可选的便捷壳子）**：同一份构建产出的
-   `NewspaperAuto-<tag>-setup.exe`，双击安装，装到
-   `%LOCALAPPDATA%\Programs\NewspaperAuto`（**用户可写**，无需管理员权限），
-   自动创建开始菜单快捷方式（打开看板 / 使用说明 / 卸载）与可选的桌面快捷方式，
-   装完可直接开看板。它只是给「想要开始菜单/桌面快捷方式」的人用的；
-   **不装安装包一样能用上面的便携 zip**。卸载**不删除** `state/`、`hits/`、`logs/`
-   （扫描数据是用户资产）。便携 zip 与安装包共用同一个 exe；exe、快捷方式与 `setup.exe`
-   自身都使用 `src/newspaper_auto/static/favicon.ico` 这一份品牌图标
-   （`NewspaperAuto.spec` 的 `icon=` 与 `installer.iss` 的 `SetupIconFile`）。
-   构建需要 Inno Setup（CI 由 chocolatey 安装）；缺 Inno 时脚本只跳过 `setup.exe`，
-   便携 zip 照常产出。
+2. **只提供便携版（自 v1.0.4.1 起不再产出 setup 安装包）**：上面的 zip 解压即用。
+   若想要「开始菜单 / 桌面快捷方式」，自行给解压后的 `NewspaperAuto.exe` 建快捷方式即可，
+   与旧安装版体验一致；便携版免管理员权限、不写注册表，**删除整个文件夹即卸载**，
+   数据（`state/`、`hits/`、`logs/`）就在文件夹里，删前请自行备份。
+   exe 与快捷方式使用 `src/newspaper_auto/static/favicon.ico` 这一份品牌图标
+   （`NewspaperAuto.spec` 的 `icon=`），构建不再依赖 Inno Setup。
 3. **复制整个项目目录**：数据（`hits/`、`state/`）与配置（`papers.custom.json`）都在目录内，
    换机即用；目标机只需装 Python 3.9+。
 4. **从 Release 下载压缩包**（推荐给国内 / Python 用户）：打 `v*` tag 会触发

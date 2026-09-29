@@ -29,12 +29,12 @@ async function withPage(options, fn) {
 
 export const domTests = [
   {
-    name: "首屏渲染：概览、版本、命中行与版面位置",
+    name: "首屏渲染：概览、健康度版本、命中行与版面位置",
     fn: () =>
       withPage(undefined, async (page) => {
         assert.match(page.text("meta"), /共 2 条命中/);
-        // 版本取自 harness 桩数据（哨兵值）：这里只验证「v + version」的渲染格式，不绑定真实包版本。
-        assert.equal(page.text("version"), "v0.0.0-stub");
+        // 版本取自 harness 桩数据（哨兵值）：顶栏已取消重复的版本徽章，只在健康胶囊里呈现「服务正常 · v+版本」。
+        assert.equal(page.text("health-text"), "服务正常 · v0.0.0-stub");
         assert.equal(rows(page.document).length, 2);
 
         const firstRow = rows(page.document)[0];
@@ -534,5 +534,86 @@ export const domTests = [
           assert.equal(doc.getElementById("export-directory").value, "/tmp/ro", "失败后保留已填写的路径");
         },
       ),
+  },
+  {
+    name: "主题切换：三态按钮写 data-theme 与 localStorage，仅一个按钮保持选中",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        const html = doc.documentElement;
+        const btn = (value) => doc.querySelector(`#theme-toggle [data-theme-value="${value}"]`);
+        // jsdom 没有 matchMedia：主题模块应回落到「跟随系统」= 浅色，而不是报错
+        assert.equal(html.getAttribute("data-theme"), "light");
+        assert.equal(btn("auto").getAttribute("aria-pressed"), "true");
+        assert.equal(btn("auto").classList.contains("on"), true);
+
+        btn("dark").click();
+        await settle();
+        assert.equal(html.getAttribute("data-theme"), "dark");
+        assert.equal(page.window.localStorage.getItem("newspaper-auto.theme"), "dark");
+        assert.equal(btn("dark").getAttribute("aria-pressed"), "true");
+        assert.equal(btn("auto").getAttribute("aria-pressed"), "false");
+        assert.equal(btn("auto").classList.contains("on"), false);
+        assert.match(doc.getElementById("theme-toggle").getAttribute("aria-label"), /深色/);
+
+        btn("light").click();
+        await settle();
+        assert.equal(html.getAttribute("data-theme"), "light");
+        assert.equal(page.window.localStorage.getItem("newspaper-auto.theme"), "light");
+        assert.equal(btn("light").getAttribute("aria-pressed"), "true");
+      }),
+  },
+  {
+    name: "主题偏好持久化：启动时沿用 localStorage 里的选择",
+    fn: () =>
+      withPage({ storage: { "newspaper-auto.theme": "dark" } }, async (page) => {
+        assert.equal(page.document.documentElement.getAttribute("data-theme"), "dark");
+        assert.equal(
+          page.document.querySelector('#theme-toggle [data-theme-value="dark"]').getAttribute("aria-pressed"),
+          "true",
+        );
+      }),
+  },
+  {
+    name: "只看本次新增：有快照时按新增筛选并给行打标",
+    fn: () => {
+      const routes = (path, init) => {
+        if (path.startsWith("/api/hits")) {
+          const payload = hitsPayload();
+          payload.new_urls = ["http://example.test/gm/2"];
+          payload.last_new_at = "2026-09-24 10:00:00";
+          return { body: payload };
+        }
+        return defaultRoutes(path, init);
+      };
+      return withPage({ routes }, async (page) => {
+        const doc = page.document;
+        const chip = doc.getElementById("new-only");
+        assert.equal(chip.disabled, false);
+        assert.match(chip.textContent, /（1）/, "按钮应显示本次新增条数");
+        assert.match(page.text("new-only-hint"), /2026-09-24/);
+
+        chip.click();
+        await settle();
+        assert.equal(rows(doc).length, 1, "只看新增后只剩新增的那条");
+        assert.match(rows(doc)[0].textContent, /光明日报/);
+        assert.ok(rows(doc)[0].classList.contains("is-new"));
+        assert.ok(rows(doc)[0].querySelector(".tag-new"), "新增行要有「新增」标记");
+        assert.equal(doc.getElementById("filter-count").textContent, "1", "只看新增算一项筛选");
+
+        doc.getElementById("new-only").click();
+        await settle();
+        assert.equal(rows(doc).length, 2, "再点一次关闭筛选");
+      });
+    },
+  },
+  {
+    name: "只看本次新增：没有快照时按钮禁用并说明原因",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const chip = page.document.getElementById("new-only");
+        assert.equal(chip.disabled, true, "没有新增快照时不应可点（点进去只会恒为空）");
+        assert.match(page.text("new-only-hint"), /还没有新增记录/);
+      }),
   },
 ];

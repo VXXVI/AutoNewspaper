@@ -57,7 +57,7 @@ def test_windows_powershell_scripts_are_utf8_bom_with_crlf(rel):
 
 def test_build_windows_zip_copies_explicit_user_files():
     """回归：组装 zip 曾用 ``Copy-Item packaging\\windows\\*`` 通配，把构建脚本
-    ``installer.iss`` 一起装进了发给最终用户的 windows-x64.zip。现改为显式列举。"""
+    构建期脚本一起装进了发给最终用户的 windows-x64.zip。现改为显式列举。"""
     text = (ROOT / "scripts/build_windows.ps1").read_text(encoding="utf-8")
     assert "packaging\\windows\\*" not in text, "打包 zip 不应再用通配拷贝 packaging\\windows\\"
 
@@ -94,18 +94,20 @@ def test_build_windows_produces_one_exe_and_smokes_the_health_version():
     assert "& $exePath --version" not in smoke and "& $cliExePath --version" not in smoke
 
 
-def test_windows_installer_ships_exactly_one_exe():
-    """安装包只装一个 exe，且快捷方式指向它（不再有 .cmd 启动器与「扫描一次」）。"""
+def test_setup_installer_is_discontinued():
+    """v1.0.4.1 起只维护便携版：setup 安装包脚本已删除，构建链路里不能再出现它。"""
+    assert not (ROOT / "packaging" / "windows" / "installer.iss").exists(), "setup 安装包脚本应已删除"
     assert not (ROOT / "packaging" / "windows" / "Run-Scan.cmd").exists(), "启动器应已删除"
     assert not (ROOT / "packaging" / "windows" / "Start-Dashboard.cmd").exists()
 
-    iss = (ROOT / "packaging" / "windows" / "installer.iss").read_text(encoding="utf-8")
-    assert r"{#SourceDir}\NewspaperAuto.exe" in iss
-    assert "NewspaperAuto-CLI" not in iss, "安装包不应再引用控制台版"
-    assert ".cmd" not in iss, "安装包不应再引用 .cmd 启动器"
-    # 「打开看板」指向唯一的 exe：双击零控制台窗口
-    assert r'Name: "{group}\打开看板"; Filename: "{app}\NewspaperAuto.exe"' in iss
-    assert "SetupIconFile={#IconFile}" in iss, "安装包自身的品牌图标不能丢"
+    ps1 = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert "installer.iss" not in ps1, "构建脚本不应再引用安装包脚本"
+    assert "SkipInstaller" not in ps1 and "$setupPath" not in ps1, "安装包构建分支应已删除"
+    assert "setup.exe" not in ps1, "构建脚本不应再产出安装包"
+
+    flow = (ROOT / ".github" / "workflows" / "build-windows.yml").read_text(encoding="utf-8")
+    assert "setup.exe" not in flow, "CI 不应再上传 setup.exe"
+    assert "innosetup" not in flow, "CI 不应再安装 Inno Setup"
 
     readme = (ROOT / "packaging" / "windows" / "README.txt").read_text(encoding="utf-8")
     assert "NewspaperAuto.exe" in readme

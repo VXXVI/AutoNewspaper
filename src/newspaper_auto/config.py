@@ -89,6 +89,10 @@ SEEN_FILENAME = "seen.json"
 WEB_CONFIG_FILENAME = "web_config.json"
 # 看板扫描任务历史（最近 N 条摘要，与 seen.json 同目录）
 TASK_HISTORY_FILENAME = "tasks.json"
+# 最近一次扫描的「新增命中」URL 列表（与 seen.json 同目录）：
+# seen.json 写完后已包含全部命中，无法再反推哪些是新增，故单独留一份给看板做
+# 「只看本次新增」筛选。
+LAST_NEW_FILENAME = "last_new.json"
 # 后台看板的运行状态（host/port/pid），供 --stop / --status 与「已在运行就复用」使用
 DASHBOARD_FILENAME = "dashboard.json"
 # 后台看板的运行日志目录（随数据目录走，已被 .gitignore 忽略）

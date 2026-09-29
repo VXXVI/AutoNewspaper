@@ -66,6 +66,10 @@ def test_result_and_dashboard_views_have_shared_filter_and_status_surfaces():
         # 服务断开时的自助恢复入口
         "service-tip",
         "service-retry",
+        # 主题三态切换与「只看本次新增」筛选
+        "theme-toggle",
+        "new-only",
+        "new-only-hint",
     }
     assert required_ids <= parser.attributes_by_id.keys()
     assert parser.attributes_by_id["result-context"].get("role") == "status"
@@ -118,6 +122,42 @@ def test_new_modules_exist_and_are_substantial():
         path = STATIC_DIR / name
         assert path.exists(), f"缺失模块 {name}"
         assert len(path.read_text(encoding="utf-8").splitlines()) > 50
+
+
+def test_theme_toggle_is_wired_and_dark_tokens_live_once():
+    """主题三态：顶栏控件 + 首屏防闪脚本 + **唯一一份**深色令牌。
+
+    深色令牌一度靠 prefers-color-scheme 复制一整套：两处色板最容易悄悄漂移。
+    现在 auto 在 JS 里解析成显式值，CSS 只保留 :root[data-theme="dark"] 一份。
+    """
+    html = _read("index.html")
+    assert 'id="theme-toggle"' in html
+    for value in ("light", "dark", "auto"):
+        assert f'data-theme-value="{value}"' in html, f"缺少主题按钮 {value}"
+    # 首屏防闪脚本要在样式表之前跑，且与 theme.js 用同一个 localStorage 键
+    assert html.index("newspaper-auto.theme") < html.index("/static/style.css")
+    assert "prefers-color-scheme" in html, "内联脚本需据系统偏好解析 auto"
+
+    css = _read("style.css")
+    assert ':root[data-theme="dark"]' in css
+    assert "prefers-color-scheme: dark" not in css, "深色令牌不得再有媒体查询副本"
+    assert ".theme-toggle" in css
+    assert ".tag-new" in css
+
+    app = _read("app.js")
+    assert re.search(r'from\s+"\./theme\.js"', app), "app.js 必须 import ./theme.js"
+
+
+def test_new_only_filter_surface_is_present():
+    """「只看本次新增」需要按钮、提示、状态切片与后端快照字段。"""
+    html = _read("index.html")
+    assert 'id="new-only"' in html
+    assert 'id="new-only-hint"' in html
+
+    store = _read("store.js")
+    assert "SET_NEW_ONLY" in store
+    assert "newUrlSet" in store
+    assert re.search(r"new_urls", store), "筛选需消费后端下发的 new_urls"
 
 
 def test_no_innerhtml_eval_or_document_write_anywhere():
@@ -199,8 +239,9 @@ def test_pct_and_snippet_guards_present():
 
 def test_new_widget_and_legacy_tokens_are_styled():
     css = _read("style.css")
+    # 注：.compact-field 曾经靠一条独立的 `min-width: 0` 兜底，现已由 .field 自身的
+    # min-width: 0 覆盖（那条才是移动端横向溢出的真正根因），故不再单列断言。
     for cls in (
-        ".compact-field",
         ".empty-hint",
         ".is-running",
         ".src-builtin",  # 历史挂空 token

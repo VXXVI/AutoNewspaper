@@ -89,6 +89,10 @@ python3 dashboard.py --open --scan   # 打开看板并按默认配置抓取一�
 - **筛选是右上角的浮层**：点结果卡右上角的「筛选」弹出面板（时间、报社、关键词、排序），
   收起时**完全不占版面**，整行宽度都留给命中列表；按钮上的角标会告诉你当前启用了几项筛选。
   Esc 或点击面板外部即关闭，展开状态记在浏览器本地。
+- **只看本次新增**：筛选浮层里的「新增」一栏，一键只看最近一次扫描新命中的报道；这些行在
+  列表里带「新增」标记。快照来自 `state/last_new.json`，还没扫描过时该按钮不可点。
+- **浅色 / 深色 / 跟随系统**：顶栏右侧的三态开关。选「跟随系统」时随系统切换，另两个为固定
+  选择；偏好记在浏览器本地，并在样式表加载前就应用，刷新不会闪一下。
 - **时间趋势**：单独一节，跟随当前筛选。
 - **图形看板**：报社排名、关键词排名、日期 × 报社热力图、最近扫描历史。
 - **导出**：把当前筛选结果导出为 CSV / JSON 到指定文件夹（目录可点「浏览…」让看板所在设备
@@ -127,6 +131,10 @@ python3 daily_scan.py --version        # 版本号
 - `--no-state`：不读写 `state/seen.json`、不产 `hits/*`，只扫描并输出；可与 `--json` / `--csv`
   叠加（此时人类可读日志分流到 stderr，保证 stdout 纯净）。
 - 数据目录优先级：`--data-dir` > 环境变量 `NEWSPAPER_DATA_DIR` > 自动探测项目根。
+- **「今天」的口径可配**：默认按**北京时间（+08:00）**判断「今天」（中国报纸出刊日），
+  与浏览器下发的上限对齐，避免看板服务端跑在 UTC 的 VPS 上时把今天的报纸误判成未来。
+  需要别的时区时设环境变量 `NEWSPAPER_TZ`（IANA 名称如 `Asia/Tokyo`，或固定偏移如 `-05:00`）；
+  系统没有 tz 数据库时退化为固定偏移，`TZ` 仅在前者未设置时生效。
 - 自定义报社配置 `papers.custom.json` 跟随**项目根**（源码入口 `daily_scan.py` /
   `dashboard.py` 钉死为脚本目录，可用环境变量 `NEWSPAPER_APP_DIR` 覆盖），与
   `--data-dir` 无关。
@@ -143,6 +151,9 @@ python3 daily_scan.py --version        # 版本号
 | `hits/index.html` | 历史全部命中汇总，可直接浏览 |
 | `hits/archive.json` | 命中归档（v2：记录 + 顶层布局表，版面坐标按版面只存一份；默认只增不删，可用 `--archive-keep-days N` 裁剪） |
 | `state/seen.json` | 增量状态（已判定过的文章 URL），保证只报新增 |
+| `state/last_new.json` | 最近一次扫描的**新增命中 URL** 快照，供看板「只看本次新增」筛选 |
+| `state/tasks.json` | 看板扫描任务历史（最近 20 条摘要） |
+| `state/web_config.json` | 看板保存的扫描参数（关键词 / 范围 / 并发） |
 | `logs/scan-YYYY-MM-DD.log` | 定时任务运行日志 |
 | `exports/newspaper-hits-<时间戳>-<随机标识>.<格式>` | 可选 CSV / JSON 导出（目录可自定义） |
 
@@ -207,9 +218,9 @@ Shell 启动脚本语法检查；另有 `tests/test_py38_compat.py` 做 **Python
   `--help`）也能用，但它是无窗口程序，Windows 的 shell 不会等它跑完、`>` 重定向也拿不到
   内容 —— 每次 `scan` 都会自己把输出写进 `logs\scan-<日期>.log`，定时任务看它即可。
 - 也可在仓库 **Actions → build-windows → Run workflow** 手动构建并下载，无需打 tag。
-- **安装包是可选项**：`NewspaperAuto-<tag>-setup.exe` 只是给「想要开始菜单/桌面快捷方式」
-  的人用的便捷壳子，装到 `%LOCALAPPDATA%\Programs` 且同样免管理员权限；不装安装包也能用。
-  它的开始菜单「打开看板」直接指向这个 exe，双击同样不弹终端。
+- **只提供便携版，不再提供 setup 安装包**（自 v1.0.4.1 起）：想要「开始菜单 / 桌面快捷方式」
+  的话，自行给解压后的 `NewspaperAuto.exe` 建一个快捷方式即可，效果与安装版一致；
+  便携版免管理员权限、不写注册表，删除文件夹即卸载。
 - **源码 / Python 用户**：`portable.zip`（含 docs，解压即用）或
   `.whl` / `.tar.gz`（`pip install <whl>`）。
 

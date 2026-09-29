@@ -78,6 +78,11 @@ def task_history_file(data_dir: Path) -> Path:
     return data_dir / config.STATE_DIRNAME / config.TASK_HISTORY_FILENAME
 
 
+def last_new_file(data_dir: Path) -> Path:
+    """最近一次扫描的新增命中：``state/last_new.json``。"""
+    return data_dir / config.STATE_DIRNAME / config.LAST_NEW_FILENAME
+
+
 def hits_dir(data_dir: Path) -> Path:
     return data_dir / config.HITS_DIRNAME
 

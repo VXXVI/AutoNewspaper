@@ -54,6 +54,7 @@ export function hitsPayload(records = RECORDS) {
   }
   return {
     generated_at: "2026-09-24 10:00:00",
+    today: "2026-09-24",
     // 桩数据里的版本号：与真实包版本无关，用哨兵值以免被误读成「版本漂移漏检」。
     version: "0.0.0-stub",
     data_dir: "/tmp/data",
@@ -65,6 +66,8 @@ export function hitsPayload(records = RECORDS) {
     seen_counts: { 示例大学: 3 },
     date_counts: dateCounts,
     records,
+    new_urls: [],
+    last_new_at: "",
     has_web_config: true,
     default_keywords: ["人工智能"],
     // 看板首屏会聚焦「已配置关键词」；样例两条命中分属两个关键词，故都配置。
@@ -196,6 +199,11 @@ export async function boot(options = {}) {
     return Promise.resolve(makeResponse(route));
   };
   window.fetch = fetchMock;
+
+  // 允许测试预置 localStorage（例如启动时的主题偏好），必须在 app.js 之前写入。
+  for (const [key, value] of Object.entries(options.storage || {})) {
+    window.localStorage.setItem(key, value);
+  }
 
   // 让 app.js（Node ESM）能取到 jsdom 的 DOM
   globalThis.window = window;

@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 
-from newspaper_auto import cli, config, exporter, papers, report, state
+from newspaper_auto import cli, config, exporter, papers, paths, report, state
 
 ZJ_ARGS = ["--only", "湛江日报", "--days", "1", "--kw", "示例大学"]
 ZJ_ARGS_NO_DAYS = ["--only", "湛江日报", "--kw", "示例大学"]
@@ -283,6 +283,34 @@ def test_first_run_writes_state_and_reports_then_second_run_reports_zero_new(
     assert len(archive["records"]) == 3
     seen = json.loads((tmp_path / "state" / "seen.json").read_text(encoding="utf-8"))
     assert len(seen["示例大学"]) == 3
+
+
+def test_first_run_snapshots_new_hits_for_the_dashboard(tmp_path, capsys, site_fetcher, today):
+    """``state/last_new.json`` 必须留一份「本次新增」快照。
+
+    seen.json 写完后已包含全部命中，事后无法反推哪几条是新增；看板的「只看本次新增」
+    只能靠这份快照。首跑 3 条全新增、再跑 0 条 —— 快照要跟着清零。
+    """
+    fetch = site_fetcher(today)
+    argv = [*ZJ_ARGS, "--data-dir", str(tmp_path)]
+
+    assert cli.main(argv, fetcher=fetch) == 0
+    capsys.readouterr()
+    snapshot = state.load_last_new(paths.last_new_file(tmp_path))
+    assert snapshot is not None
+    assert len(snapshot["urls"]) == 3
+    assert snapshot["generated_at"], "快照要带生成时间，供看板提示「新增于…」"
+
+    assert cli.main(argv, fetcher=fetch) == 0
+    capsys.readouterr()
+    assert state.load_last_new(paths.last_new_file(tmp_path))["urls"] == []
+
+
+def test_no_state_does_not_write_the_new_snapshot(tmp_path, capsys, site_fetcher, today):
+    """``--no-state`` 不碰 state/，自然也不该留下 last_new.json。"""
+    cli.main([*ZJ_ARGS, "--no-state", "--data-dir", str(tmp_path)], fetcher=site_fetcher(today))
+    capsys.readouterr()
+    assert not paths.last_new_file(tmp_path).exists()
 
 
 def test_seen_is_not_committed_when_report_write_fails(tmp_path, capsys, monkeypatch, site_fetcher, today):

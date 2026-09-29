@@ -7,9 +7,11 @@ import {
   HEATMAP_KEY_SEP,
   INITIAL_ROWS,
   ROW_STEP,
+  countNewHits,
   createInitialState,
   heatmap,
   keywordRanking,
+  newUrlSet,
   paperRanking,
   reducer,
   selectFiltered,
@@ -308,5 +310,53 @@ test("selectFiltered：支持按日期/版面/单元格关联筛选，并容忍�
   assert.deepEqual(selectFiltered(cell).map((r) => r.url), ["u2"]);
   const layout = Object.assign(base, { linkedFilter: { type: "layout", key: "x", urls: new Set(["u1"]) } });
   assert.deepEqual(selectFiltered(layout).map((r) => r.url), ["u1"]);
+});
+
+/* ------------------------------------------------------- 只看本次新增 */
+test("SET_NEW_ONLY：切换只看新增并复位展开量，RESET_VIEW 会关掉它", () => {
+  const s0 = Object.assign(createInitialState(), { visibleRows: 999 });
+  const on = reducer(s0, { type: A.SET_NEW_ONLY, on: true });
+  assert.equal(on.newOnly, true);
+  assert.equal(on.visibleRows, INITIAL_ROWS, "改筛选要复位「显示更多」的展开量");
+  assert.equal(s0.newOnly, false, "原 state 不得被就地修改");
+
+  assert.equal(reducer(on, { type: A.SET_NEW_ONLY, on: false }).newOnly, false);
+  assert.equal(reducer(on, { type: A.SET_NEW_ONLY }).newOnly, false, "缺省 on 视为关闭");
+  assert.equal(reducer(on, { type: A.RESET_VIEW }).newOnly, false, "清除筛选要一并关掉只看新增");
+});
+
+test("selectFiltered：newOnly 只保留 new_urls 里的记录", () => {
+  const state = Object.assign(createInitialState(), {
+    data: {
+      papers: ["A"], keywords: ["k"], date_counts: {},
+      new_urls: ["u2"],
+      records: [
+        { paper: "A", date: "2026-01-01", title: "t1", section: "", url: "u1", matched: ["k"], snippets: [] },
+        { paper: "A", date: "2026-01-02", title: "t2", section: "", url: "u2", matched: ["k"], snippets: [] },
+      ],
+    },
+    papers: new Set(["A"]),
+    keywords: new Set(["k"]),
+    newOnly: true,
+  });
+  assert.deepEqual(selectFiltered(state).map((r) => r.url), ["u2"]);
+  assert.equal(selectFiltered(Object.assign({}, state, { newOnly: false })).length, 2);
+  // 打开只看新增但没有快照 → 空结果，而不是悄悄退回全量
+  const noSnapshot = Object.assign({}, state, { data: Object.assign({}, state.data, { new_urls: [] }) });
+  assert.deepEqual(selectFiltered(noSnapshot), []);
+});
+
+test("countNewHits：只统计归档里确实存在的新增 URL", () => {
+  const data = {
+    new_urls: ["u1", "u-missing"],
+    records: [
+      { url: "u1" }, { url: "u2" }, { url: "u1" },
+    ],
+  };
+  assert.equal(countNewHits({ data }), 2, "u1 出现两次应计两次，缺失的新增 URL 不计");
+  assert.equal(countNewHits({ data: { new_urls: [], records: [{ url: "u1" }] } }), 0);
+  assert.equal(countNewHits({ data: null }), 0);
+  assert.deepEqual([...newUrlSet(data)], ["u1", "u-missing"]);
+  assert.equal(newUrlSet(null).size, 0, "没有数据时返回空集而非抛错");
 });
 

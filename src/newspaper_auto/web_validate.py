@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import config, exporter
+from . import clock, config, exporter
 from .web_static import (
     DATE_RE,
     EXPORT_SORTS,
@@ -109,7 +109,9 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
     since_text: str | None = None
     until_text: str | None = None
     if use_range:
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # 「今天」用应用时区（默认北京时间），与看板前端下发的 today 同源：
+        # 服务端跑在 UTC 的 VPS 上时，不能拿本机日期当上限，否则会误判「未来报纸」。
+        today = clock.now().replace(hour=0, minute=0, second=0, microsecond=0)
         since_dt = None
         until_dt = today
         if since is not None:
@@ -120,6 +122,10 @@ def validate_scan_params(payload: Any) -> tuple[dict[str, Any] | None, str | Non
             until_dt = _parse_iso_date(until)
             if until_dt is None:
                 return None, "until 必须是合法的 YYYY-MM-DD 日期"
+        if since_dt and since_dt > today:
+            return None, "since 不能晚于今天（未来报纸尚未发行）"
+        if until_dt > today:
+            return None, "until 不能晚于今天（未来报纸尚未发行）"
         since_dt = since_dt or until_dt
         if since_dt > until_dt:
             return None, "since 不能晚于 until"

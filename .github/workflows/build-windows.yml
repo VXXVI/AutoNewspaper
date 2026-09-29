@@ -13,7 +13,8 @@ name: build-windows
 #                   起不再支持 Win7，3.9+ 打出来的 exe 在 Win7 上会直接报
 #                   「不是有效的 Win32 程序」。默认 3.12 服务主线。
 #   target          产物平台标签，决定 zip 名 NewspaperAuto-<版本>-<target>-x64.zip，
-#                   并连带决定 artifact 名。非 windows 目标跳过 Inno 安装包。
+#                   并连带决定 artifact 名。近来的产物只有便携 zip（自 v1.0.4.1 起
+#                   不再构建 setup 安装包，因此也不需要 Inno Setup）。
 on:
   workflow_dispatch:
     inputs:
@@ -61,19 +62,6 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "${{ inputs.python-version }}"
-
-      - name: 安装 Inno Setup（构建安装包用）
-        if: inputs.target == 'windows'
-        shell: pwsh
-        run: |
-          # 便携 zip 里已有 exe；安装包（setup.exe）需要 Inno Setup。
-          # chocolatey 在 windows-latest 上预装，用它装 Inno Setup 6。
-          choco install innosetup --no-progress -y
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) {
-            Write-Host '::error::Inno Setup 未安装成功（找不到 ISCC.exe）'
-            exit 1
-          }
 
       - name: 源码冒烟（非主线 Python 时运行：把无窗口 exe 吞掉的 traceback 逼出来）
         if: inputs.python-version != '3.12'
@@ -126,7 +114,5 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: NewspaperAuto-${{ inputs.target }}-x64
-          path: |
-            dist/NewspaperAuto-*-${{ inputs.target }}-x64.zip
-            dist/NewspaperAuto-*-setup.exe
+          path: dist/NewspaperAuto-*-${{ inputs.target }}-x64.zip
           if-no-files-found: error

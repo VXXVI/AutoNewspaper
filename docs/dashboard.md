@@ -72,6 +72,7 @@ python daily_scan.py --days 1 --no-state --export-dir .\exports --export-format 
 | `hits/index.html` | 历史全部命中汇总，可直接浏览 |
 | `hits/archive.json` | 命中归档，**v2 格式**：`{version, records, layouts}` —— 记录在 `records`，版面布局按版面去重在顶层 `layouts` 只存一份（v1 的数组格式仍可读，读到即自动升级）。默认只增不删，可用 `--archive-keep-days N` 按天保留 |
 | `state/seen.json` | 增量状态（已判定过的文章 URL），保证只报新增 |
+| `state/last_new.json` | 最近一次扫描的**新增命中 URL** 快照，供看板「只看本次新增」筛选 |
 | `logs/scan-YYYY-MM-DD.log` | 定时任务运行日志 |
 | `exports/newspaper-hits-<时间戳>-<随机标识>.<格式>` | 可选 CSV / JSON 导出文件（目录可自定义） |
 
@@ -123,6 +124,12 @@ make start                                # 打开看板 + 按上次页面设置
   筛选是结果卡**右上角的浮层**（点「筛选」展开）：收起时完全不占版面，整行宽度都留给
   命中列表；按钮角标显示当前启用了多少项筛选，Esc 或点面板外部即关闭，展开状态记在浏览器
   `localStorage`，重开看板后保持。窄屏（≤720px）浮层改回文档流。
+  浮层里的「**新增**」一栏可一键**只看本次新增**（最近一次扫描新命中的报道，列表里带「新增」
+  标记）；数据来自 `state/last_new.json`（扫描时与 `seen.json` 同批落盘），还没扫描过时该
+  按钮不可点。
+  **浅色 / 深色 / 跟随系统**由顶栏右侧的三态开关控制，偏好记在 `localStorage`，并在样式表
+  加载前应用（刷新不闪）；CSS 里深色令牌只此一份（`<html data-theme="dark">`），「跟随系统」
+  在 JS 里解析成显式值。
   页面最大宽度为 1560px（`style.css` 的 `--page-max`），宽屏下不再留大片空白。
   趋势图的日期柱与命中行的版面缩略图都是可切换筛选按钮：点击后**趋势、版面与报道列表**
   会使用同一结果集同步刷新，再点一次或点击清除即可恢复完整结果。

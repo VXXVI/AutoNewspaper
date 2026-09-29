@@ -2,18 +2,21 @@
  * 零 innerHTML：一律 el()/mount()/textContent 建节点；chip/柱/热力格的 on 与 aria-pressed 由 state 推导。
  */
 import {
-  A, selectFiltered, selectSorted, selectScanNames,
+  A, selectFiltered, selectSorted, selectScanNames, countNewHits, newUrlSet,
   paperRanking, keywordRanking, heatmap, HEATMAP_KEY_SEP,
 } from "./store.js";
 import {
   $, el, mount, safeUrl, setText, setInputValue, clearNode, setHidden, chip,
 } from "./dom.js";
-import { geomText } from "./format.js";
+import { geomText, todayIso } from "./format.js";
 
 export var MAX_RANK = 8;
 export var MAX_HEATMAP_PAPERS = 8;
 export var MAX_HEATMAP_DATES = 14;
 export var MAX_HISTORY = 8;
+
+var SVG_NS = "http://www.w3.org/2000/svg"; // 建行内版面缩略图 / 指标卡图标都用它
+var CHART_MAX_BAR = 150; // 柱高上限，与 style.css 里 .chart 的 min-height 同源
 
 export function pct(value) {
   if (!Number.isFinite(value)) return "0%";
@@ -34,7 +37,6 @@ export function renderApp(ctx) {
   var state = ctx.getState();
   renderMeta(state);
   renderHealth(state);
-  renderVersion(state);
   renderFilterInputs(state);
   renderDateBounds(state);
   renderFilterPopover(state);
@@ -98,7 +100,6 @@ function renderServiceTip(state) {
   tip.hidden = !down;
   if (down && text) setText(text, SERVICE_TIP);
 }
-function renderVersion(state) { setText($("version"), state.data ? "v" + state.data.version : ""); }
 function renderFilterInputs(state) {
   setInputValue($("q"), state.q);
   setInputValue($("from"), state.from);
@@ -137,14 +138,32 @@ export function activeFilterCount(state) {
     if (state.keywords.size !== data.keywords.length) count += 1;
   }
   if (state.linkedFilter) count += 1;
+  if (state.newOnly) count += 1;
   return count;
 }
 
 function renderDateBounds(state) {
-  if (!state.data) return;
-  var dates = Object.keys(state.data.date_counts).sort();
-  var min = dates.length ? dates[0] : "", max = dates.length ? dates[dates.length - 1] : "";
-  ["from", "to"].forEach(function (id) { var input = $(id); if (input) { input.min = min; input.max = max; } });
+  // 上限优先用服务端下发的「今天」（应用时区），避免 VPS 为 UTC 而浏览器为北京时间时
+  // 两边各算各的；数据尚未加载时回落到浏览器本地日期。
+  var today = (state.data && state.data.today) || todayIso();
+  var max = today;
+  var min = "";
+  if (state.data) {
+    var dates = Object.keys(state.data.date_counts).sort();
+    if (dates.length) {
+      min = dates[0];
+      var latestDataDate = dates[dates.length - 1];
+      // 数据最新日期与今天取较小者，但永远不能超过今天
+      max = latestDataDate > today ? today : latestDataDate;
+    }
+  }
+  ["from", "to"].forEach(function (id) {
+    var input = $(id);
+    if (input) {
+      if (min) input.min = min;
+      input.max = max;
+    }
+  });
 }
 
 /* ------------------------------------------------------- 筛选 / 扫描 chips */
@@ -186,6 +205,7 @@ export function renderControls(ctx, state) {
       btn.setAttribute("aria-pressed", active ? "true" : "false");
     });
   }
+  renderNewOnlyChip(state);
   var scanBox = $("scan-papers");
   if (scanBox) {
     clearNode(scanBox);
@@ -197,6 +217,24 @@ export function renderControls(ctx, state) {
       }));
     });
   }
+}
+
+/* 「只看本次新增」chip：数据来自 state/last_new.json（后端下发的 new_urls）。
+ * 没有快照时禁用并说明原因，别让用户点进一个恒为空的筛选。 */
+function renderNewOnlyChip(state) {
+  var btn = $("new-only");
+  if (!btn) return;
+  var count = countNewHits(state);
+  var available = Boolean(state.data && (state.data.new_urls || []).length);
+  btn.disabled = !available;
+  btn.classList.toggle("on", state.newOnly === true);
+  btn.setAttribute("aria-pressed", state.newOnly ? "true" : "false");
+  setText(btn, count ? "只看本次新增（" + count + "）" : "只看本次新增");
+  var hint = $("new-only-hint");
+  if (!hint) return;
+  if (!available) setText(hint, "还没有新增记录：完成一次扫描后，这里会列出本次新增的报道。");
+  else if (state.data.last_new_at) setText(hint, "最近一次扫描 " + state.data.last_new_at + " 新增 " + count + " 条。");
+  else setText(hint, "本次新增 " + count + " 条。");
 }
 
 /* ------------------------------------------------------- 扫描面板 */
@@ -226,7 +264,13 @@ export function renderScanPanel(state) {
   }
   renderScanProgress(scan.progress);
   var log = $("scan-log");
-  if (log) { setText(log, scan.logLines.join("\n")); log.scrollTop = log.scrollHeight; }
+  if (log) {
+    // 智能吸底：用户往上翻看历史日志时不要把他拽回底部；只有本来就在底部才跟随。
+    // 必须在写入新内容**之前**判断，否则 scrollHeight 已经变了。
+    var atBottom = log.scrollHeight - log.scrollTop - log.clientHeight <= 24;
+    setText(log, scan.logLines.join("\n"));
+    if (atBottom) log.scrollTop = log.scrollHeight;
+  }
 }
 function renderScanProgress(progress) {
   var wrap = $("scan-progress"), bar = $("scan-progress-bar"), text = $("scan-progress-text");
@@ -336,27 +380,58 @@ function paperButton(parent, label, ariaLabel, onClick, className) {
 }
 
 /* ------------------------------------------------------- 概览 / 图表 / 列表 */
+/* 指标卡的图标：语义化线稿，替代原先无语义的纯色方块。
+ * 路径写成 SVG path 的 d 属性，统一 24×24 视口、描边样式交给 CSS。 */
+var STAT_ICONS = {
+  archive: "M3 7h18v3H3zM5 10v9h14v-9M9 14h6",
+  filter: "M4 5h16l-6 7v6l-4 2v-8z",
+  papers: "M4 5h11v14H4zM15 8h5v11h-5M7 9h5M7 12h5M7 15h3",
+  calendar: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
+  history: "M12 7v5l3 2M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3 4v4h4",
+};
+var STAT_TONES = ["brand", "teal", "amber", "violet", "slate"];
+
+function statIcon(name) {
+  var box = el("i", "stat-icon");
+  box.setAttribute("aria-hidden", "true");
+  var svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  var path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", STAT_ICONS[name] || STAT_ICONS.archive);
+  svg.appendChild(path);
+  box.appendChild(svg);
+  return box;
+}
+
 export function renderStats(state, all, list) {
   var data = state.data;
   var seenTotal = Object.keys(data.seen_counts).reduce(function (n, k) { return n + data.seen_counts[k]; }, 0);
   var dates = Array.from(new Set(list.map(function (r) { return r.date; }))).sort();
   var papers = Array.from(new Set(list.map(function (r) { return r.paper; })));
   var cards = [
-    ["全部归档", all.length, "历史命中报道"],
-    ["当前结果", list.length, list.length === all.length ? "未使用筛选" : "从 " + all.length + " 条中筛出"],
-    ["相关报社", papers.length, papers.join("、") || "暂无报社"],
-    ["覆盖日期", dates.length, dates.length ? dates[0] + " 至 " + dates[dates.length - 1] : "暂无日期"],
-    ["历史已检索", seenTotal, "所有关键词累计，用于识别新增"],
+    { k: "全部归档", v: all.length, x: "历史命中报道", icon: "archive" },
+    {
+      k: "当前结果", v: list.length, icon: "filter",
+      x: list.length === all.length ? "未使用筛选" : "从 " + all.length + " 条中筛出",
+    },
+    { k: "相关报社", v: papers.length, icon: "papers", x: papers.join("、") || "暂无报社" },
+    {
+      k: "覆盖日期", v: dates.length, icon: "calendar",
+      x: dates.length ? dates[0] + " 至 " + dates[dates.length - 1] : "暂无日期",
+    },
+    { k: "历史已检索", v: seenTotal, icon: "history", x: "所有关键词累计，用于识别新增" },
   ];
   var box = $("stats");
   if (!box) return;
   clearNode(box);
-  cards.forEach(function (item) {
+  cards.forEach(function (item, index) {
     var card = mount(box, "article", "stat");
-    card.setAttribute("aria-label", item[0] + "：" + item[1] + (item[2] ? "，" + item[2] : ""));
-    mount(card, "div", "k", item[0]);
-    mount(card, "div", "v", item[1]);
-    if (item[2]) { var detail = mount(card, "div", "x", item[2]); detail.title = item[2]; }
+    card.setAttribute("data-tone", STAT_TONES[index] || "brand");
+    card.setAttribute("aria-label", item.k + "：" + item.v + (item.x ? "，" + item.x : ""));
+    card.appendChild(statIcon(item.icon));
+    mount(card, "div", "k", item.k);
+    mount(card, "div", "v", item.v);
+    if (item.x) { var detail = mount(card, "div", "x", item.x); detail.title = item.x; }
   });
 }
 
@@ -390,7 +465,7 @@ export function renderChart(ctx, records) {
     mount(col, "div", "bar-n", n);
     var bar = mount(col, "div", "bar");
     bar.setAttribute("aria-hidden", "true");
-    bar.style.height = Math.max(3, Math.round((n / max) * 96)) + "px";
+    bar.style.height = Math.max(3, Math.round((n / max) * CHART_MAX_BAR)) + "px";
     bar.title = d + "：" + n + " 条";
     mount(col, "div", "bar-l", d.slice(5));
   });
@@ -424,7 +499,6 @@ export function layoutKeyOf(r) {
  * 若每块一个 DOM 节点，光缩略图就是几千个节点；这里把**非命中块预先合成一条 SVG
  * path**（按 layout 对象缓存、整版共享），每行只多一个命中 <rect>。
  */
-var SVG_NS = "http://www.w3.org/2000/svg";
 var MAP_UNIT = 1000; // 缩略图 viewBox 边长：版面坐标是 0~1 的归一化值
 var _mapCache = new WeakMap();
 
@@ -525,17 +599,29 @@ export function renderRows(ctx, state, records) {
     groupUrls[key].add(r.url);
   });
   var fragment = document.createDocumentFragment();
+  var newUrls = newUrlSet(state.data);
   records.slice(0, state.visibleRows).forEach(function (r) {
+    var isNew = newUrls.has(r.url);
     var tr = document.createElement("tr");
+    if (isNew) {
+      tr.className = "is-new";
+      tr.setAttribute("data-new", "true");
+    }
     var paperCell = mount(tr, "td", "col-paper", r.paper); paperCell.setAttribute("data-label", "报社");
     var dateCell = mount(tr, "td", "col-date", r.date); dateCell.setAttribute("data-label", "日期");
     var td = mount(tr, "td", "title");
     td.setAttribute("data-label", "报道");
     var url = safeUrl(r.url);
     if (url) {
-      var a = mount(td, "a", null, r.title || r.url);
+      var a = el("a");
       a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
-    } else mount(td, "span", null, r.title);
+      if (isNew) a.appendChild(el("span", "tag-new", "新增"));
+      a.appendChild(document.createTextNode(r.title || r.url));
+      td.appendChild(a);
+    } else {
+      if (isNew) td.appendChild(el("span", "tag-new", "新增"));
+      mount(td, "span", null, r.title);
+    }
     (r.snippets || []).slice(0, 2).forEach(function (s) { mount(td, "div", "sn", s); });
     if (Array.isArray(r.matched) && r.matched.length) {
       var tags = mount(td, "div", "tags");
@@ -601,9 +687,15 @@ function renderEmpty(state, all, list) {
     return;
   }
   box.hidden = list.length > 0;
-  box.textContent = state.focusKeywords
-    ? "当前关键词「" + state.focusKeywords.join("、") + "」暂无命中；历史归档仍保留。"
-    : "没有符合条件的命中。";
+  if (state.newOnly && !(state.data.new_urls || []).length) {
+    box.textContent = "还没有新增记录；完成一次扫描后即可按「只看本次新增」筛选。";
+  } else if (state.newOnly) {
+    box.textContent = "本次新增在当前其它筛选条件下没有匹配报道，可放宽筛选或关闭「只看本次新增」。";
+  } else if (state.focusKeywords) {
+    box.textContent = "当前关键词「" + state.focusKeywords.join("、") + "」暂无命中；历史归档仍保留。";
+  } else {
+    box.textContent = "没有符合条件的命中。";
+  }
 }
 function renderRangeHint(state) {
   var hint = $("range-hint");
@@ -665,7 +757,8 @@ export function renderHeatmap(ctx, records) {
   var grid = mount(box, "div", "heatmap-grid");
   grid.setAttribute("role", "group");
   grid.setAttribute("aria-label", "日期与报社命中热力图，点击单元格可按该报社与日期筛选");
-  grid.style.gridTemplateColumns = "minmax(82px, 1.4fr) repeat(" + h.dates.length + ", minmax(20px, 1fr))";
+  // 固定上限而不是 1fr：否则宽屏上 14 列会被拉成每列 80px，格子之间裂开大片空白
+  grid.style.gridTemplateColumns = "minmax(72px, 128px) repeat(" + h.dates.length + ", minmax(24px, 42px))";
   mount(grid, "span", "heatmap-corner", "报社 \\ 日期");
   h.dates.forEach(function (d) { mount(grid, "span", "heatmap-date", d.slice(5)).title = d; });
   h.papers.forEach(function (paper) {

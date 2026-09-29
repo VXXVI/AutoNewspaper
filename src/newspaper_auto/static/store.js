@@ -23,6 +23,7 @@ export var A = {
   SET_PRESET: "SET_PRESET",
   SET_LINKED: "SET_LINKED",
   CLEAR_LINKED: "CLEAR_LINKED",
+  SET_NEW_ONLY: "SET_NEW_ONLY",
   TOGGLE_PAPER: "TOGGLE_PAPER",
   TOGGLE_KEYWORD: "TOGGLE_KEYWORD",
   SET_KEYWORDS: "SET_KEYWORDS",
@@ -69,6 +70,8 @@ export function createInitialState() {
     to: "",
     sort: "date-desc",
     preset: "all",
+    // 只看「最近一次扫描的新增命中」（data.new_urls 提供）。
+    newOnly: false,
     visibleRows: INITIAL_ROWS,
     // 结果区的筛选面板是否展开（收起来后结果表占满整行）。选择由 app.js 记忆在 localStorage。
     filtersOpen: false,
@@ -156,6 +159,7 @@ export function reducer(state, action) {
         patch.to = "";
         patch.sort = "date-desc";
         patch.preset = "all";
+        patch.newOnly = false;
         patch.visibleRows = INITIAL_ROWS;
       } else {
         patch.papers = action.allPapersSelected
@@ -189,6 +193,8 @@ export function reducer(state, action) {
       return withPatch(state, { linkedFilter: action.filter, visibleRows: INITIAL_ROWS });
     case A.CLEAR_LINKED:
       return withPatch(state, { linkedFilter: null, visibleRows: INITIAL_ROWS });
+    case A.SET_NEW_ONLY:
+      return withPatch(state, { newOnly: action.on === true, visibleRows: INITIAL_ROWS });
     case A.TOGGLE_PAPER:
       return withPatch(state, { papers: toggledSet(state.papers, action.name, action.on) });
     case A.TOGGLE_KEYWORD:
@@ -214,7 +220,7 @@ export function reducer(state, action) {
     case A.RESET_VIEW: {
       var reset = {
         linkedFilter: null, q: "", from: "", to: "",
-        sort: "date-desc", preset: "all", visibleRows: INITIAL_ROWS
+        sort: "date-desc", preset: "all", newOnly: false, visibleRows: INITIAL_ROWS
       };
       if (state.data) {
         reset.papers = new Set(state.data.papers);
@@ -349,7 +355,9 @@ export function selectScanNames(scan) {
 export function selectFiltered(state) {
   if (!state || !state.data) return [];
   var q = state.q.trim().toLowerCase();
+  var newUrls = state.newOnly ? new Set(state.data.new_urls || []) : null;
   return state.data.records.filter(function (r) {
+    if (newUrls && !newUrls.has(r.url)) return false;
     if (!state.papers.has(r.paper)) return false;
     if (!state.keywords.size || !(r.matched || []).some(function (k) { return state.keywords.has(k); })) return false;
     if (state.from && (!r.date || r.date < state.from)) return false;
@@ -366,6 +374,22 @@ export function selectFiltered(state) {
     }
     return true;
   });
+}
+
+/** 「本次新增」URL 集合；没有快照时为无法命中的空集。 */
+export function newUrlSet(data) {
+  return new Set((data && data.new_urls) || []);
+}
+
+/** 归档里属于「本次新增」的记录数（供筛选 chip 显示，不受其他筛选影响）。 */
+export function countNewHits(state) {
+  if (!state || !state.data) return 0;
+  var urls = state.data.new_urls;
+  if (!urls || !urls.length) return 0;
+  var set = new Set(urls);
+  var count = 0;
+  state.data.records.forEach(function (r) { if (set.has(r.url)) count += 1; });
+  return count;
 }
 
 function byDateDesc(a, b) {

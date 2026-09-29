@@ -3,11 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light">
-<meta name="theme-color" content="#f4f6fb">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f2f5fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1017" media="(prefers-color-scheme: dark)">
 <title>数字报监测中心</title>
 <link rel="icon" href="/static/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<!-- 首屏防闪：在样式表之前把主题落到 <html data-theme>，避免刷新时先亮后暗闪一下。
+     与 static/theme.js 同一口径（localStorage 键名与解析规则必须保持一致）。 -->
+<script>
+(function () {
+  var pref = "auto";
+  try { pref = localStorage.getItem("newspaper-auto.theme") || "auto"; } catch (err) { /* 隐私模式忽略 */ }
+  var dark = pref === "dark" ||
+    (pref !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+})();
+</script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -22,15 +34,20 @@
         <div class="sub" id="meta" aria-live="polite">正在读取数据…</div>
       </div>
     </div>
-    <nav class="page-nav" aria-label="页面区域">
+    <nav class="page-nav" id="page-nav" aria-label="页面区域">
       <a href="#scan-card">开始扫描</a>
+      <a href="#metrics-section">监测概览</a>
       <a href="#dashboard-section">图形看板</a>
       <a href="#results-card">查看结果</a>
       <a href="#trend-section">时间趋势</a>
     </nav>
     <div class="top-actions">
       <span class="health" id="health" role="status" aria-live="polite" data-state="unknown"><i aria-hidden="true"></i><span id="health-text">连接中…</span></span>
-      <span class="badge" id="version"></span>
+      <div class="theme-toggle" id="theme-toggle" role="group" aria-label="主题：跟随系统">
+        <button type="button" data-theme-value="light" aria-pressed="false" aria-label="浅色" title="浅色"><span aria-hidden="true">☀</span></button>
+        <button type="button" data-theme-value="dark" aria-pressed="false" aria-label="深色" title="深色"><span aria-hidden="true">☾</span></button>
+        <button type="button" data-theme-value="auto" aria-pressed="false" aria-label="跟随系统" title="跟随系统"><span aria-hidden="true">◐</span></button>
+      </div>
       <button id="reload" class="btn ghost compact-button" type="button">刷新数据</button>
     </div>
   </div>
@@ -40,10 +57,8 @@
   <section class="card command-card" id="scan-card" aria-labelledby="scan-title">
     <div class="scan-heading">
       <div class="section-kicker"><span>01</span> 创建监测任务</div>
-      <div>
-        <h2 id="scan-title">查找今天值得关注的报道</h2>
-        <p>填写关键词和时间范围，系统会逐一检查已启用的数字报。</p>
-      </div>
+      <h2 id="scan-title">查找今天值得关注的报道</h2>
+      <p>填写关键词和时间范围，系统会逐一检查已启用的数字报。</p>
     </div>
 
     <div class="scan-workspace">
@@ -137,10 +152,10 @@
     </div>
   </section>
 
-  <section class="metrics-section" aria-labelledby="metrics-title">
+  <section class="metrics-section" id="metrics-section" aria-labelledby="metrics-title">
     <div class="section-title-row">
       <div>
-        <span class="eyebrow">监测概览</span>
+        <div class="section-kicker"><span>02</span> 监测概览</div>
         <h2 id="metrics-title">一眼掌握当前结果</h2>
       </div>
       <span class="section-note">指标会随筛选条件同步变化</span>
@@ -151,7 +166,7 @@
   <section class="dashboard-section" id="dashboard-section" aria-labelledby="dashboard-title">
     <div class="section-title-row">
       <div>
-        <span class="eyebrow">图形化看板</span>
+        <div class="section-kicker"><span>03</span> 图形化看板</div>
         <h2 id="dashboard-title">谁在报、什么在热、什么时候最密集</h2>
       </div>
       <span class="section-note">报社排名来自全部归档；关键词排名、热力图与时间线跟随当前筛选</span>
@@ -187,6 +202,15 @@
           </div>
         </div>
         <div class="heatmap" id="heatmap" role="group" aria-label="日期与报社命中热力图"></div>
+        <div class="heatmap-legend" aria-hidden="true">
+          <span>命中数</span>
+          <span><i style="background:var(--hm-0)"></i>0</span>
+          <span><i style="background:var(--hm-1)"></i>少</span>
+          <span><i style="background:var(--hm-2)"></i></span>
+          <span><i style="background:var(--hm-3)"></i></span>
+          <span><i style="background:var(--hm-4)"></i>多</span>
+          <span style="margin-left:4px">颜色越深，当天该报社命中越多</span>
+        </div>
       </section>
 
       <section class="card dash-card dash-wide" aria-labelledby="history-title">
@@ -204,7 +228,7 @@
   <section class="card results-card" id="results-card" aria-labelledby="results-title">
     <div class="section-heading results-heading">
       <div>
-        <div class="section-kicker"><span>02</span> 浏览监测结果</div>
+        <div class="section-kicker"><span>04</span> 浏览监测结果</div>
         <h2 id="results-title">命中报道</h2>
         <p id="shown" aria-live="polite">正在加载…</p>
       </div>
@@ -249,6 +273,14 @@
             <button class="chip" data-preset="30d" type="button" aria-pressed="false">近 30 天</button>
           </div>
           <span class="hint" id="range-hint"></span>
+        </fieldset>
+
+        <fieldset class="filter-group fieldset-reset">
+          <legend>新增</legend>
+          <div class="chips">
+            <button class="chip" id="new-only" type="button" aria-pressed="false">只看本次新增</button>
+          </div>
+          <span class="hint" id="new-only-hint"></span>
         </fieldset>
 
         <details class="filter-details">
@@ -296,20 +328,20 @@
     </div>
   </section>
 
-  <div class="analysis-heading" id="analysis">
-    <div>
-      <div class="section-kicker"><span>03</span> 理解报道分布</div>
-      <h2>时间趋势</h2>
+  <section class="trend-section" id="trend-section" aria-labelledby="trend-title">
+    <div class="analysis-heading" id="analysis">
+      <div>
+        <div class="section-kicker"><span>05</span> 理解报道分布</div>
+        <h2 id="trend-title">时间趋势</h2>
+      </div>
+      <p>图表始终跟随当前结果筛选。</p>
     </div>
-    <p>图表始终跟随当前结果筛选。</p>
-  </div>
 
-  <section class="trend-section" id="trend-section" aria-label="时间趋势">
-    <section class="card trend-card" aria-labelledby="trend-title">
+    <section class="card trend-card">
       <div class="section-heading compact-heading">
         <div>
           <span class="eyebrow">时间趋势</span>
-          <h2 id="trend-title">每天命中了多少报道</h2>
+          <p class="trend-card-sub">每天命中了多少报道</p>
         </div>
         <span class="hint">最近 90 个有记录的日期</span>
       </div>

@@ -149,6 +149,30 @@ def test_record_hits_marks_each_matched_keyword():
     assert seen == {"甲": {"u1": 1, "u2": 1}, "乙": {"u1": 1}}
 
 
+# ---------------------------------------------------------------- 新增快照
+def test_save_and_load_last_new_roundtrip_dedupes_and_skips_dirty(tmp_path):
+    path = tmp_path / "last_new.json"
+    hits = [
+        {"url": "u1"},
+        {"url": "u1"},  # 重复 URL 只留一次
+        {"url": ""},  # 空 URL 丢掉
+        {"matched": ["x"]},  # 没有 url 的脏数据丢掉
+        "not-a-dict",
+    ]
+    state.save_last_new(path, hits, generated_at=datetime(2026, 9, 22, 10, 0, 0))
+    loaded = state.load_last_new(path)
+    assert loaded == {"generated_at": "2026-09-22 10:00:00", "urls": ["u1"]}
+
+
+def test_load_last_new_tolerates_missing_and_corrupt(tmp_path):
+    assert state.load_last_new(tmp_path / "nope.json") is None
+    bad = tmp_path / "bad.json"
+    bad.write_text("[1, 2, 3]", encoding="utf-8")
+    assert state.load_last_new(bad) is None
+    bad.write_text('{"urls": "应失配"}', encoding="utf-8")
+    assert state.load_last_new(bad) is None
+
+
 # ---------------------------------------------------------------- 归档 v2
 def _layout(items: int) -> dict:
     return {

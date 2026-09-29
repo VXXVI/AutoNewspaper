@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import fsutil
+from . import clock, fsutil
 
 # CSV 列与 JSON 记录字段保持一致：section 与 section_no 同时输出，
 # 后者是规范化版号，便于下游排序/去重。
@@ -105,7 +105,7 @@ def render_md(
     now: datetime | None = None,
 ) -> str:
     """Markdown 报告文本。"""
-    now = now or datetime.now()
+    now = now or clock.now()
     dates = list(dates)
     lines = [
         f"# 「{kw_label}」数字报监测报告",
@@ -233,7 +233,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 
 def render_html(kw: str, archive: list[dict[str, Any]], now: datetime | None = None) -> str:
     """历史命中汇总页 HTML 文本。"""
-    now = now or datetime.now()
+    now = now or clock.now()
     rows = []
     for hit in sorted(archive, key=lambda x: (x["date"], x["paper"]), reverse=True):
         snippets = "".join(f'<div class="sn">{_html.escape(s)}</div>' for s in hit.get("snippets", [])[:1])

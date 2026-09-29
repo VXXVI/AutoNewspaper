@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import report
+from . import clock, report
 from .fsutil import explain_oserror, write_text
 
 EXPORT_FORMATS = ("csv", "json")
@@ -115,7 +115,7 @@ def export_hits(
         # 建目录就失败（权限、只读挂载、空间不足……）：此时还拿不到规范化路径，
         # 用调用方传入的原值，至少是使用者认得出来的那个。
         raise ExportWriteError(directory, exc) from exc
-    timestamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    timestamp = (now or clock.now()).strftime("%Y%m%d-%H%M%S")
     token = uuid.uuid4().hex[:8]
     target = target_dir / f"newspaper-hits-{timestamp}-{token}.{normalized_format}"
     if normalized_format == "csv":

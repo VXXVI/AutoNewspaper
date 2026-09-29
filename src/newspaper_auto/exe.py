@@ -35,7 +35,7 @@ import os
 import sys
 from collections.abc import Sequence
 
-from . import __version__, cli, paths, web
+from . import __version__, cli, clock, paths, web
 
 _USAGE = f"""\
 数字报关键词每日监测 v{__version__}
@@ -116,7 +116,7 @@ def _open_scan_log():
     try:
         directory = paths.app_dir() / "logs"
         directory.mkdir(parents=True, exist_ok=True)
-        path = paths.scan_log_file(directory.parent, datetime.date.today().isoformat())
+        path = paths.scan_log_file(directory.parent, clock.today_iso())
         return open(path, "a", encoding="utf-8")
     except OSError as exc:
         print(f"提示：无法写入扫描日志（{exc}），本次只在控制台输出。", file=sys.stderr)
