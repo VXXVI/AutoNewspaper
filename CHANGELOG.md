@@ -4,16 +4,30 @@
 [语义化版本](https://semver.org/lang/zh-CN/)。条目面向使用者，描述「能感知到的变化」，
 不再记录函数级实现细节。
 
-## [1.0.3] - 2026-09-29
+## [1.0.4] - 2026-09-29
+
+> 1.0.3 已打 tag 但两个 Windows 构建 job 失败、**没有产出任何包**（失败原因见下方
+> Fixed 第 1 条，与运行时代码无关）。本次在同一批修复之上重新发版。
 
 ### Fixed
 
-- **中国教育报整家漏报**（`0 版面 0 文章`）：该站只提供 `AES128-SHA`（RSA 密钥交换 +
-  SHA1）这类老套件，OpenSSL 3 的默认 `SECLEVEL=2` 直接禁用，握手阶段就被掐掉；它同时
-  把整条证书链（含自签根 `USERTrust RSA Certification Authority`）都发了出来，而 Win7
-  的系统根库没有这个锚点。**两台机器卡在完全不同的环节**，此前的表现还依赖系统是否
-  装有 `curl`：Win10 1803+ 自带 `curl.exe` 兜底所以「看着正常」，Win7 上没有 curl
-  （Win10 1803 才内置）就直接整家 0 版面。
+- 1.0.3 的两个 Windows 构建 job 失败并报出**完全错误的错因**（「exe 缺少 TLS 修复
+  模块：打出来的是不含本次修复的代码」），而 exe 其实是完全正常的：打包后校验 exe 模块
+  清单的那段脚本内联在 `build_windows.ps1` 里以 `python -c` 执行，CI 的 Windows runner
+  控制台编码是 **cp1252**，脚本一句 `print` 中文就抛 `UnicodeEncodeError` 并非零退出，
+  于是外层那句断言如实转述了一个从未发生的失败。现已把解析逻辑抽成独立文件
+  `scripts/check_exe_tls.py` 并把输出限定为纯 ASCII，解析器本身也由
+  `tests/test_packaging.py` 用合成字节单测，不再依赖「真构建一次」才发现它坏了。
+- 新增的 4xx 站点侧响应测试在 **Python 3.9** 上失败：测试构造的 `HTTPError` 传了
+  `fp=None`，而 3.12 之前 `urllib` 的 `addinfourl.__enter__` 会访问 `self.fp.closed`。
+  真实 `urlopen` 返回的 `HTTPError` 总是带文件对象，故这是测试自身的问题。
+- 上一版的**中国教育报整家漏报**修复随本次一同发布（v1.0.3 无产物）：该站只提供
+  `AES128-SHA`（RSA 密钥交换 + SHA1）这类老套件，OpenSSL 3 的默认 `SECLEVEL=2`
+  直接禁用，握手阶段就被掐掉；它同时把整条证书链（含自签根
+  `USERTrust RSA Certification Authority`）都发了出来，而 Win7 的系统根库没有这个
+  锚点。**两台机器卡在完全不同的环节**，此前的表现还依赖系统是否装有 `curl`：
+  Win10 1803+ 自带 `curl.exe` 兜底所以「看着正常」，Win7 上没有 curl（Win10 1803
+  才内置）就直接整家 0 版面。
   现在抓取一律带上 `tls` 层：系统根库之上**追加**随包 `cacert.pem`（Mozilla 根证书包，
   补系统缺的锚点），握手层被拒**且不是证书问题**时用 `DEFAULT@SECLEVEL=1` 重试一次
   （证书校验始终开着，降的只是套件强度），并记住本机需要放宽、后续请求不再重复失败
@@ -26,10 +40,10 @@
 
 - 打包链路三处新增闸门，防止「源码修好但没进包」再次静默发生：`NewspaperAuto.spec`
   的 `datas` 现在带上 `cacert.pem`，`pyproject.toml` 的 `package-data` 与
-  `MANIFEST.in` 同步收录（wheel / sdist 都要有），`scripts/build_windows.ps1` 在生成
-  exe 后读 PyInstaller 的 PYZ 模块目录表确认 `newspaper_auto.tls` 确实在包里，
-  `release.yml` 的 wheel 冒烟新增 `cacert.pem` 校验。均已由 `tests/test_packaging.py`
-  钉死。
+  `MANIFEST.in` 同步收录（wheel / sdist 都要有），生成 exe 后由
+  `scripts/check_exe_tls.py` 读 PyInstaller 的 PYZ 模块目录表确认
+  `newspaper_auto.tls` 确实在包里，`release.yml` 的 wheel 冒烟新增 `cacert.pem` 校验。
+  均已由 `tests/test_packaging.py` 钉死。
 
 ## [1.0.2] - 2026-09-29
 
