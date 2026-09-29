@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-29
+
 ### Changed
 
 - Windows 7 包（**Python 3.8.10** 构建）的兼容性改为由 CI 保证：新增
