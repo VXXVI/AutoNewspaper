@@ -16,9 +16,10 @@
 #   - marshal.loads 那张表，取每项的第一个元素（模块名）。
 # 参见 tests/test_packaging.py 里用合成字节做的单测。
 #
-# 注意「数据文件」（如随包根证书 cacert.pem）**不能**这样查：CArchive 的数据项名字
-# 不是明文存在 exe 里，字节 grep 不到。数据文件随包由 build_windows.ps1 后面的
-# /static/store.js 看板冒烟间接证明。
+# 「数据文件」（如随包根证书 cacert.pem）走另一条路：它们不进 PYZ 目录表，而是以
+# 长度前缀字符串出现在 CArchive 自己的 TOC 里，**同样是明文**。实测 v1.0.4 的 exe 里
+# 就有 `newspaper_auto\cacert.pem`（反斜杠！），v1.0.1 的 exe 里一次都没有。
+# 所以不必再靠 /static/store.js 看板冒烟间接证明 —— 直接查更硬。
 #
 # 输出刻意只用 ASCII：本脚本由 CI 的 Windows runner 执行，那边控制台是 cp1252，
 # 之前在这里 print 中文把 stdout 撑爆成 UnicodeEncodeError，害得两个 Windows 构建
@@ -38,8 +39,22 @@ REQUIRED_MODULES = ("newspaper_auto.tls", "newspaper_auto.http", "newspaper_auto
 # 只有在「目录表里连老模块都没有」时，才判定是解析器本身失效（而不是缺修复）
 _SANITY_MODULE = "newspaper_auto.scanner"
 
-# 「数据文件」随包的旁证：源码里必须有随包根证书，否则 Win7 会整家抓不到中国教育报
+# 随包数据文件清单（相对包根，含目录分隔符）：漏了就只剩系统根库
+REQUIRED_DATA_FILES = ("newspaper_auto/cacert.pem",)
+
+# 源码里必须存在的对应文件（构建输入自检，防止拿错工作目录构建）
 CA_BUNDLE = Path(__file__).resolve().parents[1] / "src" / "newspaper_auto" / "cacert.pem"
+
+
+def has_data_file(data: bytes, relative: str) -> bool:
+    """exe 的 CArchive TOC 里是否声明了这个数据文件。
+
+    PyInstaller 生成的 TOC 项名用**平台原生**分隔符：Windows 上构建就是反斜杠
+    （``newspaper_auto\\cacert.pem``），所以两种写法都要接受，否则在 Windows 上
+    构建出的包会被自己判成「缺 cacert.pem」——正是本脚本要消灭的那类假失败。
+    """
+    normalised = relative.replace("/", "\\")
+    return data.find(relative.encode("utf-8")) >= 0 or data.find(normalised.encode("utf-8")) >= 0
 
 
 def parse_pyz_modules(data: bytes) -> set:
@@ -66,7 +81,8 @@ def main(argv: list) -> int:
         print("usage: check_exe_tls.py <path-to-exe>", file=sys.stderr)
         return 2
     exe = Path(argv[0])
-    modules = parse_pyz_modules(exe.read_bytes())
+    raw = exe.read_bytes()
+    modules = parse_pyz_modules(raw)
     if not modules:
         print(f"FAIL: no PYZ module table found in {exe}; cannot verify", file=sys.stderr)
         return 1
@@ -88,8 +104,18 @@ def main(argv: list) -> int:
     if not CA_BUNDLE.is_file():
         print(f"FAIL: {CA_BUNDLE} is missing from the source tree", file=sys.stderr)
         return 1
+    absent_data = sorted(name for name in REQUIRED_DATA_FILES if not has_data_file(raw, name))
+    if absent_data:
+        # 数据文件漏进包 = 只剩系统根库，Win7 一类缺锚点的机器会整家抓不到中国教育报
+        print(
+            f"FAIL: exe TOC does not ship {', '.join(absent_data)} "
+            "-- such machines would miss the paper entirely",
+            file=sys.stderr,
+        )
+        return 1
     required = ", ".join(REQUIRED_MODULES)
-    print(f"OK: {len(modules)} modules in PYZ, TLS fix present (required: {required})")
+    data = ", ".join(REQUIRED_DATA_FILES)
+    print(f"OK: {len(modules)} modules in PYZ, TLS fix present (required: {required}; data: {data})")
     return 0
 
 

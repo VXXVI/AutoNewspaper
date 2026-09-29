@@ -18,6 +18,11 @@
   于是外层那句断言如实转述了一个从未发生的失败。现已把解析逻辑抽成独立文件
   `scripts/check_exe_tls.py` 并把输出限定为纯 ASCII，解析器本身也由
   `tests/test_packaging.py` 用合成字节单测，不再依赖「真构建一次」才发现它坏了。
+  该脚本遇到畸形 exe 时也改为安静地报「读不到目录表」，不再把「我没读懂这个 exe」
+  说成「这个 exe 里没有本次修复」。
+- 随包根证书 `cacert.pem` 此前**无法被构建期直接校验**，只能靠 `/static/store.js`
+  看板冒烟间接证明；原因是早先按正斜杠去 grep，而 Windows 上构建出的包在 CArchive
+  TOC 里记的是**反斜杠**路径。现在两种分隔符都接受，证书漏进包会**直接构建失败**。
 - 新增的 4xx 站点侧响应测试在 **Python 3.9** 上失败：测试构造的 `HTTPError` 传了
   `fp=None`，而 3.12 之前 `urllib` 的 `addinfourl.__enter__` 会访问 `self.fp.closed`。
   真实 `urlopen` 返回的 `HTTPError` 总是带文件对象，故这是测试自身的问题。

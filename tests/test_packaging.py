@@ -124,6 +124,28 @@ def test_check_exe_tls_reads_the_pyz_table():
     assert check_exe_tls.parse_pyz_modules(truncated) == set()
     assert check_exe_tls.parse_pyz_modules(blob[:-1] + b"\xff") == set()
     assert "newspaper_auto.tls" in check_exe_tls.REQUIRED_MODULES
+
+
+def test_check_exe_tls_detects_the_bundled_ca_bundle():
+    """随包根证书必须直接验，而不是靠 /static/store.js 看板冒烟间接证明。
+
+    数据文件不进 PYZ 目录表，而是以长度前缀字符串出现在 CArchive 自己的 TOC 里，
+    **同样是明文** —— 但 PyInstaller 写的是**平台原生**分隔符，Windows 上构建出的包
+    里是 ``newspaper_auto\\cacert.pem``。早先按正斜杠 grep 一无所获，正是栽在这里，
+    一度误以为「数据文件没法查」，白跑了两次构建才验证清楚。
+    """
+    check_exe_tls = _load_check_exe_tls()
+    relative = "newspaper_auto/cacert.pem"
+    windows_style = b"\x1bnewspaper_auto\\cacert.pem\x00\x00"
+    posix_style = b"\x1bnewspaper_auto/cacert.pem\x00\x00"
+
+    assert check_exe_tls.has_data_file(windows_style, relative), "认不出反斜杠写法"
+    assert check_exe_tls.has_data_file(posix_style, relative), "认不出正斜杠写法"
+    assert not check_exe_tls.has_data_file(b"newspaper_auto\\static\\app.js", relative)
+    assert "newspaper_auto/cacert.pem" in check_exe_tls.REQUIRED_DATA_FILES
+    # 数据文件这一项必须是「没进包就失败」，不能是可选旁证
+    source = CHECK_EXE_TLS.read_text(encoding="utf-8")
+    assert "absent_data" in source and "return 1" in source
     # 输出必须纯 ASCII：CI 的 Windows 控制台是 cp1252，print 中文就是 UnicodeEncodeError
     checker_src = (ROOT / "scripts" / "check_exe_tls.py").read_text(encoding="utf-8")
     for line in checker_src.splitlines():
