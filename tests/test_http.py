@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import io
 import threading
 import urllib.error
 import zlib
@@ -156,7 +157,9 @@ def test_stdlib_once_keeps_site_side_4xx_without_touching_tls(monkeypatch):
 
     def _urlopen(request, timeout=None, context=None):
         calls.append(context)
-        exc = urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+        # fp 必须给真对象：3.12 之前 HTTPError 继承的 addinfourl.__enter__ 会摸
+        # self.fp.closed，传 None 会抛 AttributeError（真实 urlopen 不会这样）。
+        exc = urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, io.BytesIO(b""))
         raise exc
 
     _patch_urlopen(monkeypatch, _urlopen)

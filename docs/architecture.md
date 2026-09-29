@@ -87,7 +87,7 @@ Google News 是**标题级检索**，正文提及全漏。实测某日的 4 条�
   看着正常，Win7 没有 curl（Win10 1803+ 才内置）就整家 0 版面。
   - 诊断手法：`python3 -c "import ssl,urllib.request as u; ..."` 分别用
     `ssl.create_default_context()` 与加了 `set_ciphers("DEFAULT@SECLEVEL=1")` 的上下文
-    各抓一次；`scripts/build_windows.ps1` 会在打包后读 exe 的 PYZ 模块目录表确认
+    各抓一次；打包后会由 `scripts/check_exe_tls.py` 读 exe 的 PYZ 模块目录表确认
     `newspaper_auto.tls` 确实在包里（v1.0.2 漏发过一次「源码修好但没进包」）。
 - **对报社站点是轻量访问**：每天每站约 100~200 个请求、并发 8，属正常阅读量级。
   默认并发 8；若某家不稳可降到 4~5（`--workers 5`）。

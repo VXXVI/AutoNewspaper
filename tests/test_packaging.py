@@ -16,15 +16,26 @@ release.yml 的 wheel 冒烟。）
 
 from __future__ import annotations
 
+import importlib.util
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CHECK_EXE_TLS = ROOT / "scripts" / "check_exe_tls.py"
 SPEC = ROOT / "packaging" / "NewspaperAuto.spec"
 PYPROJECT = ROOT / "pyproject.toml"
 MANIFEST = ROOT / "MANIFEST.in"
 CA_BUNDLE = ROOT / "src" / "newspaper_auto" / "cacert.pem"
 TLS_MODULE = ROOT / "src" / "newspaper_auto" / "tls.py"
+
+
+def _load_check_exe_tls():
+    """按路径加载 ``scripts/check_exe_tls.py``（它不是包内模块，不走 sys.path）。"""
+    spec = importlib.util.spec_from_file_location("check_exe_tls", CHECK_EXE_TLS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _toml_section(text: str, header: str) -> str:
@@ -75,11 +86,46 @@ def test_sdist_carries_the_ca_bundle():
 
 
 def test_windows_build_script_verifies_the_exe_contains_the_fix():
-    """构建脚本要读 exe 的 PYZ 模块目录表确认 tls 在包里（本次事故的直接对策）。"""
+    """构建脚本要读 exe 的 PYZ 模块目录表确认 tls 在包里（本次事故的直接对策）。
+
+    自检实现放在 ``scripts/check_exe_tls.py`` 独立文件里，刻意不内联 ``python -c``：
+    内联版曾往 Windows runner 的 cp1252 控制台 print 中文，抛 UnicodeEncodeError 后
+    脚本非零退出，v1.0.3 的两个 Windows 构建 job 双双报「exe 缺少 TLS 修复模块」，
+    而 exe 其实完全正常。断言里把「不要退回内联」也钉住。
+    """
     script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
-    assert "newspaper_auto.tls" in script, "build_windows.ps1 没有校验 exe 是否含 TLS 修复模块"
-    assert "PYZ" in script, "build_windows.ps1 里的模块清单自检实现被删了"
-    assert "cacert.pem" in script, "build_windows.ps1 没有校验随包根证书是否存在"
+    assert "check_exe_tls.py" in script, "build_windows.ps1 没有调用 exe 模块清单自检"
+    assert "@'" not in script, "build_windows.ps1 又把 python 代码内联回来了"
+    checker = (ROOT / "scripts" / "check_exe_tls.py").read_text(encoding="utf-8")
+    assert "newspaper_auto.tls" in checker, "自检脚本没要求 newspaper_auto.tls 在包里"
+    assert "cacert.pem" in checker, "自检脚本没校验随包根证书是否存在"
+
+
+def test_check_exe_tls_reads_the_pyz_table():
+    """自检脚本的 PYZ 目录表解析要能真跑通：合成一份最小 PYZ 字节喂给它。
+
+    这段解析是「源码修好但没进包」的唯一防线，它自己坏掉时不能靠 CI 构建才发现
+    ——v1.0.3 就是自检脚本崩了、结果报了个完全错误的错因。
+    """
+    check_exe_tls = _load_check_exe_tls()
+    import marshal
+    import struct
+
+    # 布局与真实 CArchive 一致：标记 + 4 字节魔数 + 4 字节 python 魔数 + 4 字节目录表偏移
+    table = marshal.dumps([("newspaper_auto.http", False, 0, 1), ("newspaper_auto.tls", False, 0, 1)])
+    header = b"PYZ\x00" + b"\x00\x00\x00\x00" + struct.pack(">I", 12)
+    blob = header + table
+
+    assert check_exe_tls.parse_pyz_modules(blob) == {"newspaper_auto.http", "newspaper_auto.tls"}
+    assert check_exe_tls.parse_pyz_modules(b"not an exe at all") == set()
+    assert "newspaper_auto.tls" in check_exe_tls.REQUIRED_MODULES
+    # 输出必须纯 ASCII：CI 的 Windows 控制台是 cp1252，print 中文就是 UnicodeEncodeError
+    checker_src = (ROOT / "scripts" / "check_exe_tls.py").read_text(encoding="utf-8")
+    for line in checker_src.splitlines():
+        for quoted in re.findall(r'"([^"]*)"|\'([^\']*)\'', line):
+            text = quoted[0] or quoted[1]
+            if "print" in line or "sys.stderr" in line:
+                assert text.isascii(), f"自检脚本的输出含非 ASCII，cp1252 控制台会崩：{text!r}"
 
 
 def test_release_workflow_checks_the_wheel_carries_the_ca_bundle():

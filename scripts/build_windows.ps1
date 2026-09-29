@@ -82,36 +82,12 @@ if (-not (Test-Path -LiteralPath $exePath)) { Die "未生成 $exePath" }
 # 于是 v1.0.2 的 exe 里既没有 newspaper_auto.tls 模块、也没有随包根证书，而两边
 # 都没人发现。中国教育报因此在 Win7 上整家漏报。
 #
-# 这里直接读 exe 内 PyInstaller 的 PYZ 模块目录表（明文 marshal，见下）确认修复
-# 模块确实在包里。注意「数据文件」不能这样查：CArchive 的目录名不是明文，只能靠
-# 下面那次看板冒烟（/static/store.js 可达）间接证明 datas 机制有效。
-$inspect = @'
-import marshal
-import struct
-import sys
-
-data = open(sys.argv[1], "rb").read()
-i = data.find(b"PYZ\x00")
-if i < 0:
-    sys.exit("找不到 PYZ 目录表，无法校验 exe 的模块清单")
-offset = struct.unpack(">I", data[i + 8 : i + 12])[0]
-mods = {
-    entry[0]
-    for entry in marshal.loads(data[i + offset :])
-    if isinstance(entry, tuple) and isinstance(entry[0], str)
-}
-if "newspaper_auto.http" not in mods:
-    sys.exit("解析出的模块清单里连 newspaper_auto.http 都没有，校验本身失效")
-missing = sorted(m for m in ("newspaper_auto.tls",) if m not in mods)
-if missing:
-    sys.exit("exe 缺少模块：" + "、".join(missing) + "（构建输入不是这份源码？）")
-print("exe 模块清单校验通过：%d 个模块，含 newspaper_auto.tls" % len(mods))
-'@
-python -c $inspect $exePath
+# 解析逻辑放在 scripts\check_exe_tls.py 而不是内联 python -c：内联那段曾因为往
+# Windows 的 cp1252 控制台 print 中文而抛 UnicodeEncodeError，脚本非零退出，于是
+# 两个 Windows 构建 job 双双报「exe 缺少 TLS 修复模块」——exe 其实完全正常。
+# 独立文件还能被 tests\test_packaging.py 直接单测，不用每次都真构建一次。
+python (Join-Path $ScriptDir 'check_exe_tls.py') $exePath
 if ($LASTEXITCODE -ne 0) { Die 'exe 缺少 TLS 修复模块：打出来的是不含本次修复的代码' }
-if (-not (Test-Path -LiteralPath (Join-Path $ProjectDir 'src\newspaper_auto\cacert.pem'))) {
-    Die '缺少 src\newspaper_auto\cacert.pem：系统根库缺锚点的机器（Win7）会整家抓不到中国教育报'
-}
 
 # ---------------------------------------------------------------- 冒烟测试
 # 单测抓不到「静态资源没随包」「无窗口版一启动就崩」这类问题，只能在产物上验。
