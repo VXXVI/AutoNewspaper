@@ -15215,6 +15215,1630 @@
      "bottom": 1.0
     }
    ]
+  },
+  "光明日报\u00012026-10-13\u0001第04版\u0001第04版：综合新闻": {
+   "basis": "area",
+   "aspect_ratio": 0.7097,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27187.html",
+     "left": 0.5152,
+     "top": 0.0627,
+     "right": 1.0,
+     "bottom": 0.5233
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27186.html",
+     "left": 0.0076,
+     "top": 0.0645,
+     "right": 0.4899,
+     "bottom": 0.3978
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27188.html",
+     "left": 0.0076,
+     "top": 0.4194,
+     "right": 0.4899,
+     "bottom": 0.5932
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27190.html",
+     "left": 0.5177,
+     "top": 0.543,
+     "right": 1.0,
+     "bottom": 0.7527
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27189.html",
+     "left": 0.0076,
+     "top": 0.6093,
+     "right": 0.4899,
+     "bottom": 0.7509
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27191.html",
+     "left": 0.0278,
+     "top": 0.7688,
+     "right": 0.9924,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第03版\u0001第03版：要闻": {
+   "basis": "area",
+   "aspect_ratio": 1.1031,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27192.html",
+     "left": 0.0076,
+     "top": 0.0975,
+     "right": 0.4899,
+     "bottom": 0.3565
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27193.html",
+     "left": 0.5152,
+     "top": 0.0975,
+     "right": 1.0,
+     "bottom": 0.3565
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27194.html",
+     "left": 0.0076,
+     "top": 0.3872,
+     "right": 0.4899,
+     "bottom": 0.4875
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27195.html",
+     "left": 0.5152,
+     "top": 0.3872,
+     "right": 1.0,
+     "bottom": 0.7242
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27196.html",
+     "left": 0.0076,
+     "top": 0.5153,
+     "right": 0.4899,
+     "bottom": 0.8134
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27198.html",
+     "left": 0.5152,
+     "top": 0.7521,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27197.html",
+     "left": 0.0076,
+     "top": 0.844,
+     "right": 0.4899,
+     "bottom": 0.9972
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第01版\u0001第01版：头版": {
+   "basis": "area",
+   "aspect_ratio": 0.7021,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27200.html",
+     "left": 0.5152,
+     "top": 0.0053,
+     "right": 1.0,
+     "bottom": 0.0904
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27201.html",
+     "left": 0.5152,
+     "top": 0.1046,
+     "right": 1.0,
+     "bottom": 0.3014
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27199.html",
+     "left": 0.0177,
+     "top": 0.1809,
+     "right": 0.4823,
+     "bottom": 0.8369
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27202.html",
+     "left": 0.5152,
+     "top": 0.3209,
+     "right": 1.0,
+     "bottom": 0.5621
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27203.html",
+     "left": 0.5152,
+     "top": 0.5798,
+     "right": 1.0,
+     "bottom": 0.7855
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27205.html",
+     "left": 0.5152,
+     "top": 0.8085,
+     "right": 0.9848,
+     "bottom": 0.9929
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27204.html",
+     "left": 0.0076,
+     "top": 0.8599,
+     "right": 0.4899,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第06版\u0001第06版：学习贯彻习近平新时代中国特色社会主义思想专刊": {
+   "basis": "area",
+   "aspect_ratio": 0.7117,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27206.html",
+     "left": 0.0076,
+     "top": 0.1315,
+     "right": 0.638,
+     "bottom": 0.9982
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27207.html",
+     "left": 0.6582,
+     "top": 0.1351,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第02版\u0001第02版：评论": {
+   "basis": "area",
+   "aspect_ratio": 0.7027,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27208.html",
+     "left": 0.0076,
+     "top": 0.0619,
+     "right": 0.6423,
+     "bottom": 0.4106
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27211.html",
+     "left": 0.6675,
+     "top": 0.0619,
+     "right": 0.9975,
+     "bottom": 0.6407
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27209.html",
+     "left": 0.0076,
+     "top": 0.4283,
+     "right": 0.6423,
+     "bottom": 0.7186
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27212.html",
+     "left": 0.6675,
+     "top": 0.6584,
+     "right": 1.0,
+     "bottom": 0.9965
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27210.html",
+     "left": 0.0076,
+     "top": 0.7345,
+     "right": 0.6423,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第10版\u0001第10版：综合新闻": {
+   "basis": "area",
+   "aspect_ratio": 0.7034,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27229.html",
+     "left": 0.0152,
+     "top": 0.0657,
+     "right": 0.4899,
+     "bottom": 0.4387
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27230.html",
+     "left": 0.5076,
+     "top": 0.0675,
+     "right": 1.0,
+     "bottom": 0.2131
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27232.html",
+     "left": 0.5025,
+     "top": 0.2256,
+     "right": 0.9924,
+     "bottom": 0.3943
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27233.html",
+     "left": 0.5076,
+     "top": 0.4032,
+     "right": 1.0,
+     "bottom": 0.6679
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27231.html",
+     "left": 0.0227,
+     "top": 0.4565,
+     "right": 0.5025,
+     "bottom": 0.675
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27234.html",
+     "left": 0.0152,
+     "top": 0.6892,
+     "right": 0.9924,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第14版\u0001第14版：教育周刊·实践": {
+   "basis": "area",
+   "aspect_ratio": 0.6968,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27235.html",
+     "left": 0.0127,
+     "top": 0.0727,
+     "right": 0.7074,
+     "bottom": 0.8174
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27236.html",
+     "left": 0.7201,
+     "top": 0.0727,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27237.html",
+     "left": 0.0153,
+     "top": 0.8351,
+     "right": 0.7099,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第16版\u0001第16版：国际新闻": {
+   "basis": "area",
+   "aspect_ratio": 0.7151,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27243.html",
+     "left": 0.0127,
+     "top": 0.0617,
+     "right": 0.7386,
+     "bottom": 0.4936
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27244.html",
+     "left": 0.7563,
+     "top": 0.0653,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27245.html",
+     "left": 0.0127,
+     "top": 0.5064,
+     "right": 0.7335,
+     "bottom": 0.6842
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27246.html",
+     "left": 0.0127,
+     "top": 0.7024,
+     "right": 0.7386,
+     "bottom": 0.9982
+    }
+   ]
+  },
+  "光明日报\u00012026-10-13\u0001第15版\u0001第15版：教育周刊·思想": {
+   "basis": "area",
+   "aspect_ratio": 0.7021,
+   "items": [
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27251.html",
+     "left": 0.803,
+     "top": 0.0727,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27250.html",
+     "left": 0.0126,
+     "top": 0.0745,
+     "right": 0.7854,
+     "bottom": 0.7021
+    },
+    {
+     "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27252.html",
+     "left": 0.0126,
+     "top": 0.7234,
+     "right": 0.7828,
+     "bottom": 0.9965
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001HC02\u0001HC02版：惠州观察·关注": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183230.html",
+     "left": 0.0083,
+     "top": 0.045,
+     "right": 0.9908,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001HC03\u0001HC03版：惠州观察·惠城视窗": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183232.html",
+     "left": 0.0083,
+     "top": 0.746,
+     "right": 0.9925,
+     "bottom": 0.9838
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001HC04\u0001HC04版：惠州观察·县区": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183234.html",
+     "left": 0.0083,
+     "top": 0.6143,
+     "right": 0.9875,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001A08\u0001A08版：专题": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183235.html",
+     "left": 0.0083,
+     "top": 0.0058,
+     "right": 0.9908,
+     "bottom": 0.9908
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001GC02\u0001GC02版：广州观察·关注": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183238.html",
+     "left": 0.0083,
+     "top": 0.052,
+     "right": 0.9908,
+     "bottom": 0.4908
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183239.html",
+     "left": 0.0083,
+     "top": 0.5208,
+     "right": 0.9908,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001FC01\u0001FC01版：佛山观察": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183242.html",
+     "left": 0.0149,
+     "top": 0.0774,
+     "right": 0.9858,
+     "bottom": 0.6236
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183243.html",
+     "left": 0.0216,
+     "top": 0.6467,
+     "right": 0.9692,
+     "bottom": 0.9781
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001DC02\u0001DC02版：东莞观察·城事": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183249.html",
+     "left": 0.0083,
+     "top": 0.0485,
+     "right": 0.9908,
+     "bottom": 0.545
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183250.html",
+     "left": 0.01,
+     "top": 0.5647,
+     "right": 0.9908,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001FC02\u0001FC02版：佛山观察·城事": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183254.html",
+     "left": 0.0083,
+     "top": 0.0497,
+     "right": 0.6406,
+     "bottom": 0.8141
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183256.html",
+     "left": 0.6937,
+     "top": 0.0843,
+     "right": 0.9908,
+     "bottom": 0.2044
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183257.html",
+     "left": 0.6937,
+     "top": 0.2159,
+     "right": 0.9908,
+     "bottom": 0.3337
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183258.html",
+     "left": 0.6937,
+     "top": 0.3533,
+     "right": 0.9908,
+     "bottom": 0.5058
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183259.html",
+     "left": 0.6937,
+     "top": 0.5058,
+     "right": 0.9908,
+     "bottom": 0.6594
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183260.html",
+     "left": 0.6937,
+     "top": 0.6732,
+     "right": 0.9925,
+     "bottom": 0.8187
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183261.html",
+     "left": 0.6937,
+     "top": 0.8372,
+     "right": 0.9908,
+     "bottom": 0.9942
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183255.html",
+     "left": 0.0083,
+     "top": 0.8406,
+     "right": 0.6406,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001AT04\u0001AT04版：汕头特刊《奋进十五五 特区新作为》": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183265.html",
+     "left": 0.0216,
+     "top": 0.0739,
+     "right": 0.9908,
+     "bottom": 0.5242
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183266.html",
+     "left": 0.0315,
+     "top": 0.5473,
+     "right": 0.9908,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001AT05\u0001AT05版：汕头特刊《奋进十五五 特区新作为》": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183267.html",
+     "left": 0.0216,
+     "top": 0.0727,
+     "right": 0.9908,
+     "bottom": 0.5231
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183268.html",
+     "left": 0.0083,
+     "top": 0.5473,
+     "right": 0.9908,
+     "bottom": 0.9931
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001AT09\u0001AT09版：汕头特刊《奋进十五五 特区新作为》": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183273.html",
+     "left": 0.0216,
+     "top": 0.0739,
+     "right": 0.9908,
+     "bottom": 0.5196
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183274.html",
+     "left": 0.0083,
+     "top": 0.5473,
+     "right": 0.9908,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001AT10\u0001AT10版：汕头特刊《奋进十五五 特区新作为》": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183275.html",
+     "left": 0.0083,
+     "top": 0.0751,
+     "right": 0.9908,
+     "bottom": 0.5219
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183276.html",
+     "left": 0.0282,
+     "top": 0.5473,
+     "right": 0.9875,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001AT18\u0001AT18版：汕头特刊《奋进十五五 特区新作为》": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183288.html",
+     "left": 0.0083,
+     "top": 0.0739,
+     "right": 0.9908,
+     "bottom": 0.5219
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183289.html",
+     "left": 0.0083,
+     "top": 0.5473,
+     "right": 0.9908,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001AT21\u0001AT21版：汕头特刊《奋进十五五 特区新作为》": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183293.html",
+     "left": 0.0083,
+     "top": 0.0855,
+     "right": 0.9925,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001AT24\u0001AT24版：汕头特刊《奋进十五五 特区新作为》": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183297.html",
+     "left": 0.0315,
+     "top": 0.0855,
+     "right": 0.9925,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "南方日报\u00012026-10-13\u0001A04\u0001A04版：评论": {
+   "basis": "mapping",
+   "aspect_ratio": 0.72,
+   "items": [
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183311.html",
+     "left": 0.1925,
+     "top": 0.0485,
+     "right": 0.9908,
+     "bottom": 0.3291
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183312.html",
+     "left": 0.0083,
+     "top": 0.0727,
+     "right": 0.161,
+     "bottom": 0.9942
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183313.html",
+     "left": 0.1925,
+     "top": 0.351,
+     "right": 0.7966,
+     "bottom": 0.5404
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183314.html",
+     "left": 0.8282,
+     "top": 0.351,
+     "right": 0.9908,
+     "bottom": 0.9942
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183315.html",
+     "left": 0.2075,
+     "top": 0.5785,
+     "right": 0.7833,
+     "bottom": 0.8037
+    },
+    {
+     "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183316.html",
+     "left": 0.1925,
+     "top": 0.8268,
+     "right": 0.7966,
+     "bottom": 0.9942
+    }
+   ]
+  },
+  "羊城晚报\u00012026-10-13\u0001A03\u0001(A03) 焦点": {
+   "basis": "area",
+   "aspect_ratio": 0.7096,
+   "items": [
+    {
+     "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2976_768634.htm",
+     "left": 0.6034,
+     "top": 0.022,
+     "right": 0.9789,
+     "bottom": 0.0439
+    },
+    {
+     "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2976_768635.htm",
+     "left": 0.0225,
+     "top": 0.0709,
+     "right": 0.6582,
+     "bottom": 0.7295
+    },
+    {
+     "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2976_768636.htm",
+     "left": 0.7018,
+     "top": 0.0709,
+     "right": 1.0,
+     "bottom": 0.8004
+    },
+    {
+     "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2976_768637.htm",
+     "left": 0.0211,
+     "top": 0.7555,
+     "right": 0.6568,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2976_768638.htm",
+     "left": 0.7018,
+     "top": 0.8263,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "羊城晚报\u00012026-10-13\u0001A08\u0001(A08) 专题": {
+   "basis": "area",
+   "aspect_ratio": 0.7292,
+   "items": [
+    {
+     "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2981_768603.htm",
+     "left": 0.602,
+     "top": 0.0215,
+     "right": 0.9789,
+     "bottom": 0.0451
+    },
+    {
+     "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2981_768604.htm",
+     "left": 0.0225,
+     "top": 0.0718,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "中国教育报\u00012026-10-13\u0001第01版\u0001第01版 : 要闻": {
+   "basis": "area",
+   "aspect_ratio": 0.7118,
+   "items": [
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933434.htm",
+     "left": 0.5205,
+     "top": 0.1506,
+     "right": 0.9873,
+     "bottom": 0.3755
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933431.htm",
+     "left": 0.031,
+     "top": 0.1576,
+     "right": 0.4894,
+     "bottom": 0.4006
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933435.htm",
+     "left": 0.5219,
+     "top": 0.3936,
+     "right": 1.0,
+     "bottom": 0.6355
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933432.htm",
+     "left": 0.031,
+     "top": 0.4056,
+     "right": 0.4894,
+     "bottom": 0.6074
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933433.htm",
+     "left": 0.031,
+     "top": 0.6104,
+     "right": 0.4894,
+     "bottom": 0.7811
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933436.htm",
+     "left": 0.5205,
+     "top": 0.6476,
+     "right": 0.9873,
+     "bottom": 0.8464
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933437.htm",
+     "left": 0.0141,
+     "top": 0.7922,
+     "right": 0.4894,
+     "bottom": 1.0
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933438.htm",
+     "left": 0.5205,
+     "top": 0.8584,
+     "right": 0.9859,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "中国教育报\u00012026-10-13\u0001第02版\u0001第02版 : 新闻·要闻": {
+   "basis": "area",
+   "aspect_ratio": 0.6841,
+   "items": [
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933439.htm",
+     "left": 0.0144,
+     "top": 0.0728,
+     "right": 0.6576,
+     "bottom": 0.3169
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933440.htm",
+     "left": 0.6892,
+     "top": 0.0807,
+     "right": 1.0,
+     "bottom": 0.2904
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933441.htm",
+     "left": 0.6892,
+     "top": 0.2874,
+     "right": 1.0,
+     "bottom": 0.502
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933442.htm",
+     "left": 0.0144,
+     "top": 0.3258,
+     "right": 0.6561,
+     "bottom": 0.4823
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933443.htm",
+     "left": 0.0144,
+     "top": 0.497,
+     "right": 0.6561,
+     "bottom": 0.6821
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933444.htm",
+     "left": 0.6892,
+     "top": 0.5069,
+     "right": 1.0,
+     "bottom": 0.686
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933445.htm",
+     "left": 0.6892,
+     "top": 0.69,
+     "right": 1.0,
+     "bottom": 0.8376
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933446.htm",
+     "left": 0.0144,
+     "top": 0.6988,
+     "right": 0.6576,
+     "bottom": 0.999
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933447.htm",
+     "left": 0.6892,
+     "top": 0.8445,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "中国教育报\u00012026-10-13\u0001第04版\u0001第04版 : 智慧教育": {
+   "basis": "area",
+   "aspect_ratio": 0.6911,
+   "items": [
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933453.htm",
+     "left": 0.0029,
+     "top": 0.0151,
+     "right": 0.5997,
+     "bottom": 1.0
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933454.htm",
+     "left": 0.623,
+     "top": 0.1157,
+     "right": 0.9956,
+     "bottom": 0.4748
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933455.htm",
+     "left": 0.6259,
+     "top": 0.5241,
+     "right": 0.9956,
+     "bottom": 0.9054
+    },
+    {
+     "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933456.htm",
+     "left": 0.6288,
+     "top": 0.9316,
+     "right": 1.0,
+     "bottom": 0.999
+    }
+   ]
+  },
+  "湛江日报\u00012026-10-13\u0001第05版\u0001第5版：新闻+ 时事": {
+   "basis": "area",
+   "aspect_ratio": 0.612,
+   "items": [
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-10/13/content_147108_3912821.htm",
+     "left": 0.006,
+     "top": 0.0601,
+     "right": 0.7887,
+     "bottom": 0.6157
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-10/13/content_147108_3912823.htm",
+     "left": 0.8244,
+     "top": 0.1002,
+     "right": 1.0,
+     "bottom": 0.745
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-10/13/content_147108_3912824.htm",
+     "left": 0.0387,
+     "top": 0.6339,
+     "right": 0.7679,
+     "bottom": 0.9836
+    },
+    {
+     "url": "http://paper.gdzjdaily.com.cn/html/2026-10/13/content_147108_3912825.htm",
+     "left": 0.8244,
+     "top": 0.7614,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第01版\u000101版：要闻": {
+   "basis": "area",
+   "aspect_ratio": 0.6972,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185233.html",
+     "left": 0.5177,
+     "top": 0.0053,
+     "right": 1.0,
+     "bottom": 0.0951
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185234.html",
+     "left": 0.5177,
+     "top": 0.1127,
+     "right": 1.0,
+     "bottom": 0.3169
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185231.html",
+     "left": 0.0202,
+     "top": 0.1567,
+     "right": 0.4899,
+     "bottom": 0.8715
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185235.html",
+     "left": 0.5177,
+     "top": 0.3363,
+     "right": 1.0,
+     "bottom": 0.5088
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185236.html",
+     "left": 0.5177,
+     "top": 0.5264,
+     "right": 1.0,
+     "bottom": 0.7324
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185237.html",
+     "left": 0.5177,
+     "top": 0.75,
+     "right": 1.0,
+     "bottom": 0.9472
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185232.html",
+     "left": 0.0202,
+     "top": 0.8908,
+     "right": 0.4899,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185238.html",
+     "left": 0.5253,
+     "top": 0.963,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第02版\u000102版：要闻": {
+   "basis": "area",
+   "aspect_ratio": 0.6947,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185239.html",
+     "left": 0.0076,
+     "top": 0.0526,
+     "right": 0.4899,
+     "bottom": 0.2105
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185240.html",
+     "left": 0.5177,
+     "top": 0.0526,
+     "right": 1.0,
+     "bottom": 0.1175
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185241.html",
+     "left": 0.5177,
+     "top": 0.1368,
+     "right": 1.0,
+     "bottom": 0.5088
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185242.html",
+     "left": 0.0076,
+     "top": 0.2298,
+     "right": 0.4899,
+     "bottom": 0.6018
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185243.html",
+     "left": 0.5177,
+     "top": 0.5281,
+     "right": 1.0,
+     "bottom": 0.6018
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185244.html",
+     "left": 0.0076,
+     "top": 0.6211,
+     "right": 0.7576,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185245.html",
+     "left": 0.7854,
+     "top": 0.6211,
+     "right": 1.0,
+     "bottom": 0.7439
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185246.html",
+     "left": 0.7854,
+     "top": 0.7544,
+     "right": 1.0,
+     "bottom": 0.8281
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185247.html",
+     "left": 0.7854,
+     "top": 0.8368,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第03版\u000103版：要闻": {
+   "basis": "area",
+   "aspect_ratio": 0.6947,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185248.html",
+     "left": 0.0076,
+     "top": 0.0526,
+     "right": 0.7222,
+     "bottom": 0.6509
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185249.html",
+     "left": 0.75,
+     "top": 0.0526,
+     "right": 1.0,
+     "bottom": 0.6509
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185250.html",
+     "left": 0.0076,
+     "top": 0.6702,
+     "right": 0.2424,
+     "bottom": 0.793
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185251.html",
+     "left": 0.2601,
+     "top": 0.6702,
+     "right": 0.4899,
+     "bottom": 0.7526
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185252.html",
+     "left": 0.5177,
+     "top": 0.6702,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185253.html",
+     "left": 0.2601,
+     "top": 0.7614,
+     "right": 0.4899,
+     "bottom": 0.8842
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185254.html",
+     "left": 0.0076,
+     "top": 0.8035,
+     "right": 0.2424,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185255.html",
+     "left": 0.2601,
+     "top": 0.8965,
+     "right": 0.4899,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第05版\u000105版：评论": {
+   "basis": "area",
+   "aspect_ratio": 0.6947,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185263.html",
+     "left": 0.0076,
+     "top": 0.0526,
+     "right": 0.7222,
+     "bottom": 0.3509
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185264.html",
+     "left": 0.75,
+     "top": 0.0526,
+     "right": 1.0,
+     "bottom": 0.6105
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185265.html",
+     "left": 0.0076,
+     "top": 0.3702,
+     "right": 0.3586,
+     "bottom": 0.7684
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185266.html",
+     "left": 0.3737,
+     "top": 0.3702,
+     "right": 0.7222,
+     "bottom": 0.7368
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185267.html",
+     "left": 0.75,
+     "top": 0.6281,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185269.html",
+     "left": 0.3737,
+     "top": 0.7544,
+     "right": 0.7222,
+     "bottom": 0.7684
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185268.html",
+     "left": 0.0076,
+     "top": 0.786,
+     "right": 0.7222,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第07版\u000107版：要闻": {
+   "basis": "area",
+   "aspect_ratio": 0.6947,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185280.html",
+     "left": 0.0076,
+     "top": 0.0526,
+     "right": 0.7146,
+     "bottom": 0.3877
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185281.html",
+     "left": 0.7399,
+     "top": 0.0596,
+     "right": 1.0,
+     "bottom": 0.4596
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185282.html",
+     "left": 0.0076,
+     "top": 0.4035,
+     "right": 0.303,
+     "bottom": 0.7842
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185283.html",
+     "left": 0.3283,
+     "top": 0.4035,
+     "right": 0.7146,
+     "bottom": 0.7842
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185284.html",
+     "left": 0.7399,
+     "top": 0.4772,
+     "right": 1.0,
+     "bottom": 0.6509
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185285.html",
+     "left": 0.7399,
+     "top": 0.6614,
+     "right": 1.0,
+     "bottom": 0.8018
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185286.html",
+     "left": 0.0076,
+     "top": 0.8035,
+     "right": 0.7146,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185287.html",
+     "left": 0.7399,
+     "top": 0.8123,
+     "right": 1.0,
+     "bottom": 0.9842
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185288.html",
+     "left": 0.7399,
+     "top": 0.9947,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第08版\u000108版：经济": {
+   "basis": "area",
+   "aspect_ratio": 0.6947,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185289.html",
+     "left": 0.0076,
+     "top": 0.0526,
+     "right": 0.7399,
+     "bottom": 0.5351
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185291.html",
+     "left": 0.7677,
+     "top": 0.0526,
+     "right": 0.9899,
+     "bottom": 0.5088
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185290.html",
+     "left": 0.3838,
+     "top": 0.4211,
+     "right": 0.7399,
+     "bottom": 0.5351
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185292.html",
+     "left": 0.7677,
+     "top": 0.5281,
+     "right": 1.0,
+     "bottom": 0.6263
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185293.html",
+     "left": 0.0076,
+     "top": 0.5526,
+     "right": 0.2323,
+     "bottom": 0.9842
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185294.html",
+     "left": 0.2601,
+     "top": 0.5526,
+     "right": 0.7399,
+     "bottom": 0.8281
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185295.html",
+     "left": 0.7677,
+     "top": 0.6368,
+     "right": 1.0,
+     "bottom": 0.8281
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185296.html",
+     "left": 0.2601,
+     "top": 0.8439,
+     "right": 1.0,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185297.html",
+     "left": 0.0076,
+     "top": 0.9947,
+     "right": 0.2323,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第09版\u000109版：理论": {
+   "basis": "area",
+   "aspect_ratio": 0.6935,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185298.html",
+     "left": 0.0076,
+     "top": 0.0525,
+     "right": 1.0,
+     "bottom": 0.6778
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185299.html",
+     "left": 0.0076,
+     "top": 0.7023,
+     "right": 0.2576,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185300.html",
+     "left": 0.2854,
+     "top": 0.7023,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第11版\u000111版：文化": {
+   "basis": "area",
+   "aspect_ratio": 0.6935,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185310.html",
+     "left": 0.0076,
+     "top": 0.0543,
+     "right": 0.75,
+     "bottom": 0.5587
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185312.html",
+     "left": 0.7677,
+     "top": 0.0543,
+     "right": 1.0,
+     "bottom": 0.5919
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185311.html",
+     "left": 0.3914,
+     "top": 0.303,
+     "right": 0.7399,
+     "bottom": 0.5587
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185313.html",
+     "left": 0.0076,
+     "top": 0.5762,
+     "right": 0.7399,
+     "bottom": 0.7426
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185314.html",
+     "left": 0.7677,
+     "top": 0.6112,
+     "right": 1.0,
+     "bottom": 0.7496
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185315.html",
+     "left": 0.0076,
+     "top": 0.7601,
+     "right": 0.7399,
+     "bottom": 1.0
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185316.html",
+     "left": 0.7677,
+     "top": 0.7601,
+     "right": 1.0,
+     "bottom": 0.8757
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185317.html",
+     "left": 0.7677,
+     "top": 0.8862,
+     "right": 1.0,
+     "bottom": 0.9825
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185318.html",
+     "left": 0.7677,
+     "top": 0.9947,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第14版\u000114版：生态": {
+   "basis": "area",
+   "aspect_ratio": 0.6935,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185328.html",
+     "left": 0.0076,
+     "top": 0.0543,
+     "right": 0.6793,
+     "bottom": 0.5114
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185329.html",
+     "left": 0.7045,
+     "top": 0.0543,
+     "right": 1.0,
+     "bottom": 0.3205
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185330.html",
+     "left": 0.7045,
+     "top": 0.3275,
+     "right": 1.0,
+     "bottom": 0.4869
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185332.html",
+     "left": 0.7045,
+     "top": 0.5026,
+     "right": 1.0,
+     "bottom": 0.5114
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185331.html",
+     "left": 0.0076,
+     "top": 0.5201,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第17版\u000117版：国际": {
+   "basis": "area",
+   "aspect_ratio": 0.6923,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185339.html",
+     "left": 0.0076,
+     "top": 0.0542,
+     "right": 0.6692,
+     "bottom": 0.4843
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185340.html",
+     "left": 0.697,
+     "top": 0.0542,
+     "right": 1.0,
+     "bottom": 0.4003
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185341.html",
+     "left": 0.697,
+     "top": 0.4196,
+     "right": 1.0,
+     "bottom": 0.4913
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185342.html",
+     "left": 0.0076,
+     "top": 0.5017,
+     "right": 0.2576,
+     "bottom": 0.9983
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185343.html",
+     "left": 0.2854,
+     "top": 0.5017,
+     "right": 0.6692,
+     "bottom": 0.9983
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185344.html",
+     "left": 0.697,
+     "top": 0.5017,
+     "right": 1.0,
+     "bottom": 0.6486
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185345.html",
+     "left": 0.697,
+     "top": 0.6591,
+     "right": 1.0,
+     "bottom": 0.7483
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185346.html",
+     "left": 0.697,
+     "top": 0.7587,
+     "right": 1.0,
+     "bottom": 0.8654
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185347.html",
+     "left": 0.697,
+     "top": 0.8759,
+     "right": 1.0,
+     "bottom": 0.9738
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185348.html",
+     "left": 0.697,
+     "top": 0.9913,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
+  },
+  "人民日报\u00012026-10-13\u0001第20版\u000120版：副刊": {
+   "basis": "area",
+   "aspect_ratio": 0.7034,
+   "items": [
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185360.html",
+     "left": 0.803,
+     "top": 0.0551,
+     "right": 1.0,
+     "bottom": 0.6021
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185357.html",
+     "left": 0.0354,
+     "top": 0.0622,
+     "right": 0.5631,
+     "bottom": 0.1048
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185358.html",
+     "left": 0.0152,
+     "top": 0.0639,
+     "right": 0.7677,
+     "bottom": 0.3321
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185359.html",
+     "left": 0.0152,
+     "top": 0.3339,
+     "right": 0.7778,
+     "bottom": 0.5613
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185361.html",
+     "left": 0.0328,
+     "top": 0.5844,
+     "right": 0.7778,
+     "bottom": 0.7886
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185364.html",
+     "left": 0.803,
+     "top": 0.7034,
+     "right": 1.0,
+     "bottom": 0.7194
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185362.html",
+     "left": 0.0152,
+     "top": 0.7194,
+     "right": 0.1591,
+     "bottom": 0.9911
+    },
+    {
+     "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185363.html",
+     "left": 0.197,
+     "top": 0.7371,
+     "right": 1.0,
+     "bottom": 1.0
+    }
+   ]
   }
  },
  "records": [
@@ -29281,6 +30905,1768 @@
    },
    "snippets": [
     "本版责编：张珊珊 本版邮箱：dadi@peopledaily.cn 欢迎广大读者来稿。来稿要求为原创首发，非一稿多投，非AI（人工智能）创作或编辑。"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第04版：综合新闻",
+   "section_no": "第04版",
+   "title": "黑龙江：科技守护“黑土粮仓”",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27186.html",
+   "text_len": 1390,
+   "geometry": {
+    "x1": 3,
+    "y1": 36,
+    "x2": 194,
+    "y2": 222,
+    "left": 0.0076,
+    "top": 0.0645,
+    "right": 0.4899,
+    "bottom": 0.3978,
+    "index": 2,
+    "total": 6,
+    "basis": "area"
+   },
+   "snippets": [
+    "…着——耕地墒情、农机位置、作物长势、农事进度等实时更新。这里是北大荒农业的智慧大脑。 北大荒信息有限公司市场运营副总经理王浩介绍，北大荒发展人工智能，核心是要破解“谁来种地、怎么种好地”。这种变化，最直接地体现在生产方式上。 他解释，过去施肥可能是一整块田统一处理，如今AI可以根据不同地…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第03版：要闻",
+   "section_no": "第03版",
+   "title": "李强会见越南国会主席陈青敏",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27192.html",
+   "text_len": 729,
+   "geometry": {
+    "x1": 3,
+    "y1": 35,
+    "x2": 194,
+    "y2": 128,
+    "left": 0.0076,
+    "top": 0.0975,
+    "right": 0.4899,
+    "bottom": 0.3565,
+    "index": 1,
+    "total": 7,
+    "basis": "area"
+   },
+   "snippets": [
+    "…世界稳定繁荣注入正能量。 李强指出，中方愿同越方加强发展战略对接，更好发挥双边合作指导委员会等机制作用，做大做优两国经贸蛋糕，推动互联互通、人工智能、清洁能源、数字经济等领域合作不断提质增效。双方要继续办好“中越旅游合作年”等活动，深化医药、教育、青年等人文交流合作，夯实两国友好民意基础…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第03版：要闻",
+   "section_no": "第03版",
+   "title": "赵乐际同越南国会主席陈青敏会谈并共同主持中越立法机构联合委员会第二次会议",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27195.html",
+   "text_len": 818,
+   "geometry": {
+    "x1": 204,
+    "y1": 139,
+    "x2": 396,
+    "y2": 260,
+    "left": 0.5152,
+    "top": 0.3872,
+    "right": 1.0,
+    "bottom": 0.7242,
+    "index": 4,
+    "total": 7,
+    "basis": "area"
+   },
+   "snippets": [
+    "…动中越命运共同体建设走深走实。双方要夯实战略互信，保持高层交往良好势头，加强战略沟通，坚定相互支持。深化务实合作，推进基础设施互联互通，拓展人工智能、数字经济、清洁能源、通信卫星等新兴领域合作。厚植民意基础，深化文化、教育、体育等领域交流。密切多边协作，共同践行四大全球倡议，推动平等有序…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第01版：头版",
+   "section_no": "第01版",
+   "title": "大道致远，笃行不怠",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27202.html",
+   "text_len": 4957,
+   "geometry": {
+    "x1": 204,
+    "y1": 181,
+    "x2": 396,
+    "y2": 317,
+    "left": 0.5152,
+    "top": 0.3209,
+    "right": 1.0,
+    "bottom": 0.5621,
+    "index": 4,
+    "total": 7,
+    "basis": "area"
+   },
+   "snippets": [
+    "…全球公共利益”……许多国际媒体报道此次中美元首会晤时，不约而同聚焦“稳定”这一关键词。 此访期间，中美达成八点成果共识，涉及经贸、禁毒执法、人工智能、国际和地区事务等众多领域。会晤桌前、宴会厅里，中美元首着眼的不仅是双边关系，也有地区和世界亟待解决的问题。来之不易的成果和共识，展现的是大…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第06版：学习贯彻习近平新时代中国特色社会主义思想专刊",
+   "section_no": "第06版",
+   "title": "加快高质量数据集建设 推动人工智能产业健康发展",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27206.html",
+   "text_len": 3918,
+   "geometry": {
+    "x1": 3,
+    "y1": 73,
+    "x2": 252,
+    "y2": 554,
+    "left": 0.0076,
+    "top": 0.1315,
+    "right": 0.638,
+    "bottom": 0.9982,
+    "index": 1,
+    "total": 2,
+    "basis": "area"
+   },
+   "snippets": [
+    "加快高质量数据集建设 推动人工智能产业健康发展 当前，人工智能发展迈入模型与数据协同优化的新阶段，高质量数据集成为支持人工智能模型训练与优化的核心资源。习近平总书记高度重视我…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第06版：学习贯彻习近平新时代中国特色社会主义思想专刊",
+   "section_no": "第06版",
+   "title": "以词元为锚点 推动智能经济高质量发展",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27207.html",
+   "text_len": 2895,
+   "geometry": {
+    "x1": 260,
+    "y1": 75,
+    "x2": 395,
+    "y2": 555,
+    "left": 0.6582,
+    "top": 0.1351,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 2,
+    "total": 2,
+    "basis": "area"
+   },
+   "snippets": [
+    "以词元为锚点 推动智能经济高质量发展 【学思践悟】 当前，以大模型、智能体为代表的生成式人工智能加速迭代，词元（Token）正在从技术计量单位演进为连接技术供给与商业需求的“结算单位”和智能经济时代的“价值锚点”，催生出极具增长潜力的词…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第02版：评论",
+   "section_no": "第02版",
+   "title": "【光明论坛】以生产性保护赋能历史经典产业",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27209.html",
+   "text_len": 1942,
+   "geometry": {
+    "x1": 3,
+    "y1": 242,
+    "x2": 255,
+    "y2": 406,
+    "left": 0.0076,
+    "top": 0.4283,
+    "right": 0.6423,
+    "bottom": 0.7186,
+    "index": 3,
+    "total": 5,
+    "basis": "area"
+   },
+   "snippets": [
+    "…物盲盒、青瓷挂饰等文创产品，带动青瓷销量持续稳步增长、文化影响力不断提升。一方面锚定创新驱动发展内涵，在设计、生产、质检、流通全链条推广使用人工智能、三维建模、区块链等数字化技术，布局建设一批数智工坊，开发历史经典数字藏品，以“传统技艺+科技”培育产业新质生产力。另一方面，聚焦健全产业创…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第02版：评论",
+   "section_no": "第02版",
+   "title": "【光明论坛】着力培养造就更多技能人才",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27210.html",
+   "text_len": 1739,
+   "geometry": {
+    "x1": 3,
+    "y1": 415,
+    "x2": 255,
+    "y2": 565,
+    "left": 0.0076,
+    "top": 0.7345,
+    "right": 0.6423,
+    "bottom": 1.0,
+    "index": 5,
+    "total": 5,
+    "basis": "area"
+   },
+   "snippets": [
+    "…积极挖掘培育新的职业序列，及时发布新职业。培训不再从教材出发，而是从岗位出发；目标不再止于完成学时，而是促进技能就业、技能成才。 今年，围绕人工智能、先进制造、低空经济、新能源汽车、康养服务等重点领域，各地推出技能提升专项行动。其中，人工智能技术技能提升行动将加强通识教育，劳动者可通过技…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第10版：综合新闻",
+   "section_no": "第10版",
+   "title": "首批国家公园建设成果丰硕",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27229.html",
+   "text_len": 1637,
+   "geometry": {
+    "x1": 6,
+    "y1": 37,
+    "x2": 194,
+    "y2": 247,
+    "left": 0.0152,
+    "top": 0.0657,
+    "right": 0.4899,
+    "bottom": 0.4387,
+    "index": 1,
+    "total": 6,
+    "basis": "area"
+   },
+   "snippets": [
+    "…金投入格局。 此外，国家公园感知系统上线运行，重点区域实现实时监测。各国家公园搭建天空地一体化监测网络，综合运用卫星遥感、无人机、红外相机、人工智能等技术，实现生态变化、野生动物活动、人为扰动动态监测预警，东北虎豹国家公园建成世界领先的监测体系。大熊猫、长臂猿等国家保护研究中心陆续组建，…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第10版：综合新闻",
+   "section_no": "第10版",
+   "title": "与特区同潮涌 与产业同脉动",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27234.html",
+   "text_len": 2064,
+   "geometry": {
+    "x1": 6,
+    "y1": 388,
+    "x2": 393,
+    "y2": 563,
+    "left": 0.0152,
+    "top": 0.6892,
+    "right": 0.9924,
+    "bottom": 1.0,
+    "index": 6,
+    "total": 6,
+    "basis": "area"
+   },
+   "snippets": [
+    "…授权点增至20个，覆盖8大学科门类，全部对接福建、厦门主导产业；聚焦机械工程、电子信息2个博士学位培育建设点，在新能源商用车与高端装备制造、人工智能与集成电路、垂直大模型等领域形成特色；57个本科招生专业全覆盖厦门现代产业体系，理工科专业学生占比超60%，建成8大应用学科专业集群。 产教…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第14版：教育周刊·实践",
+   "section_no": "第14版",
+   "title": "让每个学生都能感知美、表达美",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27235.html",
+   "text_len": 3605,
+   "geometry": {
+    "x1": 5,
+    "y1": 41,
+    "x2": 278,
+    "y2": 461,
+    "left": 0.0127,
+    "top": 0.0727,
+    "right": 0.7074,
+    "bottom": 0.8174,
+    "index": 1,
+    "total": 3,
+    "basis": "area"
+   },
+   "snippets": [
+    "…学附属实验中学金帆舞蹈团在北京市学生艺术节舞蹈展演上表演舞蹈《青梅嗅》。新华社发 \"> 【文化浸润 青春拔节】 从大一开始，西安电子科技大学人工智能学院博士研究生李祯煜就在西电大学生交响乐团担任小提琴演奏员，至今已十年。 “我们乐团的成员来自全校不同专业、不同年级，甚至来自不同国家。乐团…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第14版：教育周刊·实践",
+   "section_no": "第14版",
+   "title": "以学科之美涵养研究型高校创新人才",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27236.html",
+   "text_len": 2513,
+   "geometry": {
+    "x1": 283,
+    "y1": 41,
+    "x2": 393,
+    "y2": 564,
+    "left": 0.7201,
+    "top": 0.0727,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 2,
+    "total": 3,
+    "basis": "area"
+   },
+   "snippets": [
+    "…类审美判断的分野；结合医学解剖学，回溯其与西方绘画写实传统的历史关联。数智技术的迅猛发展，也为美育的学科协同提供新的支点。研究型高校可发挥在人工智能、大数据领域的团队和平台优势，开发艺术与人工智能交叉的美育课程，综合运用生成式人工智能（AIGC）、虚拟仿真等信息化教学工具，构建沉浸式、交…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第14版：教育周刊·实践",
+   "section_no": "第14版",
+   "title": "从一面手鼓到万千和声",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27237.html",
+   "text_len": 1193,
+   "geometry": {
+    "x1": 6,
+    "y1": 471,
+    "x2": 279,
+    "y2": 564,
+    "left": 0.0153,
+    "top": 0.8351,
+    "right": 0.7099,
+    "bottom": 1.0,
+    "index": 3,
+    "total": 3,
+    "basis": "area"
+   },
+   "snippets": [
+    "…。没有乐谱，没有指挥，跟着鼓点敲下去就行。 这是第八届中央音乐学院5·23音乐节与学校心理健康节联合举办的一场“音乐心理鼓圈”活动，学校音乐人工智能与音乐信息科技系音乐治疗教师、心理咨询中心兼职音乐治疗师蒋雯系统讲解各类打击乐器的音色特点、演奏方式及鼓圈专业手势、节奏指令，零基础也能轻松…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第16版：国际新闻",
+   "section_no": "第16版",
+   "title": "共话中国发展新机遇，共商亚太合作新路径",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27244.html",
+   "text_len": 1983,
+   "geometry": {
+    "x1": 298,
+    "y1": 36,
+    "x2": 394,
+    "y2": 551,
+    "left": 0.7563,
+    "top": 0.0653,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 2,
+    "total": 4,
+    "basis": "area"
+   },
+   "snippets": [
+    "…应坚持求同存异、和谐共处，避免在竞争中走向对抗。他提出，未来，包括中美在内的各国应同舟共济、同向而行，共同推动亚太地区可持续发展，特别是聚焦人工智能安全治理、气候变化应对、人类安全、公共卫生、癌症研究等关乎民众福祉的根本问题，进一步深化跨地区、跨领域的务实合作，构建更加繁荣的亚太共同体。…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第15版：教育周刊·思想",
+   "section_no": "第15版",
+   "title": "西迁精神的育人转化之道",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27251.html",
+   "text_len": 2054,
+   "geometry": {
+    "x1": 318,
+    "y1": 41,
+    "x2": 396,
+    "y2": 564,
+    "left": 0.803,
+    "top": 0.0727,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 1,
+    "total": 3,
+    "basis": "area"
+   },
+   "snippets": [
+    "…。 乘势而上，以数智赋能创新立德树人之“路” 数智赋能不是技术工具的简单叠加，而是思政育人从“粗放式倡导”迈向“精准化导航”的范式革新。借助人工智能与大数据构建学生成长全息画像，识别思想动态与成长需求的深层规律，以智能学伴提供全天候价值对话，以智慧平台破解数字化生存中的“社交孤岛”，以精…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "光明日报",
+   "date": "2026-10-13",
+   "section": "第15版：教育周刊·思想",
+   "section_no": "第15版",
+   "title": "AI赋能高校辅导员队伍的“变”与“不变”",
+   "url": "https://epaper.gmw.cn/gmrb/html/content/202610/13/content_27252.html",
+   "text_len": 2208,
+   "geometry": {
+    "x1": 5,
+    "y1": 408,
+    "x2": 310,
+    "y2": 562,
+    "left": 0.0126,
+    "top": 0.7234,
+    "right": 0.7828,
+    "bottom": 0.9965,
+    "index": 3,
+    "total": 3,
+    "basis": "area"
+   },
+   "snippets": [
+    "AI赋能高校辅导员队伍的“变”与“不变” 生成式人工智能正在快速进入高校学习、管理和服务场景，大学生获取信息、表达观点和解决问题的方式也随之在发生变化，给高校思想政治工作带来新课题。《教育强国建设…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "HC02版：惠州观察·关注",
+   "section_no": "HC02",
+   "title": "AI进厂加速重塑“仲恺造”-惠州观察·关注-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183230.html",
+   "text_len": 4703,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.045,
+    "right": 0.9908,
+    "bottom": 0.9942,
+    "index": 1,
+    "total": 1,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…新区而言，当规模优势已难以自动转化为竞争优势，如何塑造未来发展新优势？ 这片产业高地，把“AI+制造”作为重要破题方向。龙头企业示范引领，将人工智能技术嵌入生产制造核心环节，初步形成一批典型应用案例；供应链企业、中小企业以数字化改造为基础，摸索智能化升级路径，进而推动“AI+”向产业链更…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "HC03版：惠州观察·惠城视窗",
+   "section_no": "HC03",
+   "title": "制造筑根基 品牌闯市场-惠州观察·惠城视窗-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183231.html",
+   "text_len": 3355,
+   "snippets": [
+    "…说：“我们不只是做元件，我们在做标准、做体验、做文化。TTC不仅要成为中国认可的品牌，更要成为世界认可的品牌。”面对AI浪潮，正牌科电正聚焦人工智能，探索智能装备与人机交互，并在小金口规划现代化智能制造产业园，涵盖研发中心、智能生产车间、用户体验中心，还要打造“电竞装备文化中心”。一枚小…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "HC04版：惠州观察·县区",
+   "section_no": "HC04",
+   "title": "一块屏 管全镇-惠州观察·县区-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183233.html",
+   "text_len": 2316,
+   "snippets": [
+    "…进度查询、办结反馈”的四级闭环，让小事不出网格。 推动智慧治理，园洲没有停步。今年，园洲还将全力推进智慧园洲平台（二期）项目建设，融入科技与人工智能模块，推动与粤平安、粤治慧、12345热线、“三资”管理等平台对接，实现数据共享。同时深化智慧消防建设，把物联网感知终端和智能预警平台铺到重…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "A08版：专题",
+   "section_no": "A08",
+   "title": "工商并举兴产业 以侨为桥联四海-专题-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183235.html",
+   "text_len": 5450,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.0058,
+    "right": 0.9908,
+    "bottom": 0.9908,
+    "index": 1,
+    "total": 1,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…国际海缆组成的数字通道，将结果实时输回玩具终端。 这是汕头先进制造的一个缩影。面向“十五五”，汕头锚定智能化、绿色化、融合化方向，全面实施“人工智能+”行动，加快AI玩具、数字员工、跨境数据流通等场景商业化规模化，推进国家级零碳园区、国际零碳算力港和绿色新材料产业园等平台建设，推动先进制…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "GC02版：广州观察·关注",
+   "section_no": "GC02",
+   "title": "琶洲算法大赛跻身“全球第一梯队”-广州观察·关注-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183238.html",
+   "text_len": 2011,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.052,
+    "right": 0.9908,
+    "bottom": 0.4908,
+    "index": 1,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…极组队，北美、欧洲、亚太、中东各地大批科创团队纷纷提交参赛方案。 “我们持续开放国内真实产业数据与应用场景，汇聚全球智慧破解产业现实难题，为人工智能技术落地应用注入源头活水。”琶洲管委会副主任姚响表示。 不同于很多以模型跑分论高下的竞赛，本届大赛紧扣产业现实需求，设置25道赛题，覆盖大模…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "FC01版：佛山观察",
+   "section_no": "FC01",
+   "title": "南海机器人 下南洋-佛山观察-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183243.html",
+   "text_len": 1632,
+   "geometry": {
+    "left": 0.0216,
+    "top": 0.6467,
+    "right": 0.9692,
+    "bottom": 0.9781,
+    "index": 2,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…辗转找到李兰云创办的广东若铂智能机器人有限公司（下称“若铂智能”）。2025年1月，全球橡胶行业首条智能化改造产线在这里投产。今年7月的世界人工智能大会上，国家发展改革委发布《中国智·惠世界（2026）》案例集，该案例亮相。 对于若铂智能所在的佛山南海来说，这样的“难题”并不难。从本地陶…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "DC02版：东莞观察·城事",
+   "section_no": "DC02",
+   "title": "“东莞板块”掀起上市新热潮-东莞观察·城事-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183249.html",
+   "text_len": 2227,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.0485,
+    "right": 0.9908,
+    "bottom": 0.545,
+    "index": 1,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…莞投控集团设立“东莞鲲鹏计划股权投资基金”，总规模20亿元、首期10亿元，为优质后备企业注入耐心资本。此前，首期规模达20亿元的广东粤财工融人工智能与机器人产业投资基金（有限合伙）落地滨海湾，重点投向AI、机器人、智能终端等赛道。由112只基金组成的国资基金矩阵，目标年内撬动社会投资不少…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "FC02版：佛山观察·城事",
+   "section_no": "FC02",
+   "title": "为“世界的顺德” 打开想象新空间-佛山观察·城事-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183254.html",
+   "text_len": 2396,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.0497,
+    "right": 0.6406,
+    "bottom": 0.8141,
+    "index": 1,
+    "total": 8,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…能制造”为核心，打造辐射珠江西岸的高水平对外开放平台。 广东工业设计城面向全球配置设计创新人才资源，打造国际工业设计高地；顺德未来科创城聚焦人工智能与机器人等战略性新兴产业，为顺德构建具有全球竞争力的产业集群打造新引擎。 云鹭上市集聚区、佛山先进制造业金融集聚区、北滘机器人谷智造产业园、…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT04版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT04",
+   "title": "侨宴连乡情 五洲共商机-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183265.html",
+   "text_len": 2876,
+   "geometry": {
+    "left": 0.0216,
+    "top": 0.0739,
+    "right": 0.9908,
+    "bottom": 0.5242,
+    "index": 1,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…称作“阿嬷的家乡”的地方。答案，写在侨乡的基因里。 不久前，汕头设中秋侨宴宴请海外侨团商会。席间，一个消息让在场侨领纷纷举起手机——汕头海外人工智能服务中心正式成立。华侨试验区携手泰国、英国、新加坡、柬埔寨等10个国家的侨团商会，构建海内外双向联动的数智出海协同网络。 一席家宴，连接的是…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT04版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT04",
+   "title": "潮味寄乡愁 技能赴山海-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183266.html",
+   "text_len": 3241,
+   "geometry": {
+    "left": 0.0315,
+    "top": 0.5473,
+    "right": 0.9908,
+    "bottom": 0.9942,
+    "index": 2,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…色饮品油柑汁同时亮相。 技能照亮美好生活的向往。该校潮菜烹饪学院院长许实霖表示，“从食材到美食的蝶变，一定有烹饪技能的加持和赋能。”他认为，人工智能对烹饪影响越深刻，手工作的美食越难得、越值钱、越有味。 作为国家级高技能人才培训基地、广东省“粤菜师傅”海外交流基地，省粤东技师学院长期深耕…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT05版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT05",
+   "title": "侨乡新赛道 词元卖全球-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183268.html",
+   "text_len": 2811,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.5473,
+    "right": 0.9908,
+    "bottom": 0.9931,
+    "index": 2,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…出海通道 作为拥有1500多万海外潮籍乡亲的著名侨乡，汕头在词元出海进程中，正把传统侨乡优势转化为数字经济时代的新竞争力。今年9月，汕头海外人工智能服务中心正式揭牌成立，依托分布在全球各地的侨团商会，构建海内外双向联动的数智出海协同网络。 目前，汕头已在10个国家建立海外人工智能服务中心…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT09版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT09",
+   "title": "让“工贸互促”循环跑起来-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183273.html",
+   "text_len": 3103,
+   "geometry": {
+    "left": 0.0216,
+    "top": 0.0739,
+    "right": 0.9908,
+    "bottom": 0.5196,
+    "index": 1,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…发展拓空间、聚资源。 全市深入推进产业园区提质增效，以园区高质量发展“赛马会”倒逼园区能级提升。汕头高新区、六合产业园、深汕合作科创基地抢抓人工智能、低空经济新机遇；综合保税区加快扩围提质，推动临港经济区和广澳港区实现“区港一体化”；华侨经济文化合作试验区持续深化“来数加工”试点，加快建…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT10版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT10",
+   "title": "托起群众稳稳的幸福-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183275.html",
+   "text_len": 3145,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.0751,
+    "right": 0.9908,
+    "bottom": 0.5219,
+    "index": 1,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…民服务答卷 站在“十五五”开局之年、“百千万工程”迈向五年显著变化的关键节点，汕头人社部门坚持以贸促工、以工兴贸、工商并举，锚定四个聚力，以人工智能技术赋能业务提质增效，推动人力资源优势加速转化为人才红利，持续增进特区民生福祉，为汕头经济社会高质量发展贡献坚实人社力量。 聚力就业优先强根…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT18版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT18",
+   "title": "向“新”发展 乘“数”而上-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183289.html",
+   "text_len": 3246,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.5473,
+    "right": 0.9908,
+    "bottom": 0.9942,
+    "index": 2,
+    "total": 2,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…艺研发投入，加快AI玩具、潮流文创等新兴领域的生态布局，支持企业从代工向IP运营转型。 澄海的回应清晰而具体。党代会报告提出，推动传统产业与人工智能、数字贸易深度融合，深耕精密制造、智能制造，持续开拓AI玩具、潮流文创、IP运营新赛道，打造千亿级产业集群。 底气从何而来？澄海AI玩具已形…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT21版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT21",
+   "title": "“两带”主阵地 “带”出新活力-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183293.html",
+   "text_len": 4581,
+   "geometry": {
+    "left": 0.0083,
+    "top": 0.0855,
+    "right": 0.9925,
+    "bottom": 0.9942,
+    "index": 1,
+    "total": 1,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…业，推动新的经济增长点加速涌现。 站上更高台阶，潮南也进入新的发展关口。 当前，百年未有之大变局加速演进，新一轮科技革命和产业变革加速突破，人工智能、生物技术、新能源、新材料正在重塑全球产业版图。大势可借、政策可用，这就要求潮南必须跳出自身看自身、立足全局谋一域，在服务大局中借势登高、在…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "AT24版：汕头特刊《奋进十五五 特区新作为》",
+   "section_no": "AT24",
+   "title": "一座海岛的“留量”突围-汕头特刊《奋进十五五 特区新作为》-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183297.html",
+   "text_len": 5272,
+   "geometry": {
+    "left": 0.0315,
+    "top": 0.0855,
+    "right": 0.9925,
+    "bottom": 0.9942,
+    "index": 1,
+    "total": 1,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…决定人口的留存。教育上，推动基础教育扩优提质，健全与人口变化相适应的教育资源配置机制，深入实施县中发展提升工程，深化“县管校聘”改革，构建“人工智能+教育”融合路径。 医疗上，强化县域医共体建设，构建“县级强、镇级优、村级稳”的医疗服务格局，完善远程医疗平台，常态化开展远程会诊、远程影像…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "南方日报",
+   "date": "2026-10-13",
+   "section": "A04版：评论",
+   "section_no": "A04",
+   "title": "发展新质生产力须破除五大误区-评论-2026年10月13日",
+   "url": "https://epaper.nfnews.com/nfdaily/html/202610/13/content_10183311.html",
+   "text_len": 2128,
+   "geometry": {
+    "left": 0.1925,
+    "top": 0.0485,
+    "right": 0.9908,
+    "bottom": 0.3291,
+    "index": 1,
+    "total": 6,
+    "basis": "mapping"
+   },
+   "snippets": [
+    "…失的严肃追究责任。 概言之，发展新质生产力须破除五大误区。 一、破除“唯新赛道论”，不能把新质生产力等同于新兴产业 有一种片面看法，认为只有人工智能、机器人、新能源、生物医药等前沿赛道才算新质生产力，传统产业属于落后的旧动能，可以弱化甚至舍弃。这种认知割裂了产业演进的客观规律。新质生产力…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "羊城晚报",
+   "date": "2026-10-13",
+   "section": "(A03) 焦点",
+   "section_no": "A03",
+   "title": "“新智绿”产品集聚 海外主播团“云带逛”",
+   "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2976_768635.htm",
+   "text_len": 1714,
+   "geometry": {
+    "x1": 16,
+    "y1": 71,
+    "x2": 468,
+    "y2": 731,
+    "left": 0.0225,
+    "top": 0.0709,
+    "right": 0.6582,
+    "bottom": 0.7295,
+    "index": 2,
+    "total": 5,
+    "basis": "area"
+   },
+   "snippets": [
+    "…围绕“拓市场、防风险、研趋势、促创新”4大主题，精心策办7场主题论坛，包括1场珠江国际贸易论坛、3场行业垂类论坛和3场特色交流活动。论坛聚焦人工智能与机器人、绿色餐厨、功能与科技面料等前沿赛道，并围绕合格评定、通关政策、贸易数字化、贸投一体化等热点议题宣介国际经贸规则。嘉宾阵容强大，超6…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "羊城晚报",
+   "date": "2026-10-13",
+   "section": "(A08) 专题",
+   "section_no": "A08",
+   "title": "以一纸侨批，观百年侨乡",
+   "url": "http://ep.ycwb.com/epaper/ycwb/html/2026-10/13/content_2981_768604.htm",
+   "text_len": 4513,
+   "geometry": {
+    "x1": 16,
+    "y1": 70,
+    "x2": 711,
+    "y2": 975,
+    "left": 0.0225,
+    "top": 0.0718,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 2,
+    "total": 2,
+    "basis": "area"
+   },
+   "snippets": [
+    "…、侨智助力、侨力兴城方面持续深化侨港联动，依托全球侨网资源，推动侨港资本深度参与汕头词元出海等数字文化新业态发展，落地运营海外招商中心、海外人工智能服务中心等，推动广大侨资深耕汕头实体经济，先后落地牛肉丸特色产业园、燕窝跨境销售中心、贴身服饰采销中心等一批侨资特色产业项目，助力汕头特色产…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "2026年世界职业技术教育发展大会将启幕",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933431.htm",
+   "text_len": 2118,
+   "geometry": {
+    "x1": 22,
+    "y1": 157,
+    "x2": 347,
+    "y2": 399,
+    "left": 0.031,
+    "top": 0.1576,
+    "right": 0.4894,
+    "bottom": 0.4006,
+    "index": 2,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…方案 中国职业教育国际合作的跃升之路 在传承中走好新时代长征路 金沙水暖润新苗 图片新闻 “我的职称是在茶园里‘种’出来的” 湖南加强中小学人工智能教育"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "教育部将实施职业教育助力服务业扩能提质工作方案",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933432.htm",
+   "text_len": 1811,
+   "geometry": {
+    "x1": 22,
+    "y1": 404,
+    "x2": 347,
+    "y2": 605,
+    "left": 0.031,
+    "top": 0.4056,
+    "right": 0.4894,
+    "bottom": 0.6074,
+    "index": 4,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…站智能运营等方面高技能人才培养。 在软件与数据服务领域，面向粤港澳大湾区、中西部重点城市、国家数据标注先行先试城市，聚焦国产软件大规模应用、人工智能快速发展需要，重点加强鸿蒙系统应用、人机协同数据标注等方面高技能人才培养。 在国际贸易领域，面向中国小商品城、国家数字贸易示范区，聚焦贸易数…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "中国职业教育国际合作的跃升之路",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933433.htm",
+   "text_len": 3457,
+   "geometry": {
+    "x1": 22,
+    "y1": 608,
+    "x2": 347,
+    "y2": 778,
+    "left": 0.031,
+    "top": 0.6104,
+    "right": 0.4894,
+    "bottom": 0.7811,
+    "index": 5,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…械等领域的产业规范、技术规范、岗位规范转化为可对接、可认证、可共用的职业教育标准。 比如，柳州职业技术大学牵头开发的机电一体化专业教学标准、人工智能通识课程标准，已纳入印尼44所国立理工学院及137个职业教育学院课程体系，实现了中国职教标准从“被看见”到“被采用”的跨越。 “标准联通是产…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "在传承中走好新时代长征路",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933434.htm",
+   "text_len": 2502,
+   "geometry": {
+    "x1": 369,
+    "y1": 150,
+    "x2": 700,
+    "y2": 374,
+    "left": 0.5205,
+    "top": 0.1506,
+    "right": 0.9873,
+    "bottom": 0.3755,
+    "index": 1,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…方案 中国职业教育国际合作的跃升之路 在传承中走好新时代长征路 金沙水暖润新苗 图片新闻 “我的职称是在茶园里‘种’出来的” 湖南加强中小学人工智能教育"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "金沙水暖润新苗",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933435.htm",
+   "text_len": 2603,
+   "geometry": {
+    "x1": 370,
+    "y1": 392,
+    "x2": 709,
+    "y2": 633,
+    "left": 0.5219,
+    "top": 0.3936,
+    "right": 1.0,
+    "bottom": 0.6355,
+    "index": 3,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…方案 中国职业教育国际合作的跃升之路 在传承中走好新时代长征路 金沙水暖润新苗 图片新闻 “我的职称是在茶园里‘种’出来的” 湖南加强中小学人工智能教育"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "图片新闻",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933436.htm",
+   "text_len": 793,
+   "geometry": {
+    "x1": 369,
+    "y1": 645,
+    "x2": 700,
+    "y2": 843,
+    "left": 0.5205,
+    "top": 0.6476,
+    "right": 0.9873,
+    "bottom": 0.8464,
+    "index": 6,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…方案 中国职业教育国际合作的跃升之路 在传承中走好新时代长征路 金沙水暖润新苗 图片新闻 “我的职称是在茶园里‘种’出来的” 湖南加强中小学人工智能教育"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "“我的职称是在茶园里‘种’出来的”",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933437.htm",
+   "text_len": 1805,
+   "geometry": {
+    "x1": 10,
+    "y1": 789,
+    "x2": 347,
+    "y2": 996,
+    "left": 0.0141,
+    "top": 0.7922,
+    "right": 0.4894,
+    "bottom": 1.0,
+    "index": 7,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…方案 中国职业教育国际合作的跃升之路 在传承中走好新时代长征路 金沙水暖润新苗 图片新闻 “我的职称是在茶园里‘种’出来的” 湖南加强中小学人工智能教育"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第01版 : 要闻",
+   "section_no": "第01版",
+   "title": "湖南加强中小学人工智能教育",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144740_19933438.htm",
+   "text_len": 1292,
+   "geometry": {
+    "x1": 369,
+    "y1": 855,
+    "x2": 699,
+    "y2": 996,
+    "left": 0.5205,
+    "top": 0.8584,
+    "right": 0.9859,
+    "bottom": 1.0,
+    "index": 8,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "湖南加强中小学人工智能教育 第01版： 要闻 上一版 下一版 第01版 : 要闻 第02版 : 新闻·要闻 第03版 : 新闻·人物 第04版 : 智慧教育 第0…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第02版 : 新闻·要闻",
+   "section_no": "第02版",
+   "title": "教育部将实施职业教育助力服务业扩能提质工作方案",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933445.htm",
+   "text_len": 1838,
+   "geometry": {
+    "x1": 479,
+    "y1": 701,
+    "x2": 695,
+    "y2": 851,
+    "left": 0.6892,
+    "top": 0.69,
+    "right": 1.0,
+    "bottom": 0.8376,
+    "index": 7,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…站智能运营等方面高技能人才培养。 在软件与数据服务领域，面向粤港澳大湾区、中西部重点城市、国家数据标注先行先试城市，聚焦国产软件大规模应用、人工智能快速发展需要，重点加强鸿蒙系统应用、人机协同数据标注等方面高技能人才培养。 在国际贸易领域，面向中国小商品城、国家数字贸易示范区，聚焦贸易数…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第02版 : 新闻·要闻",
+   "section_no": "第02版",
+   "title": "中国职业教育国际合作的跃升之路",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144741_19933446.htm",
+   "text_len": 3484,
+   "geometry": {
+    "x1": 10,
+    "y1": 710,
+    "x2": 457,
+    "y2": 1015,
+    "left": 0.0144,
+    "top": 0.6988,
+    "right": 0.6576,
+    "bottom": 0.999,
+    "index": 8,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…械等领域的产业规范、技术规范、岗位规范转化为可对接、可认证、可共用的职业教育标准。 比如，柳州职业技术大学牵头开发的机电一体化专业教学标准、人工智能通识课程标准，已纳入印尼44所国立理工学院及137个职业教育学院课程体系，实现了中国职教标准从“被看见”到“被采用”的跨越。 “标准联通是产…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第04版 : 智慧教育",
+   "section_no": "第04版",
+   "title": "高校如何培育学生人工智能素养",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933453.htm",
+   "text_len": 3390,
+   "geometry": {
+    "x1": 2,
+    "y1": 15,
+    "x2": 412,
+    "y2": 994,
+    "left": 0.0029,
+    "top": 0.0151,
+    "right": 0.5997,
+    "bottom": 1.0,
+    "index": 1,
+    "total": 4,
+    "basis": "area"
+   },
+   "snippets": [
+    "高校如何培育学生人工智能素养 第04版： 智慧教育 上一版 下一版 第01版 : 要闻 第02版 : 新闻·要闻 第03版 : 新闻·人物 第04版 : 智慧教育 …"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第04版 : 智慧教育",
+   "section_no": "第04版",
+   "title": "构建数智时代法学人才培养新范式",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933454.htm",
+   "text_len": 1881,
+   "geometry": {
+    "x1": 428,
+    "y1": 115,
+    "x2": 684,
+    "y2": 472,
+    "left": 0.623,
+    "top": 0.1157,
+    "right": 0.9956,
+    "bottom": 0.4748,
+    "index": 2,
+    "total": 4,
+    "basis": "area"
+   },
+   "snippets": [
+    "…法学人才培养新范式 唐子艳 邵庭玉 法学人才培养目标的每一次重大调整，都源于法律与社会关系结构的改变。当算法开始参与裁判，代码发挥规制功能，人工智能介入法律服务，法律职业的门槛也在无形中被抬高，特别是涉外法律、合规管理、法律科技等多领域交叉、复杂程度高的领域，对专业人才的需求急剧攀升。 …"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第04版 : 智慧教育",
+   "section_no": "第04版",
+   "title": "“精准画像”提升学生数字应用能力",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933455.htm",
+   "text_len": 1991,
+   "geometry": {
+    "x1": 430,
+    "y1": 521,
+    "x2": 684,
+    "y2": 900,
+    "left": 0.6259,
+    "top": 0.5241,
+    "right": 0.9956,
+    "bottom": 0.9054,
+    "index": 3,
+    "total": 4,
+    "basis": "area"
+   },
+   "snippets": [
+    "…探索 第08版：教育视窗 第09版：校家社观察 第10版：教育视窗 第11版：高校新风 第12版：教育展台 第13版：广告 高校如何培育学生人工智能素养 构建数智时代法学人才培养新范式 “精准画像”提升学生数字应用能力 资讯e览"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "中国教育报",
+   "date": "2026-10-13",
+   "section": "第04版 : 智慧教育",
+   "section_no": "第04版",
+   "title": "资讯e览",
+   "url": "https://paper.jyb.cn/zgjyb/html/2026-10/13/content_144743_19933456.htm",
+   "text_len": 679,
+   "geometry": {
+    "x1": 432,
+    "y1": 926,
+    "x2": 687,
+    "y2": 993,
+    "left": 0.6288,
+    "top": 0.9316,
+    "right": 1.0,
+    "bottom": 0.999,
+    "index": 4,
+    "total": 4,
+    "basis": "area"
+   },
+   "snippets": [
+    "…0-13 星期二 上一篇 下一篇 资讯e览 扫描二维码获取更多最新资讯 ●一间普通教室里的AI课 ●人文社会科学的智能范式转型 ●须高度关注人工智能竞赛迈入“智能体时代” SourcePh \" style=\"display:none\"> 分享到 QQ空间 新浪微博 人人网 腾讯微博 豆瓣…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "湛江日报",
+   "date": "2026-10-13",
+   "section": "第5版：新闻+ 时事",
+   "section_no": "第05版",
+   "title": "体验经济为内需增长注入新动能",
+   "url": "http://paper.gdzjdaily.com.cn/html/2026-10/13/content_147108_3912821.htm",
+   "text_len": 4122,
+   "geometry": {
+    "x1": 2,
+    "y1": 33,
+    "x2": 265,
+    "y2": 338,
+    "left": 0.006,
+    "top": 0.0601,
+    "right": 0.7887,
+    "bottom": 0.6157,
+    "index": 1,
+    "total": 4,
+    "basis": "area"
+   },
+   "snippets": [
+    "…榭再次“苏醒”——水面灯影摇曳，字画、花木、楼台在光影下被重新勾勒，游客沿夜游路线前行，沿途不时有昆曲唱段、古乐演奏与情景表演穿插其间。 “人工智能、大数据、物联网等前沿技术被广泛运用于体验场景的构建之中，加之我国数字基础设施和移动支付生态高度普及，线上种草、线下体验、社交分享、即时消费…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "01版：要闻",
+   "section_no": "第01版",
+   "title": "李强会见越南国会主席陈青敏",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185235.html",
+   "text_len": 729,
+   "geometry": {
+    "x1": 205,
+    "y1": 191,
+    "x2": 396,
+    "y2": 289,
+    "left": 0.5177,
+    "top": 0.3363,
+    "right": 1.0,
+    "bottom": 0.5088,
+    "index": 4,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…世界稳定繁荣注入正能量。 李强指出，中方愿同越方加强发展战略对接，更好发挥双边合作指导委员会等机制作用，做大做优两国经贸蛋糕，推动互联互通、人工智能、清洁能源、数字经济等领域合作不断提质增效。双方要继续办好“中越旅游合作年”等活动，深化医药、教育、青年等人文交流合作，夯实两国友好民意基础…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "01版：要闻",
+   "section_no": "第01版",
+   "title": "赵乐际同越南国会主席陈青敏会谈并共同主持中越立法机构联合委员会第二次会议",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185236.html",
+   "text_len": 818,
+   "geometry": {
+    "x1": 205,
+    "y1": 299,
+    "x2": 396,
+    "y2": 416,
+    "left": 0.5177,
+    "top": 0.5264,
+    "right": 1.0,
+    "bottom": 0.7324,
+    "index": 5,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…动中越命运共同体建设走深走实。双方要夯实战略互信，保持高层交往良好势头，加强战略沟通，坚定相互支持。深化务实合作，推进基础设施互联互通，拓展人工智能、数字经济、清洁能源、通信卫星等新兴领域合作。厚植民意基础，深化文化、教育、体育等领域交流。密切多边协作，共同践行四大全球倡议，推动平等有序…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "02版：要闻",
+   "section_no": "第02版",
+   "title": "以支付服务联通世界（培育更多“中国服务”品牌）",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185242.html",
+   "text_len": 1636,
+   "geometry": {
+    "x1": 3,
+    "y1": 131,
+    "x2": 194,
+    "y2": 343,
+    "left": 0.0076,
+    "top": 0.2298,
+    "right": 0.4899,
+    "bottom": 0.6018,
+    "index": 4,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…捷。“银联紧跟国家高水平对外开放步伐，以支付服务联通世界，形成连接中外、促进资金融通与民心相通的金融纽带。”中国银联相关负责人说。 积极探索人工智能技术在研发、运营等方面的应用，今年4月，银联推出智能体支付开放协议框架，多方机构协同推进建设新型信任基础设施，致力于构建开放、兼容、安全的智…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "02版：要闻",
+   "section_no": "第02版",
+   "title": "我国生成式人工智能用户规模超7亿人",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185247.html",
+   "text_len": 362,
+   "geometry": {
+    "x1": 311,
+    "y1": 477,
+    "x2": 396,
+    "y2": 570,
+    "left": 0.7854,
+    "top": 0.8368,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 9,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "我国生成式人工智能用户规模超7亿人 本报北京10月12日电 （记者金歆）记者近期从中国互联网络信息中心获悉：截至今年上半年，我国生成式人工智能用户规模超7亿人…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "03版：要闻",
+   "section_no": "第03版",
+   "title": "“临甲7号沙龙”聚焦中拉携手推动完善全球治理",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185254.html",
+   "text_len": 473,
+   "geometry": {
+    "x1": 3,
+    "y1": 458,
+    "x2": 96,
+    "y2": 570,
+    "left": 0.0076,
+    "top": 0.8035,
+    "right": 0.2424,
+    "bottom": 1.0,
+    "index": 7,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "…全领域合作，从双边互动到全球治理，中拉合作正日益成为践行全球治理倡议的生动实践。 座谈会现场气氛热烈，中外媒体记者踊跃提问，专家学者还就中拉人工智能合作、青年人文交流等回答了记者提问。 “临甲7号沙龙”由中国公共外交协会主办，围绕有关话题不定期邀请嘉宾与中外记者互动交流。"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "05版：评论",
+   "section_no": "第05版",
+   "title": "在升级中扩容，在转型中提质（人民时评）",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185264.html",
+   "text_len": 1077,
+   "geometry": {
+    "x1": 297,
+    "y1": 30,
+    "x2": 396,
+    "y2": 348,
+    "left": 0.75,
+    "top": 0.0526,
+    "right": 1.0,
+    "bottom": 0.6105,
+    "index": 2,
+    "total": 7,
+    "basis": "area"
+   },
+   "snippets": [
+    "…升。同时，直播电商、即时零售等加快兴起，成为创新消费业态模式、激活消费潜能的重要力量。 从趋势看，消费增长点不断涌现，促进消费的潜力巨大。以人工智能领域为例，当下，智能穿戴、智能网联汽车等持续受到消费者欢迎；今年我国智能家居市场规模预计将突破8000亿元，出货量有望超过3亿台。 也要看到…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "07版：要闻",
+   "section_no": "第07版",
+   "title": "优化创新生态 培育发展动能",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185286.html",
+   "text_len": 1313,
+   "geometry": {
+    "x1": 3,
+    "y1": 458,
+    "x2": 283,
+    "y2": 570,
+    "left": 0.0076,
+    "top": 0.8035,
+    "right": 0.7146,
+    "bottom": 1.0,
+    "index": 7,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…床零部件。去年，六合区成功招引通用技术集团落户，共同开展精密数控机床核心技术攻关，解决“卡脖子”技术难题。 卫星数据处理、行业垂直模型训练、人工智能技术应用……在数智经济产业链延伸方面，“软硬结合”也在六合区持续创造价值。 空天产业“新苗”背后，已长出一片“森林”。2025年，六合区规上…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "07版：要闻",
+   "section_no": "第07版",
+   "title": "第二十六届中国国际工业博览会开幕",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185287.html",
+   "text_len": 471,
+   "geometry": {
+    "x1": 293,
+    "y1": 463,
+    "x2": 396,
+    "y2": 561,
+    "left": 0.7399,
+    "top": 0.8123,
+    "right": 1.0,
+    "bottom": 0.9842,
+    "index": 8,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…千亿级产业集群名单，启动新一代智能制造发展行动，明确到2028年实现重点制造企业智能工厂全覆盖，培育500家先进级智能工厂，落地超2000个人工智能制造应用场景，持续壮大智能制造产业规模。 本届博览会为期5天，总展览面积达31万平方米，设置国家展及十大主题展，首次单独设立集成电路专题展，…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "08版：经济",
+   "section_no": "第08版",
+   "title": "广东纵深推进制造强省建设",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185295.html",
+   "text_len": 467,
+   "geometry": {
+    "x1": 304,
+    "y1": 363,
+    "x2": 396,
+    "y2": 472,
+    "left": 0.7677,
+    "top": 0.6368,
+    "right": 1.0,
+    "bottom": 0.8281,
+    "index": 7,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…合化发展，持续做大做强先进制造业。力争到2028年，打造1000家以上先进级、卓越级、领航级智能工厂和1000家绿色工厂，规模以上制造业企业人工智能技术应用普及率超50%，人形机器人年产量突破8万台，全力打造全球具身智能产业发展高地。 近年来，广东加快发展先进制造业，总体实力持续增强，交…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "08版：经济",
+   "section_no": "第08版",
+   "title": "稳定供电保障新业态发展",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185296.html",
+   "text_len": 1116,
+   "geometry": {
+    "x1": 103,
+    "y1": 481,
+    "x2": 396,
+    "y2": 570,
+    "left": 0.2601,
+    "top": 0.8439,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 8,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "稳定供电保障新业态发展 浙江省杭州市临平区，中国（杭州）算力小镇的机房里，一排排服务器繁忙运转，人工智能大模型训练昼夜不停。 在临平，算力、智造等新业态加速集聚。“这类产业的生产呈现连续化、精密化特点，对可靠供电十分敏感。”国网杭州市临平区供电…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "09版：理论",
+   "section_no": "第09版",
+   "title": "培育非遗传承体验新场景（专题深思）",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185300.html",
+   "text_len": 1892,
+   "geometry": {
+    "x1": 113,
+    "y1": 401,
+    "x2": 396,
+    "y2": 571,
+    "left": 0.2854,
+    "top": 0.7023,
+    "right": 1.0,
+    "bottom": 1.0,
+    "index": 3,
+    "total": 3,
+    "basis": "area"
+   },
+   "snippets": [
+    "…益，更让游客从旁观者变为参与者，在沉浸式体验中理解技艺背后的文化内涵，实现从丰富消费体验到增强文化认同的递进。数智赋能型新场景充分运用生成式人工智能、虚拟现实等技术，让观众在沉浸式互动中深度感知非遗的魅力，将传统单向展示、静态观赏的体验模式，升级为虚实融合、动态共创的活态体验场域，为非遗…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "11版：文化",
+   "section_no": "第11版",
+   "title": "书香无界 文润无声（校馆弦歌）",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185312.html",
+   "text_len": 1163,
+   "geometry": {
+    "x1": 304,
+    "y1": 31,
+    "x2": 396,
+    "y2": 338,
+    "left": 0.7677,
+    "top": 0.0543,
+    "right": 1.0,
+    "bottom": 0.5919,
+    "index": 2,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…试讲“牛顿第三定律”课程章节。每次讲完，她都会点开讲台上的小屏幕，根据软件对表情、语音、姿态等方面的智能反馈逐项改进。 杨添添所在的“AI（人工智能）微格教学室”，位于图书馆内的未来学习中心。中心今年3月投入运行，占地3000平方米，集成AI实训、跨域研讨、数字创作等功能，智能学练空间与…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "11版：文化",
+   "section_no": "第11版",
+   "title": "传统瓷器擦出“赛博”火花（文化中国行·文化传承 青年力量）",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185313.html",
+   "text_len": 967,
+   "geometry": {
+    "x1": 3,
+    "y1": 329,
+    "x2": 293,
+    "y2": 424,
+    "left": 0.0076,
+    "top": 0.5762,
+    "right": 0.7399,
+    "bottom": 0.7426,
+    "index": 4,
+    "total": 9,
+    "basis": "area"
+   },
+   "snippets": [
+    "…复定位‘耳朵’的位置和大小，光3D模型就折腾了五六遍，然后再拿给专家验证……”如今，系统里的87件青瓷器数据信息，都是团队一点点磨出来的。 人工智能广泛应用，让金鑫看到了新可能。“通用大模型常会在非遗等专业领域‘翻车’，我们要用特征限定算法给它‘立规矩’。”金鑫说，前期数字化系统完成了工…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "14版：生态",
+   "section_no": "第14版",
+   "title": "5年，首批国家公园建设成效如何（美丽中国）",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185328.html",
+   "text_len": 2503,
+   "geometry": {
+    "x1": 3,
+    "y1": 31,
+    "x2": 269,
+    "y2": 292,
+    "left": 0.0076,
+    "top": 0.0543,
+    "right": 0.6793,
+    "bottom": 0.5114,
+    "index": 1,
+    "total": 5,
+    "basis": "area"
+   },
+   "snippets": [
+    "…旗舰物种的保护力度，国家公园感知系统上线运行，重点区域实现实时监测。各国家公园搭建天空地一体化监测网络，综合运用卫星遥感、无人机、红外相机、人工智能等技术，实现生态变化、野生动物活动、人为扰动动态监测预警。同时，陆续组建大熊猫、长臂猿等国家保护研究中心，为国家公园旗舰物种保护提供有力科研…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "17版：国际",
+   "section_no": "第17版",
+   "title": "德国加大力度扶持青年创业",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185342.html",
+   "text_len": 1227,
+   "geometry": {
+    "x1": 3,
+    "y1": 287,
+    "x2": 102,
+    "y2": 571,
+    "left": 0.0076,
+    "top": 0.5017,
+    "right": 0.2576,
+    "bottom": 0.9983,
+    "index": 4,
+    "total": 10,
+    "basis": "area"
+   },
+   "snippets": [
+    "…业者年龄处于18至29岁区间，22%的年轻人在完成学业后直接投身创业，年轻化程度达历史高位。新创办企业当中，44%涉足数字化产品与服务领域，人工智能、医疗健康成为青年创业者集中发力的领域。德国复兴信贷银行首席经济学家德克·舒马赫表示，德国作为地区商业中心，需要富有创造力与开拓勇气的企业家…"
+   ],
+   "matched": [
+    "人工智能"
+   ]
+  },
+  {
+   "paper": "人民日报",
+   "date": "2026-10-13",
+   "section": "20版：副刊",
+   "section_no": "第20版",
+   "title": "当国风晚会用起人工智能（看台人语）",
+   "url": "http://paper.people.com.cn/rmrb/pc/content/202610/13/content_30185362.html",
+   "text_len": 350,
+   "geometry": {
+    "x1": 6,
+    "y1": 405,
+    "x2": 63,
+    "y2": 558,
+    "left": 0.0152,
+    "top": 0.7194,
+    "right": 0.1591,
+    "bottom": 0.9911,
+    "index": 7,
+    "total": 8,
+    "basis": "area"
+   },
+   "snippets": [
+    "当国风晚会用起人工智能（看台人语） 这几年，国风晚会成为视听新技术的试验场。不久前，《2026中秋奇妙游》将AI（人工智能）生成视听段落与真人实景拍摄巧妙融合，讲…"
    ],
    "matched": [
     "人工智能"
