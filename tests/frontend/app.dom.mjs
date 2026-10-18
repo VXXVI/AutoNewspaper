@@ -29,6 +29,62 @@ async function withPage(options, fn) {
 
 export const domTests = [
   {
+    name: "有效筛选标签：收起筛选仍可看见，分别取消搜索、日期与配置关键词",
+    fn: () => withPage(undefined, async (page) => {
+      const doc = page.document;
+      const tag = (key) => doc.querySelector(`#active-filters [data-filter-key="${key}"]`);
+      assert.match(tag("keywords").textContent, /当前关键词/);
+      assert.doesNotMatch(doc.getElementById("stats").textContent, /未使用筛选/);
+      const q = doc.getElementById("q");
+      q.value = "人工智能"; q.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+      await settle();
+      assert.match(tag("query").textContent, /人工智能/);
+      tag("query").click(); await settle();
+      assert.equal(q.value, ""); assert.equal(rows(doc).length, 2);
+      assert.ok(tag("keywords"), "取消搜索保留关键词条件");
+      doc.querySelector('#preset-chips [data-preset="today"]').click(); await settle();
+      assert.equal(doc.querySelectorAll('#active-filters [data-filter-key="dates"]').length, 1);
+      tag("dates").click(); await settle();
+      assert.equal(doc.getElementById("from").value, ""); assert.equal(doc.getElementById("to").value, "");
+      tag("keywords").click(); await settle();
+      assert.equal(doc.getElementById("active-filters").hidden, true);
+      assert.equal(doc.getElementById("filter-count").hidden, true);
+      assert.equal(doc.activeElement.id, "filter-toggle");
+    }),
+  },
+  {
+    name: "报道预览：片段安全呈现、原文保留、键盘关闭后恢复焦点",
+    fn: () => {
+      const record = { ...RECORDS[0], snippets: ["<img src=x onerror=alert(1)>", "第二个片段", "第三个片段"] };
+      const routes = (path, init) => path.startsWith("/api/hits") ? { body: hitsPayload([record]) } : defaultRoutes(path, init);
+      return withPage({ routes }, async (page) => {
+        const doc = page.document;
+        const trigger = doc.querySelector(".article-preview-trigger");
+        trigger.focus(); trigger.click();
+        const dialog = doc.getElementById("article-preview");
+        assert.ok(dialog.hasAttribute("open"));
+        assert.match(dialog.textContent, /第三个片段/);
+        assert.match(dialog.querySelector(".article-preview-meta").textContent, /湛江日报.*2026-09-23/);
+        assert.equal(dialog.querySelector("img"), null, "片段一律文本呈现");
+        assert.equal(dialog.querySelector("a").href, record.url);
+        assert.equal(doc.querySelector("#rows a").href, record.url, "列表原文入口保留");
+        assert.equal(doc.activeElement.classList.contains("article-preview-close"), true);
+        doc.activeElement.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        assert.equal(doc.getElementById("article-preview"), null);
+        assert.equal(doc.activeElement, trigger);
+      });
+    },
+  },
+  {
+    name: "准备就绪时隐藏空进度，显示最近扫描摘要",
+    fn: () => withPage(undefined, async (page) => {
+      assert.equal(page.document.getElementById("scan-progress").hidden, true);
+      assert.equal(page.document.getElementById("scan-recent").hidden, false);
+      assert.match(page.text("scan-recent"), /首次扫描/);
+    }),
+  },
+
+  {
     name: "首屏渲染：概览、健康度版本、命中行与版面位置",
     fn: () =>
       withPage(undefined, async (page) => {
@@ -109,7 +165,7 @@ export const domTests = [
         const badge = doc.getElementById("filter-count");
         assert.equal(panel.hidden, true, "默认收起：浮层不占版面");
         assert.equal(toggle.getAttribute("aria-expanded"), "false");
-        assert.equal(badge.hidden, true, "没有筛选时不显示角标");
+        assert.equal(badge.textContent, "1", "配置关键词聚焦计一项，可从标签撤销");
 
         toggle.click();
         await settle();
@@ -137,7 +193,7 @@ export const domTests = [
         q.dispatchEvent(new page.window.Event("input", { bubbles: true }));
         await settle();
         assert.equal(badge.hidden, false);
-        assert.equal(badge.textContent, "1", "搜索框算一项筛选");
+        assert.equal(badge.textContent, "2", "搜索框与配置关键词各算一项筛选");
       }),
   },
   {
@@ -599,7 +655,7 @@ export const domTests = [
         assert.match(rows(doc)[0].textContent, /光明日报/);
         assert.ok(rows(doc)[0].classList.contains("is-new"));
         assert.ok(rows(doc)[0].querySelector(".tag-new"), "新增行要有「新增」标记");
-        assert.equal(doc.getElementById("filter-count").textContent, "1", "只看新增算一项筛选");
+        assert.equal(doc.getElementById("filter-count").textContent, "2", "只看新增与配置关键词各算一项筛选");
 
         doc.getElementById("new-only").click();
         await settle();

@@ -14,6 +14,7 @@ import {
   newUrlSet,
   paperRanking,
   reducer,
+  selectActiveFilters,
   selectFiltered,
   selectScanNames,
 } from "../../src/newspaper_auto/static/store.js";
@@ -360,3 +361,36 @@ test("countNewHits：只统计归档里确实存在的新增 URL", () => {
   assert.equal(newUrlSet(null).size, 0, "没有数据时返回空集而非抛错");
 });
 
+
+test("有效筛选：合并日期与快捷区间，保留尚无历史命中的配置关键词", () => {
+  const state = Object.assign(createInitialState(), {
+    data: sampleData(), papers: new Set(["湛江日报"]), keywords: new Set(),
+    focusKeywords: ["尚无命中"], q: " 教育 ", from: "2026-09-01", to: "2026-09-23",
+    preset: "7d", newOnly: true, linkedFilter: { type: "date", label: "当天" },
+  });
+  const filters = selectActiveFilters(state);
+  assert.deepEqual(filters.map((f) => f.key), ["query", "dates", "papers", "keywords", "newOnly", "linked"]);
+  assert.equal(filters.find((f) => f.key === "keywords").label, "当前关键词：尚无命中");
+  assert.equal(filters.filter((f) => f.key === "dates").length, 1);
+});
+
+test("CLEAR_FILTER：逐项撤销，不重置其它筛选且不修改旧集合", () => {
+  const state = Object.assign(createInitialState(), {
+    data: sampleData(), q: "教育", from: "2026-09-01", to: "2026-09-23", preset: "7d",
+    papers: new Set(["湛江日报"]), keywords: new Set(["k1"]), focusKeywords: ["k1"],
+    newOnly: true, linkedFilter: { type: "date", label: "当天" }, visibleRows: 999,
+  });
+  for (const key of ["query", "dates", "papers", "keywords", "newOnly", "linked"]) {
+    const next = reducer(state, { type: A.CLEAR_FILTER, key });
+    assert.equal(selectActiveFilters(next).some((f) => f.key === key), false, key);
+    assert.equal(next.visibleRows, INITIAL_ROWS);
+    if (key !== "linked") assert.equal(next.linkedFilter, state.linkedFilter);
+    if (key !== "query") assert.equal(next.q, state.q);
+    if (key === "dates") assert.equal(next.preset, "all");
+    if (key === "keywords") { assert.equal(next.focusKeywords, null); assert.deepEqual([...next.keywords], ["k1", "k2"]); }
+    if (key === "papers") assert.deepEqual([...next.papers], sampleData().papers);
+  }
+  assert.deepEqual([...state.papers], ["湛江日报"]);
+  assert.deepEqual([...state.keywords], ["k1"]);
+  assert.equal(reducer(state, { type: A.CLEAR_FILTER, key: "unknown" }), state);
+});

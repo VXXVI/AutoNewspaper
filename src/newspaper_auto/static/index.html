@@ -37,8 +37,8 @@
     <nav class="page-nav" id="page-nav" aria-label="页面区域">
       <a href="#scan-card">开始扫描</a>
       <a href="#metrics-section">监测概览</a>
-      <a href="#dashboard-section">图形看板</a>
-      <a href="#results-card">查看结果</a>
+      <a href="#results-card">命中报道</a>
+      <a href="#dashboard-section">分析看板</a>
       <a href="#trend-section">时间趋势</a>
     </nav>
     <div class="top-actions">
@@ -56,23 +56,22 @@
 <main id="main-content">
   <section class="card command-card" id="scan-card" aria-labelledby="scan-title">
     <div class="scan-heading">
-      <div class="section-kicker"><span>01</span> 创建监测任务</div>
-      <h2 id="scan-title">查找今天值得关注的报道</h2>
-      <p>填写关键词和时间范围，系统会逐一检查已启用的数字报。</p>
+      <h2 id="scan-title">开始一次扫描</h2>
+      <p>选择关键词和日期，发现值得关注的报道。</p>
     </div>
 
     <div class="scan-workspace">
       <form id="scan-form" class="scan-form">
         <div class="scan-primary">
           <label class="field field-keywords">
-            <span><b>1</b> 监测关键词</span>
+            <span>监测关键词</span>
             <input id="scan-kw" type="text" placeholder="例如：人工智能、生成式人工智能" autocomplete="off">
             <small>多个关键词可用逗号、顿号或换行分隔，最多 10 个</small>
           </label>
 
           <div class="range-fields">
             <label class="field">
-              <span><b>2</b> 时间范围</span>
+              <span>时间范围</span>
               <select id="scan-mode">
                 <option value="days">最近几天</option>
                 <option value="range">指定日期</option>
@@ -138,11 +137,8 @@
           <div class="progress-copy" id="scan-progress-text">正在准备…</div>
         </div>
 
-        <ol class="run-steps" aria-label="扫描流程">
-          <li><i aria-hidden="true">1</i><span><b>读取版面</b><small>访问已选报社的当期数字报</small></span></li>
-          <li><i aria-hidden="true">2</i><span><b>匹配关键词</b><small>检查标题、正文和上下文</small></span></li>
-          <li><i aria-hidden="true">3</i><span><b>归档结果</b><small>自动更新下方列表与版面图</small></span></li>
-        </ol>
+        <p class="scan-recent" id="scan-recent" aria-live="polite">扫描完成后，报道会自动加入下方列表。</p>
+        <p class="activity-guidance">扫描时可继续浏览已有报道。</p>
 
         <details class="log-details" id="scan-log-details">
           <summary>查看运行日志</summary>
@@ -155,80 +151,16 @@
   <section class="metrics-section" id="metrics-section" aria-labelledby="metrics-title">
     <div class="section-title-row">
       <div>
-        <div class="section-kicker"><span>02</span> 监测概览</div>
-        <h2 id="metrics-title">一眼掌握当前结果</h2>
+        <h2 id="metrics-title">监测概览</h2>
       </div>
       <span class="section-note">指标会随筛选条件同步变化</span>
     </div>
     <div class="stats" id="stats" aria-live="polite"></div>
   </section>
 
-  <section class="dashboard-section" id="dashboard-section" aria-labelledby="dashboard-title">
-    <div class="section-title-row">
-      <div>
-        <div class="section-kicker"><span>03</span> 图形化看板</div>
-        <h2 id="dashboard-title">谁在报、什么在热、什么时候最密集</h2>
-      </div>
-      <span class="section-note">报社排名来自全部归档；关键词排名、热力图与时间线跟随当前筛选</span>
-    </div>
-
-    <div class="dashboard-grid">
-      <section class="card dash-card" aria-labelledby="paper-rank-title">
-        <div class="section-heading compact-heading">
-          <div>
-            <span class="eyebrow">报社排名</span>
-            <h2 id="paper-rank-title">命中最多的是哪几家</h2>
-          </div>
-        </div>
-        <div class="rank-list" id="paper-rank" role="group" aria-label="按命中数排序的报社"></div>
-      </section>
-
-      <section class="card dash-card" aria-labelledby="keyword-rank-title">
-        <div class="section-heading compact-heading">
-          <div>
-            <span class="eyebrow">关键词排名</span>
-            <h2 id="keyword-rank-title">当前筛选下的热门关键词</h2>
-          </div>
-        </div>
-        <div class="rank-list" id="keyword-rank" role="group" aria-label="按命中数排序的关键词，点击可只看该关键词"></div>
-      </section>
-
-      <section class="card dash-card dash-wide" aria-labelledby="heatmap-title">
-        <div class="section-heading compact-heading">
-          <div>
-            <span class="eyebrow">日期 × 报社</span>
-            <h2 id="heatmap-title">哪一天、哪家报最密集</h2>
-            <p>颜色越深代表当天该报社命中越多；点击单元格即可按该报社与日期筛选。</p>
-          </div>
-        </div>
-        <div class="heatmap" id="heatmap" role="group" aria-label="日期与报社命中热力图"></div>
-        <div class="heatmap-legend" aria-hidden="true">
-          <span>命中数</span>
-          <span><i style="background:var(--hm-0)"></i>0</span>
-          <span><i style="background:var(--hm-1)"></i>少</span>
-          <span><i style="background:var(--hm-2)"></i></span>
-          <span><i style="background:var(--hm-3)"></i></span>
-          <span><i style="background:var(--hm-4)"></i>多</span>
-          <span style="margin-left:4px">颜色越深，当天该报社命中越多</span>
-        </div>
-      </section>
-
-      <section class="card dash-card dash-wide" aria-labelledby="history-title">
-        <div class="section-heading compact-heading">
-          <div>
-            <span class="eyebrow">扫描历史</span>
-            <h2 id="history-title">最近几次扫描</h2>
-          </div>
-        </div>
-        <div class="history-list" id="scan-history" role="group" aria-label="最近的扫描任务历史"></div>
-      </section>
-    </div>
-  </section>
-
   <section class="card results-card" id="results-card" aria-labelledby="results-title">
     <div class="section-heading results-heading">
       <div>
-        <div class="section-kicker"><span>04</span> 浏览监测结果</div>
         <h2 id="results-title">命中报道</h2>
         <p id="shown" aria-live="polite">正在加载…</p>
       </div>
@@ -299,6 +231,8 @@
       </aside>
     </div>
 
+    <div class="active-filters" id="active-filters" aria-label="已选筛选条件" hidden></div>
+
     <div class="result-context" id="result-context" role="status" aria-live="polite" hidden>
       <div>
         <b id="result-context-title">当前结果范围</b>
@@ -328,10 +262,70 @@
     </div>
   </section>
 
+  <section class="dashboard-section" id="dashboard-section" aria-labelledby="dashboard-title">
+    <div class="section-title-row">
+      <div>
+        <h2 id="dashboard-title">分析看板</h2>
+      </div>
+      <span class="section-note">报社排名来自全部归档；关键词排名、热力图与时间线跟随当前筛选</span>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="card dash-card" aria-labelledby="paper-rank-title">
+        <div class="section-heading compact-heading">
+          <div>
+            <span class="eyebrow">报社排名</span>
+            <h2 id="paper-rank-title">命中最多的是哪几家</h2>
+          </div>
+        </div>
+        <div class="rank-list" id="paper-rank" role="group" aria-label="按命中数排序的报社"></div>
+      </section>
+
+      <section class="card dash-card" aria-labelledby="keyword-rank-title">
+        <div class="section-heading compact-heading">
+          <div>
+            <span class="eyebrow">关键词排名</span>
+            <h2 id="keyword-rank-title">当前筛选下的热门关键词</h2>
+          </div>
+        </div>
+        <div class="rank-list" id="keyword-rank" role="group" aria-label="按命中数排序的关键词，点击可只看该关键词"></div>
+      </section>
+
+      <section class="card dash-card dash-wide" aria-labelledby="heatmap-title">
+        <div class="section-heading compact-heading">
+          <div>
+            <span class="eyebrow">日期 × 报社</span>
+            <h2 id="heatmap-title">哪一天、哪家报最密集</h2>
+            <p>颜色越深代表当天该报社命中越多；点击单元格即可按该报社与日期筛选。</p>
+          </div>
+        </div>
+        <div class="heatmap" id="heatmap" role="group" aria-label="日期与报社命中热力图"></div>
+        <div class="heatmap-legend" aria-hidden="true">
+          <span>命中数</span>
+          <span><i style="background:var(--hm-0)"></i>0</span>
+          <span><i style="background:var(--hm-1)"></i>少</span>
+          <span><i style="background:var(--hm-2)"></i></span>
+          <span><i style="background:var(--hm-3)"></i></span>
+          <span><i style="background:var(--hm-4)"></i>多</span>
+          <span style="margin-left:4px">颜色越深，当天该报社命中越多</span>
+        </div>
+      </section>
+
+      <section class="card dash-card dash-wide" aria-labelledby="history-title">
+        <div class="section-heading compact-heading">
+          <div>
+            <span class="eyebrow">扫描历史</span>
+            <h2 id="history-title">最近几次扫描</h2>
+          </div>
+        </div>
+        <div class="history-list" id="scan-history" role="group" aria-label="最近的扫描任务历史"></div>
+      </section>
+    </div>
+  </section>
+
   <section class="trend-section" id="trend-section" aria-labelledby="trend-title">
     <div class="analysis-heading" id="analysis">
       <div>
-        <div class="section-kicker"><span>05</span> 理解报道分布</div>
         <h2 id="trend-title">时间趋势</h2>
       </div>
       <p>图表始终跟随当前结果筛选。</p>

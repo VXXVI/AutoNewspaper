@@ -362,3 +362,12 @@ def test_row_map_and_filter_popover_are_styled():
     assert "non-scaling-stroke" in css
     for stale in (".results-layout", ".layout-rail", ".layout-item", ".filter-panel"):
         assert stale not in css, f"style.css 仍残留已删除的布局样式：{stale}"
+
+
+def test_reading_results_precede_analysis_and_scan_guidance_is_compact():
+    html = _read("index.html")
+    sections = ["scan-card", "metrics-section", "results-card", "dashboard-section", "trend-section"]
+    positions = [html.index(f'id="{section}"') for section in sections]
+    assert positions == sorted(positions), "阅读结果应在分析图表之前"
+    assert 'id="scan-recent"' in html, "空闲扫描区应提供最近任务摘要"
+    assert 'class="run-steps"' not in html, "固定流程说明不应挤占首屏"

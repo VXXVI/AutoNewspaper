@@ -29,6 +29,7 @@ export var A = {
   SET_KEYWORDS: "SET_KEYWORDS",
   SHOW_ALL_HISTORY: "SHOW_ALL_HISTORY",
   RESET_VIEW: "RESET_VIEW",
+  CLEAR_FILTER: "CLEAR_FILTER",
   LOAD_MORE: "LOAD_MORE",
   SET_FILTERS_OPEN: "SET_FILTERS_OPEN",
   // 扫描运行状态（含进度、日志、本次可选报社）
@@ -217,6 +218,19 @@ export function reducer(state, action) {
         linkedFilter: null,
         visibleRows: INITIAL_ROWS
       });
+    case A.CLEAR_FILTER: {
+      // 每个标签只清除自身条件，避免搜索/日期的旧 action 顺带清掉图表联动。
+      var cleared = { visibleRows: INITIAL_ROWS };
+      if (action.key === "query") cleared.q = "";
+      else if (action.key === "dates") { cleared.from = ""; cleared.to = ""; cleared.preset = "all"; }
+      else if (action.key === "papers" && state.data) cleared.papers = new Set(state.data.papers);
+      else if (action.key === "keywords" && state.data) {
+        cleared.keywords = new Set(state.data.keywords); cleared.focusKeywords = null;
+      } else if (action.key === "linked") cleared.linkedFilter = null;
+      else if (action.key === "newOnly") cleared.newOnly = false;
+      else return state;
+      return withPatch(state, cleared);
+    }
     case A.RESET_VIEW: {
       var reset = {
         linkedFilter: null, q: "", from: "", to: "",
@@ -494,4 +508,19 @@ export function createStore(reduce, initialState) {
       };
     }
   };
+}
+
+/** 可撤销的有效筛选；日期快捷项与其日期范围合并为一项。 */
+export function selectActiveFilters(state) {
+  var filters = [];
+  if (state.q.trim()) filters.push({ key: "query", label: "搜索：" + state.q.trim() });
+  if (state.from || state.to) filters.push({ key: "dates", label: "日期：" + (state.from || "不限") + " 至 " + (state.to || "不限") });
+  var data = state.data;
+  if (data) {
+    if (state.papers.size !== data.papers.length) filters.push({ key: "papers", label: "报社：" + (Array.from(state.papers).join("、") || "未选择") });
+    if (state.focusKeywords || state.keywords.size !== data.keywords.length) filters.push({ key: "keywords", label: (state.focusKeywords ? "当前关键词：" : "关键词：") + ((state.focusKeywords || Array.from(state.keywords)).join("、") || "未选择") });
+  }
+  if (state.newOnly) filters.push({ key: "newOnly", label: "只看本次新增" });
+  if (state.linkedFilter) filters.push({ key: "linked", label: "图表：" + state.linkedFilter.label });
+  return filters;
 }

@@ -2,7 +2,7 @@
  * 零 innerHTML：一律 el()/mount()/textContent 建节点；chip/柱/热力格的 on 与 aria-pressed 由 state 推导。
  */
 import {
-  A, selectFiltered, selectSorted, selectScanNames, countNewHits, newUrlSet,
+  A, selectActiveFilters, selectFiltered, selectSorted, selectScanNames, countNewHits, newUrlSet,
   paperRanking, keywordRanking, heatmap, HEATMAP_KEY_SEP,
 } from "./store.js";
 import {
@@ -51,6 +51,7 @@ export function renderApp(ctx) {
     renderChart(ctx, list);
     renderRows(ctx, state, list);
     renderResultContext(state, list);
+    renderActiveFilters(ctx, state);
     renderShown(state, all, list);
     renderEmpty(state, all, list);
     renderRangeHint(state);
@@ -126,20 +127,29 @@ function renderFilterPopover(state) {
 }
 
 /* 当前启用的筛选条件数：既是「筛选」按钮上的角标，也让收起状态下的筛选强度可见。
- * 报社/关键词 chips 是「全选 = 未筛选」的语义，所以只有**真被收窄**时才计一项。 */
+ * 普通全选不计数；配置的关键词聚焦仍计数，以便用户取消并查看历史。 */
 export function activeFilterCount(state) {
-  var data = state.data;
-  var count = 0;
-  if (state.q) count += 1;
-  if (state.from || state.to) count += 1;
-  if (state.preset && state.preset !== "all") count += 1;
-  if (data) {
-    if (state.papers.size !== data.papers.length) count += 1;
-    if (state.keywords.size !== data.keywords.length) count += 1;
-  }
-  if (state.linkedFilter) count += 1;
-  if (state.newOnly) count += 1;
-  return count;
+  return selectActiveFilters(state).length;
+}
+
+export function renderActiveFilters(ctx, state) {
+  var box = $("active-filters");
+  if (!box) return;
+  var filters = selectActiveFilters(state);
+  clearNode(box);
+  box.hidden = !filters.length;
+  filters.forEach(function (filter) {
+    var button = mount(box, "button", "active-filter-tag", filter.label + " ×");
+    button.type = "button";
+    button.title = "取消" + filter.label;
+    button.setAttribute("aria-label", "取消" + filter.label);
+    button.setAttribute("data-filter-key", filter.key);
+    button.addEventListener("click", function () {
+      ctx.dispatch({ type: A.CLEAR_FILTER, key: filter.key }, { immediate: true });
+      var next = box.querySelector("button");
+      if (next) next.focus(); else if ($("filter-toggle")) $("filter-toggle").focus();
+    });
+  });
 }
 
 function renderDateBounds(state) {
@@ -262,7 +272,19 @@ export function renderScanPanel(state) {
     else if (selectedCount === 0) setText(hint, "⚠ 至少选择一家报社才能扫描");
     else setText(hint, "已选 " + selectedCount + " / " + scan.paperNames.length + " 家");
   }
-  renderScanProgress(scan.progress);
+  var recent = $("scan-recent");
+  if (recent) {
+    recent.hidden = scan.running;
+    var history = scan.history || [];
+    var latest = history[history.length - 1];
+    var summary = latest && latest.summary;
+    setText(recent, latest ? "最近扫描 · " + (latest.finished_at || latest.started_at || "时间未记录") +
+      " · " + (HISTORY_STATUS[latest.status] || ["未知"])[0] +
+      (summary && typeof summary.hits === "number" ? " · 命中 " + summary.hits + " 篇" : "") +
+      (summary && typeof summary.new_hits === "number" ? " · 新增 " + summary.new_hits + " 篇" : "")
+      : (scan.history === null ? "正在读取最近扫描…" : "开始首次扫描，命中报道会自动出现在下方。"));
+  }
+  renderScanProgress(!scan.running && !(scan.progress && scan.progress.total) ? null : scan.progress);
   var log = $("scan-log");
   if (log) {
     // 智能吸底：用户往上翻看历史日志时不要把他拽回底部；只有本来就在底部才跟随。
@@ -412,7 +434,7 @@ export function renderStats(state, all, list) {
     { k: "全部归档", v: all.length, x: "历史命中报道", icon: "archive" },
     {
       k: "当前结果", v: list.length, icon: "filter",
-      x: list.length === all.length ? "未使用筛选" : "从 " + all.length + " 条中筛出",
+      x: activeFilterCount(state) ? "已启用 " + activeFilterCount(state) + " 项筛选 · 共 " + all.length + " 条归档" : "未使用筛选",
     },
     { k: "相关报社", v: papers.length, icon: "papers", x: papers.join("、") || "暂无报社" },
     {
@@ -587,6 +609,87 @@ function rowMap(ctx, state, record, groupUrls) {
   return box;
 }
 
+/** 归档只保留命中片段，预览不会请求或伪造完整正文。原文始终保留独立入口。 */
+export function openArticlePreview(ctx, state, record, trigger) {
+  var existing = $("article-preview");
+  if (existing) existing.remove();
+  var dialog = el("dialog", "article-preview");
+  dialog.id = "article-preview";
+  dialog.setAttribute("aria-labelledby", "article-preview-title");
+  var head = mount(dialog, "div", "article-preview-head");
+  mount(head, "span", "eyebrow", "报道预览");
+  var close = mount(head, "button", "btn secondary article-preview-close", "关闭");
+  close.type = "button";
+  close.setAttribute("aria-label", "关闭报道预览");
+  var title = mount(dialog, "h2", null, record.title || "未命名报道");
+  title.id = "article-preview-title";
+  mount(dialog, "p", "article-preview-meta", [record.paper, record.date, record.section].filter(Boolean).join(" · "));
+  var body = mount(dialog, "div", "article-preview-body");
+  if ((record.matched || []).length) {
+    var tags = mount(body, "div", "tags");
+    record.matched.forEach(function (keyword) { mount(tags, "span", "tag", keyword); });
+  }
+  mount(body, "h3", null, "命中片段");
+  if ((record.snippets || []).length) {
+    record.snippets.forEach(function (snippet) { mount(body, "p", "article-preview-snippet", snippet); });
+  } else mount(body, "p", "empty-hint", "这条归档没有保存命中片段，可打开原文阅读。");
+  mount(body, "p", "hint", "预览内容为归档中的命中片段，完整报道请查看原文。");
+  var position = geomText(record.geometry);
+  var map = rowMap(ctx, state, record, new Set([record.url]));
+  if (map || position) {
+    var location = mount(body, "div", "article-preview-location");
+    mount(location, "h3", null, "版面位置");
+    if (position) mount(location, "p", null, position);
+    if (map) {
+      // 预览里的缩略图只展示位置，避免在阅读时意外改变列表筛选。
+      var figure = mount(location, "div", "row-map preview-map");
+      figure.style.aspectRatio = map.style.aspectRatio;
+      figure.setAttribute("role", "img");
+      figure.setAttribute("aria-label", (record.section || "本版") + "，高亮区域为此报道的位置");
+      figure.appendChild(map.querySelector("svg"));
+    }
+  }
+  var actions = mount(dialog, "div", "article-preview-actions");
+  var url = safeUrl(record.url);
+  if (url) {
+    var original = mount(actions, "a", "btn primary", "打开原文 ↗");
+    original.href = url; original.target = "_blank"; original.rel = "noopener noreferrer";
+  }
+  function restoreFocus() {
+    if (trigger && trigger.isConnected) trigger.focus();
+    else {
+      var replacement = Array.from(document.querySelectorAll(".article-preview-trigger"))
+        .find(function (button) { return button.getAttribute("aria-label") === "预览报道：" + (record.title || record.url); });
+      if (replacement) replacement.focus(); else if ($("filter-toggle")) $("filter-toggle").focus();
+    }
+  }
+  function dismiss() {
+    if (typeof dialog.close === "function") dialog.close();
+    dialog.remove();
+    restoreFocus();
+  }
+  close.addEventListener("click", dismiss);
+  dialog.addEventListener("cancel", function (event) { event.preventDefault(); dismiss(); });
+  dialog.addEventListener("click", function (event) {
+    if (event.target !== dialog) return;
+    var rect = dialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dismiss();
+  });
+  dialog.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); dismiss(); }
+    else if (event.key === "Tab") {
+      var focusable = Array.from(dialog.querySelectorAll("button, a[href]"));
+      var first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  });
+  document.body.appendChild(dialog);
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else { dialog.setAttribute("open", ""); dialog.setAttribute("aria-modal", "true"); }
+  close.focus();
+}
+
 export function renderRows(ctx, state, records) {
   var body = $("rows");
   if (!body) return;
@@ -628,6 +731,11 @@ export function renderRows(ctx, state, records) {
       r.matched.filter(function (k) { return state.keywords.has(k); })
         .forEach(function (k) { mount(tags, "span", "tag", k); });
     }
+    var preview = mount(td, "button", "btn secondary small article-preview-trigger", "预览");
+    preview.type = "button";
+    preview.setAttribute("aria-label", "预览报道：" + (r.title || r.url));
+    preview.setAttribute("aria-haspopup", "dialog");
+    preview.addEventListener("click", function () { openArticlePreview(ctx, state, r, preview); });
     // 版面位置：一条报道对应一格缩略位置图，紧跟在命中报道右侧。
     var posCell = mount(tr, "td", "col-section");
     posCell.setAttribute("data-label", "版面位置");
