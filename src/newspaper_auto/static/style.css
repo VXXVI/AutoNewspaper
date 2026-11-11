@@ -476,6 +476,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background-color: var(--surface-2);
 }
 :root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.85); }
+/* 日期框在窄列里只有约 110px，Chrome/Safari 的原生「年/月/日 + 日历按钮」会把
+ * 最后一位数字裁掉（渲染成 2026/10/…）。压缩内边距与图标占位，并把时间范围下拉
+ * 的伸缩余量让给两个日期，保证 10 个字符完整可读。 */
+input[type="date"] { padding-left: 8px; padding-right: 4px; }
+input[type="date"]::-webkit-calendar-picker-indicator { padding: 0; margin: 0; }
 select { cursor: pointer; }
 
 /* summary 天然只有一行文字高（约 21px），低于可点区域底线：
@@ -615,8 +620,10 @@ main {
 .field-keywords input { height: 42px; padding: 8px 12px; font-size: 14px; }
 /* 常用的最近天数并排展示；指定日期时起止控件可自动换行。 */
 .range-fields { display: flex; flex-wrap: wrap; gap: 10px; }
-.range-fields > .field { flex: 1 1 110px; }
-.range-fields > .field:first-child { flex: 1 1 128px; }
+/* 两个日期各留 118px 起步（配合上面的日期内边距，10 位日期才不会被裁），
+ * 时间范围下拉只要放得下「指定日期」，余量优先给日期。 */
+.range-fields > .field { flex: 1 1 118px; }
+.range-fields > .field:first-child { flex: 1 1 96px; }
 .scan-button {
   grid-column: 3;
   grid-row: 1;
@@ -651,7 +658,10 @@ main {
   color: var(--panel-ink);
   box-shadow: var(--shadow-panel);
 }
-.activity-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+/* 状态胶囊承载的是整句扫描结果，长文案（如「最近一次扫描未完整完成…」）挤在
+ * 标题行右侧会越顶越高、把标题压成竖排。让它独占整行，标题只留两行小字；
+ * 短文案仍是单行，视觉重量不变。 */
+.activity-heading { display: block; }
 .activity-label {
   color: var(--panel-ink-3);
   font-size: 11px;
@@ -661,11 +671,17 @@ main {
 }
 .activity-heading h3 { margin: 4px 0 0; font-size: 17px; }
 .activity-panel .status-pill {
-  max-width: 190px;
+  display: flex;
+  width: 100%;
+  max-width: none;
+  margin-top: 12px;
+  padding: 8px 12px;
   border-color: var(--panel-line);
   background: color-mix(in srgb, var(--panel-ink) 8%, transparent);
   color: var(--panel-ink-2);
   white-space: normal;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .activity-panel .status-pill[data-state="running"] {
   border-color: color-mix(in srgb, var(--brand) 55%, transparent);
