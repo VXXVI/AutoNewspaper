@@ -134,9 +134,13 @@ def test_theme_toggle_is_wired_and_dark_tokens_live_once():
     assert 'id="theme-toggle"' in html
     for value in ("light", "dark", "auto"):
         assert f'data-theme-value="{value}"' in html, f"缺少主题按钮 {value}"
-    # 首屏防闪脚本要在样式表之前跑，且与 theme.js 用同一个 localStorage 键
-    assert html.index("newspaper-auto.theme") < html.index("/static/style.css")
-    assert "prefers-color-scheme" in html, "内联脚本需据系统偏好解析 auto"
+    # 首屏防闪脚本要在样式表之前跑，且与 theme.js 用同一个 localStorage 键。
+    # CSP 是 script-src 'self'，内联脚本会被浏览器拒绝，所以必须走外部文件。
+    assert '<script src="/static/theme-boot.js"></script>' in html
+    assert html.index("/static/theme-boot.js") < html.index("/static/style.css")
+    boot = _read("theme-boot.js")
+    assert "newspaper-auto.theme" in boot
+    assert "prefers-color-scheme" in boot, "首屏脚本需据系统偏好解析 auto"
 
     css = _read("style.css")
     assert ':root[data-theme="dark"]' in css

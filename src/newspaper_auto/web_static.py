@@ -45,6 +45,8 @@ STATIC_TYPES = {
     "render.js": "application/javascript; charset=utf-8",
     "store.js": "application/javascript; charset=utf-8",
     "theme.js": "application/javascript; charset=utf-8",
+    # 首屏防闪的阻塞脚本（CSP 禁止内联脚本，见 index.html 注释）
+    "theme-boot.js": "application/javascript; charset=utf-8",
     "style.css": "text/css; charset=utf-8",
 }
 # ⚠️ 白名单必须与 static/ 下实际提供的文件同步：漏一项浏览器就拿到 404。
