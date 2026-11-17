@@ -455,6 +455,7 @@ def test_pooled_http_skips_dead_ip_and_caches_bad_ip(http_base, monkeypatch):
 def test_pooled_http_recovers_from_stale_keepalive_and_follows_redirect(monkeypatch):
     monkeypatch.setattr(http.urllib.request, "getproxies", lambda: {})
     req_count = {"n": 0}
+    truncate_hits = {"n": 0}
 
     class _KeepAliveHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -477,15 +478,17 @@ def test_pooled_http_recovers_from_stale_keepalive_and_follows_redirect(monkeypa
                 # 模拟服务端在空闲复用连接上直接断连
                 self.connection.close()
                 return
-            if self.path == "/truncate-once" and req_count["n"] == 4:
-                # 模拟复用连接在读正文阶段触发 IncompleteRead
-                self.send_response(200)
-                self.send_header("Content-Length", "500")
-                self.end_headers()
-                self.wfile.write(b"partial")
-                self.wfile.flush()
-                self.connection.close()
-                return
+            if self.path == "/truncate-once":
+                truncate_hits["n"] += 1
+                if truncate_hits["n"] == 1:
+                    # 模拟复用连接在读正文阶段触发 IncompleteRead
+                    self.send_response(200)
+                    self.send_header("Content-Length", "500")
+                    self.end_headers()
+                    self.wfile.write(b"partial")
+                    self.wfile.flush()
+                    self.connection.close()
+                    return
             data = ("正文内容" * 100).encode()
             self.send_response(200)
             self.send_header("Content-Length", str(len(data)))
@@ -511,6 +514,7 @@ def test_pooled_http_recovers_from_stale_keepalive_and_follows_redirect(monkeypa
         # 复用连接在读正文阶段发生 IncompleteRead，应透明重连并拿到 200
         code4, body4 = http._stdlib_once(base + "/truncate-once", 5)
         assert code4 == 200 and "正文内容" in body4
+        assert truncate_hits["n"] == 2
         # 重定向到非法端口不能抛 ValueError 逸出
         assert http._stdlib_once(base + "/bad-redir", 5) == (0, "")
     finally:
