@@ -23,6 +23,11 @@ def test_clean_empty():
     assert parse.clean("") == ""
 
 
+def test_clean_strips_html_comments_without_leaking_arrow():
+    html = "<p>正文<!-- 注释里带<tag>内容 -->继续</p><!-- 尾注 -->"
+    assert parse.clean(html) == "正文 继续"
+
+
 # ---------------------------------------------------------------- tidy_title
 @pytest.mark.parametrize(
     "raw,expected",
@@ -106,6 +111,17 @@ def test_extract_title_uses_title1_when_h1_too_short():
 def test_renminribao_generic_title_is_cleaned_to_empty():
     """人民日报版面页的 <title> 只有站点名，剥掉后必须是空串 —— 否则会被当成版面名。"""
     assert parse.extract_title("<title>人民日报-人民网</title>") == ""
+
+
+def test_extract_title_handles_multiclass_title1_and_short_h1_fallback():
+    html = (
+        "<title>《中国教育报》电子版 - 中国教育新闻网</title>"
+        '<div class="title1 bold"><span>AI</span>赋能教育</div>'
+    )
+    assert parse.extract_title(html) == "AI 赋能教育"
+
+    short_html = "<title>《中国教育报》电子版 - 中国教育新闻网</title><h1>述评</h1>"
+    assert parse.extract_title(short_html) == "述评"
 
 
 # ---------------------------------------------------------------- page_section

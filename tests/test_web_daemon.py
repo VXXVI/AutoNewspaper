@@ -248,6 +248,18 @@ def test_stop_waits_for_pyinstaller_bootloader(tmp_path, monkeypatch):
     assert web_daemon.read_state(tmp_path) is None
 
 
+def test_rotate_log_if_needed_rotates_oversized_file(tmp_path):
+    log_path = tmp_path / "dashboard.log"
+    log_path.write_text("x" * 100, encoding="utf-8")
+    web_daemon._rotate_log_if_needed(log_path, max_bytes=50)
+    assert not log_path.exists()
+    assert log_path.with_name("dashboard.log.1").read_text(encoding="utf-8") == "x" * 100
+
+    log_path.write_text("small", encoding="utf-8")
+    web_daemon._rotate_log_if_needed(log_path, max_bytes=50)
+    assert log_path.read_text(encoding="utf-8") == "small"
+
+
 def test_wait_for_parent_exit_skips_missing_or_self(monkeypatch):
     monkeypatch.setattr(web_daemon, "pid_alive", lambda pid: True)
     assert web_daemon._wait_for_parent_exit(0, 0.01) is True

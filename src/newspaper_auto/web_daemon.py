@@ -270,11 +270,24 @@ def _child_env() -> dict[str, str]:
     return env
 
 
+_MAX_LOG_BYTES = 2 * 1024 * 1024
+
+
+def _rotate_log_if_needed(log_path: Path, max_bytes: int = _MAX_LOG_BYTES) -> None:
+    """后台日志超过上限时轮转为 ``dashboard.log.1``，防止长期驻留无限增长。"""
+    try:
+        if log_path.stat().st_size > max_bytes:
+            os.replace(log_path, log_path.with_name(f"{log_path.name}.1"))
+    except OSError:
+        pass
+
+
 def spawn(data_dir: str | os.PathLike[str], host: str, port: int, *, scan: bool = False) -> subprocess.Popen:
     """以「脱离控制台」的方式启动看板服务进程（stdout/stderr 落日志文件）。"""
     data_dir = Path(data_dir)
     log_path = paths.dashboard_log_file(data_dir)
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    _rotate_log_if_needed(log_path)
     log_file = open(log_path, "a", encoding="utf-8")  # noqa: SIM115  交给子进程持有
 
     # cwd 有意继承父进程；「项目根」另由 NEWSPAPER_APP_DIR 显式传给子进程（见 paths.app_dir），

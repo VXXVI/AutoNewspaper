@@ -447,23 +447,23 @@ def scan_paper(
     all_articles: list[dict[str, Any]] = []
     article_failed_records: list[dict[str, Any]] = []
 
-    def grab_article(article_url: str) -> dict[str, Any] | None:
+    def grab_article(article_url: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         if _cancelled():
-            return None
+            return None, None
         article_code, article_html = _fetch(article_url)
         if article_code != 200 or len(article_html) < config.MIN_HTML_BYTES:
             reason = (
                 f"HTTP {article_code}" if article_code != 200 else f"内容过短（{len(article_html)} 字节）"
             )
-            article_failed_records.append({"url": article_url, "code": article_code, "reason": reason})
-            return None
+            return None, {"url": article_url, "code": article_code, "reason": reason}
         title = parse.extract_title(article_html)
         text = parse.extract_text(article_html)
         if not title and not text:
-            article_failed_records.append(
-                {"url": article_url, "code": article_code, "reason": "标题和正文均为空（疑似文章页改版）"}
-            )
-            return None
+            return None, {
+                "url": article_url,
+                "code": article_code,
+                "reason": "标题和正文均为空（疑似文章页改版）",
+            }
         blob = title + " " + text
         # 匹配走 NFKC 归一化后的文本（全角 ＡＩ 也能命中半角关键词），
         # 与 make_kw_re 对关键词的归一化保持同一口径。
@@ -492,10 +492,12 @@ def scan_paper(
             offsets = parse.original_index_map(blob)
             record["snippets"] = [_snippet(blob, match_blob, match, offsets) for _keyword, match in found[:3]]
             record["matched"] = [keyword for keyword, _match in found]
-        return record
+        return record, None
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for record in pool.map(grab_article, list(article_section)):
+        for record, failed_record in pool.map(grab_article, list(article_section)):
+            if failed_record is not None:
+                article_failed_records.append(failed_record)
             if record is None:
                 continue
             all_articles.append(record)
