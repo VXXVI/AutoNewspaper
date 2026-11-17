@@ -156,7 +156,7 @@ export function reducer(state, action) {
       var data = action.data;
       var patch = {
         data: data,
-        scan: Object.assign({}, state.scan, { newUrlsSynced: true })
+        scan: Object.assign({}, state.scan, { newUrlsSynced: !state.scan.running })
       };
       if (action.mode === "reset") {
         patch.papers = new Set(data.papers);
@@ -314,7 +314,7 @@ export function reducer(state, action) {
       var task = action.task || {};
       var replace = action.replace === true;
       var taskId = scan.taskId;
-      var cursor = scan.logCursor;
+      var cursor = replace ? 0 : scan.logCursor;
       if (task.task_id && taskId && task.task_id !== taskId) { replace = true; cursor = 0; }
       if (task.task_id) taskId = task.task_id;
       var lines = replace || task.logs_truncated ? [] : scan.logLines;

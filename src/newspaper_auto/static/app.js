@@ -249,7 +249,9 @@ import { shiftDate, todayIso } from "./format.js";
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     }
     function modalOpen() {
-      return Boolean($("article-preview") || ($("export-dialog") && $("export-dialog").hasAttribute("open")));
+      var preview = $("article-preview");
+      var exportDlg = $("export-dialog");
+      return Boolean((preview && preview.hasAttribute("open")) || (exportDlg && exportDlg.hasAttribute("open")));
     }
     document.addEventListener("keydown", function (event) {
       if (event.isComposing || modalOpen()) return;

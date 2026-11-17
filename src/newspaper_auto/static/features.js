@@ -183,10 +183,16 @@ export function createScanController(ctx) {
   function resume() {
     ctx.api.get("/api/scan").then(function (task) {
       if (!task) return;
-      ctx.dispatch({ type: A.SCAN_RESET_LOG });
+      if (task.status === "running") {
+        ctx.dispatch({ type: A.SCAN_RESET_LOG });
+        consume(task, true);
+        setRunning(true);
+        setStatus("自动扫描进行中…");
+        beginStreaming();
+        return;
+      }
       consume(task, true);
-      if (task.status === "running") { setRunning(true); setStatus("自动扫描进行中…"); beginStreaming(); }
-      else if (task.status === "done") setStatus("最近一次扫描已完成");
+      if (task.status === "done") setStatus("最近一次扫描已完成");
       else if (task.status === "cancelled") setStatus("最近一次扫描已取消");
       else if (task.status === "error") setStatus("最近一次扫描未完整完成：" + (task.error || "请查看日志"));
     }).catch(function () { /* 首屏恢复失败不阻塞其他功能 */ });

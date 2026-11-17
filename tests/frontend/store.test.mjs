@@ -421,3 +421,25 @@ test("PAPERS_BUSY 与 selectFiltered 匹配关键词标签", () => {
   });
   assert.equal(selectFiltered(state).length, 1);
 });
+
+test("LOAD_DATA：扫描运行中不把 newUrlsSynced 置为 true，结束后刷新才同步", () => {
+  const runningState = reducer(createInitialState(), { type: A.SCAN_RUNNING, running: true });
+  const loadedWhileRunning = reducer(runningState, {
+    type: A.LOAD_DATA,
+    data: sampleData(),
+    mode: "reset",
+    requestedFocus: null,
+  });
+  assert.equal(loadedWhileRunning.scan.newUrlsSynced, false);
+
+  const stopped = reducer(loadedWhileRunning, { type: A.SCAN_RUNNING, running: false });
+  const loadedAfter = reducer(stopped, {
+    type: A.LOAD_DATA,
+    data: sampleData(),
+    mode: "preserve",
+    requestedFocus: null,
+    allPapersSelected: true,
+    allKeywordsSelected: true,
+  });
+  assert.equal(loadedAfter.scan.newUrlsSynced, true);
+});
