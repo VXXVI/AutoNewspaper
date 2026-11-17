@@ -66,7 +66,9 @@ _MAX_REDIRECTS = 5
 _BAD_IPS_LOCK = threading.Lock()
 _BAD_IPS: dict[tuple[str, int], float] = {}
 _POOL_LOCK = threading.Lock()
-_CONN_POOL: dict[tuple[str, str, int, int], list[tuple[http.client.HTTPConnection, float]]] = {}
+_CONN_POOL: dict[
+    tuple[str, str, int, ssl.SSLContext | None], list[tuple[http.client.HTTPConnection, float]]
+] = {}
 
 
 def reset_pool() -> None:
@@ -120,14 +122,16 @@ def _connect_socket(host: str, port: int, timeout: float) -> socket.socket:
     last_exc: OSError | None = None
     for fam, socktype, proto, sockaddr in ordered:
         ip = str(sockaddr[0])
-        sock = socket.socket(fam, socktype, proto)
-        sock.settimeout(per_ip_timeout)
+        sock: socket.socket | None = None
         try:
+            sock = socket.socket(fam, socktype, proto)
+            sock.settimeout(per_ip_timeout)
             sock.connect(sockaddr)
         except OSError as exc:
             last_exc = exc
-            with contextlib.suppress(OSError):
-                sock.close()
+            if sock is not None:
+                with contextlib.suppress(OSError):
+                    sock.close()
             with _BAD_IPS_LOCK:
                 _BAD_IPS[(ip, port)] = time.monotonic() + _BAD_IP_TTL
             continue
@@ -135,8 +139,9 @@ def _connect_socket(host: str, port: int, timeout: float) -> socket.socket:
             _BAD_IPS.pop((ip, port), None)
         sock.settimeout(float(timeout))
         return sock
-    assert last_exc is not None
-    raise last_exc
+    if last_exc is not None:
+        raise last_exc
+    raise OSError(f"无法连接主机：{host}")
 
 
 def _open_conn(
@@ -163,7 +168,7 @@ def _open_conn(
 def _borrow_conn(
     scheme: str, host: str, port: int, timeout: float, context: ssl.SSLContext
 ) -> tuple[http.client.HTTPConnection, bool]:
-    key = (scheme, host, port, id(context) if scheme == "https" else 0)
+    key = (scheme, host, port, context if scheme == "https" else None)
     now = time.monotonic()
     stale: list[http.client.HTTPConnection] = []
     chosen: http.client.HTTPConnection | None = None
@@ -193,7 +198,7 @@ def _return_conn(
     if conn.sock is None:
         return
     limit = max(1, int(getattr(config, "HOST_CONCURRENCY", 4) or 4))
-    key = (scheme, host, port, id(context) if scheme == "https" else 0)
+    key = (scheme, host, port, context if scheme == "https" else None)
     evicted: http.client.HTTPConnection | None = None
     with _POOL_LOCK:
         bucket = _CONN_POOL.setdefault(key, [])
@@ -311,9 +316,13 @@ def _pooled_http_once(
                 return 0, ""
             if scheme not in ("http", "https") or not host:
                 return 0, ""
+            default_port = 443 if scheme == "https" else 80
+            host_hdr = f"[{host}]" if ":" in host else host
+            if port != default_port:
+                host_hdr = f"{host_hdr}:{port}"
             req_path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
             req_headers = dict(headers)
-            req_headers["Host"] = parts.netloc
+            req_headers["Host"] = host_hdr
 
             conn, from_pool = _borrow_conn(scheme, host, port, float(timeout), context)
             try:
@@ -468,7 +477,7 @@ def _curl_once(url: str, timeout: int) -> tuple[int, str]:
         # 必须抑制控制台窗口：无窗口版 exe（父进程没有控制台）里，curl 每被派生
         # 一次就会弹一个黑窗口，而扫描是逐页调用的（默认 8 并发）。见 procutil。
         proc = subprocess.run(cmd, capture_output=True, timeout=timeout + 8, **procutil.hidden_console())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired):
         return 0, ""
     raw = proc.stdout or b""
     match = _HTTP_CODE_RE.search(raw)
