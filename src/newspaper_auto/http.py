@@ -114,7 +114,9 @@ def _connect_socket(host: str, port: int, timeout: float) -> socket.socket:
                 healthy.append(item)
 
     ordered = healthy + cooling
-    per_ip_timeout = min(4.0, max(1.5, float(timeout) / 3.0)) if len(ordered) > 1 else float(timeout)
+    per_ip_timeout = (
+        min(float(timeout), 4.0, max(1.5, float(timeout) / 3.0)) if len(ordered) > 1 else float(timeout)
+    )
     last_exc: OSError | None = None
     for fam, socktype, proto, sockaddr in ordered:
         ip = str(sockaddr[0])
@@ -314,9 +316,11 @@ def _pooled_http_once(
                 try:
                     conn.request("GET", req_path, headers=req_headers)
                     resp = conn.getresponse()
+                    data = resp.read()
                 except (
                     http.client.RemoteDisconnected,
                     http.client.BadStatusLine,
+                    http.client.IncompleteRead,
                     ConnectionResetError,
                     BrokenPipeError,
                     ssl.SSLEOFError,
@@ -329,8 +333,8 @@ def _pooled_http_once(
                     conn = _open_conn(scheme, host, port, float(timeout), context)
                     conn.request("GET", req_path, headers=req_headers)
                     resp = conn.getresponse()
+                    data = resp.read()
 
-                data = resp.read()
                 status = int(resp.status)
                 encoding = resp.getheader("Content-Encoding", "") or ""
                 content_type = resp.getheader("Content-Type", "") or ""
