@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import gzip
 import json
+import socketserver
 import sys
 import threading
 from copy import deepcopy
@@ -71,6 +72,17 @@ class DashboardServer(ThreadingHTTPServer):
 
     daemon_threads = True
     allow_reuse_address = True
+
+    def server_bind(self) -> None:
+        """跳过 ``HTTPServer.server_bind`` 里的 ``socket.getfqdn(host)`` 阻塞反查。
+
+        看板只监听环回地址，不需要反查 FQDN；在 macOS mDNS/VPN 抖动时 ``getfqdn("127.0.0.1")``
+        会阻塞数十秒，导致 ``--detach`` 就绪探活超时。
+        """
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
 
     def __init__(
         self,

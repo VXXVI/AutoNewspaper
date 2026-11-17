@@ -1958,6 +1958,22 @@ def test_scan_cancel_after_done_returns_409(tmp_path):
         assert status == 409
 
 
+def test_dashboard_server_bind_skips_blocking_getfqdn(tmp_path, monkeypatch):
+    """绑定环回地址绝不能触发 ``socket.getfqdn`` 反查（避免 macOS DNS 抖动卡死启动）。"""
+    import socket
+
+    def _boom(_name: str = "") -> str:
+        raise AssertionError("DashboardServer 不应调用阻塞的 socket.getfqdn")
+
+    monkeypatch.setattr(socket, "getfqdn", _boom)
+    server = web.create_server(tmp_path, "127.0.0.1", 0)
+    try:
+        assert server.server_name == "127.0.0.1"
+        assert server.server_port > 0
+    finally:
+        server.server_close()
+
+
 def test_scan_history_persisted_and_listed(tmp_path):
     with _serve(tmp_path) as url:
         assert _request("POST", url + "/api/scan", {"keywords": ["x"]})[0] == 202
