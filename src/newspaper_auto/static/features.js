@@ -683,6 +683,7 @@ export function createSystemController(ctx) {
     }).catch(function (err) {
       if (reqId !== historyReqId) return;
       ctx.dispatch({ type: A.SCAN_STATUS, text: "删除历史失败：" + err.message, tone: "error" });
+      if (err && err.status === 404) historyReloadQueued = true;
     }).finally(finishHistoryMutation);
   }
   function clearScanHistory() {
@@ -707,14 +708,20 @@ export function createSystemController(ctx) {
     }).finally(finishHistoryMutation);
   }
   function reuseHistoryParams(task) {
-    if (!task) return;
+    if (!task || ctx.getState().scan.running) return;
     var input = $("scan-kw");
     if (input && Array.isArray(task.keywords) && task.keywords.length) {
       input.value = task.keywords.join(", ");
       if (ctx.features && ctx.features.scan) ctx.features.scan.updateKeywordHint();
     }
-    ctx.dispatch({ type: A.SCAN_CONFIG_ONLY, only: typeof task.only === "string" ? task.only : "" });
-    ctx.dispatch({ type: A.SCAN_STATUS, text: "已回填该次扫描的关键词与报社", tone: "idle" });
+    var only = typeof task.only === "string" ? task.only : "";
+    ctx.dispatch({ type: A.SCAN_CONFIG_ONLY, only: only }, { immediate: true });
+    var missing = Boolean(only && selectScanNames(ctx.getState().scan).length === 0);
+    ctx.dispatch({
+      type: A.SCAN_STATUS,
+      text: missing ? "该次扫描涉及的报社已停用或删除，请重新选择" : "已回填该次扫描的关键词与报社",
+      tone: missing ? "error" : "idle",
+    });
     var card = $("scan-card");
     if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
     if (input) input.focus();
