@@ -394,3 +394,52 @@ test("CLEAR_FILTER：逐项撤销，不重置其它筛选且不修改旧集合",
   assert.deepEqual([...state.keywords], ["k1"]);
   assert.equal(reducer(state, { type: A.CLEAR_FILTER, key: "unknown" }), state);
 });
+
+test("CLEAR_LINKED：无联动筛选时保留 visibleRows，有联动时清除并复位", () => {
+  const withoutLinked = Object.assign(createInitialState(), { visibleRows: 200, linkedFilter: null });
+  assert.equal(reducer(withoutLinked, { type: A.CLEAR_LINKED }), withoutLinked);
+  const withLinked = Object.assign(createInitialState(), { visibleRows: 200, linkedFilter: { type: "date", date: "x" } });
+  const next = reducer(withLinked, { type: A.CLEAR_LINKED });
+  assert.equal(next.linkedFilter, null);
+  assert.equal(next.visibleRows, INITIAL_ROWS);
+});
+
+test("PAPERS_BUSY 与 selectFiltered 匹配关键词标签", () => {
+  const s = reducer(createInitialState(), { type: A.PAPERS_BUSY, busy: true });
+  assert.equal(s.papersPanel.busy, true);
+  const state = Object.assign(createInitialState(), {
+    data: {
+      papers: ["湛江日报"],
+      keywords: ["生成式人工智能"],
+      records: [
+        { paper: "湛江日报", date: "2026-09-23", section: "要闻", title: "新闻标题", url: "u1", snippets: ["正文摘要"], matched: ["生成式人工智能"] },
+      ],
+    },
+    papers: new Set(["湛江日报"]),
+    keywords: new Set(["生成式人工智能"]),
+    q: "生成式",
+  });
+  assert.equal(selectFiltered(state).length, 1);
+});
+
+test("LOAD_DATA：扫描运行中不把 newUrlsSynced 置为 true，结束后刷新才同步", () => {
+  const runningState = reducer(createInitialState(), { type: A.SCAN_RUNNING, running: true });
+  const loadedWhileRunning = reducer(runningState, {
+    type: A.LOAD_DATA,
+    data: sampleData(),
+    mode: "reset",
+    requestedFocus: null,
+  });
+  assert.equal(loadedWhileRunning.scan.newUrlsSynced, false);
+
+  const stopped = reducer(loadedWhileRunning, { type: A.SCAN_RUNNING, running: false });
+  const loadedAfter = reducer(stopped, {
+    type: A.LOAD_DATA,
+    data: sampleData(),
+    mode: "preserve",
+    requestedFocus: null,
+    allPapersSelected: true,
+    allKeywordsSelected: true,
+  });
+  assert.equal(loadedAfter.scan.newUrlsSynced, true);
+});

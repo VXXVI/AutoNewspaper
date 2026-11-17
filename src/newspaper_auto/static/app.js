@@ -231,7 +231,11 @@ import { shiftDate, todayIso } from "./format.js";
     initTheme();
     dispatch({ type: A.SET_FILTERS_OPEN, open: readFiltersOpen() });
     watchSections();
-    $("filter-toggle").addEventListener("click", function () { setFiltersOpen(!filtersOpen()); });
+    $("filter-toggle").addEventListener("click", function () {
+      var nextOpen = !filtersOpen();
+      setFiltersOpen(nextOpen);
+      if (nextOpen && $("q")) $("q").focus();
+    });
     // 浮层的两条退出口：Esc 与点面板外部。关闭后焦点回到触发按钮，键盘用户不会丢位置。
     // 初始化日期控件的最大允许日期为「今天」（未来报纸尚未发行），口径同服务端
     var todayStr = serverToday();
@@ -239,8 +243,36 @@ import { shiftDate, todayIso } from "./format.js";
       var el = $(id);
       if (el) el.max = todayStr;
     });
+    function isTypingTarget(el) {
+      if (!el) return false;
+      var tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+    }
+    function modalOpen() {
+      var preview = $("article-preview");
+      var exportDlg = $("export-dialog");
+      return Boolean((preview && preview.hasAttribute("open")) || (exportDlg && exportDlg.hasAttribute("open")));
+    }
+    function openSearch() {
+      setFiltersOpen(true);
+      if ($("q")) { $("q").focus(); $("q").select(); }
+    }
     document.addEventListener("keydown", function (event) {
-      if (event.key !== "Escape" || !filtersOpen()) return;
+      if (event.isComposing || modalOpen()) return;
+      var k = event.key;
+      if ((event.ctrlKey || event.metaKey) && !event.repeat && k && k.toLowerCase() === "k") {
+        event.preventDefault();
+        return openSearch();
+      }
+      if (k === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        return openSearch();
+      }
+      if (k !== "Escape" || !filtersOpen()) return;
+      if (document.activeElement === $("q") && $("q").value) {
+        $("q").value = "";
+        return dispatch({ type: A.SET_QUERY, value: "" }, { immediate: true });
+      }
       setFiltersOpen(false);
       $("filter-toggle").focus();
     });
@@ -250,7 +282,9 @@ import { shiftDate, todayIso } from "./format.js";
       if (panel.contains(event.target) || trigger.contains(event.target)) return;
       setFiltersOpen(false);
     });
-    $("reload").addEventListener("click", function () { load({ preserve: true }); });
+    $("reload").addEventListener("click", function () {
+      if (!store.getState().system.loading) load({ preserve: true });
+    });
     $("scan-form").addEventListener("submit", function (event) {
       event.preventDefault();
       if (!store.getState().scan.running) scan.start();
@@ -265,8 +299,22 @@ import { shiftDate, todayIso } from "./format.js";
       if (event.target.value && event.target.value > today) event.target.value = today;
     });
     if ($("scan-cancel")) $("scan-cancel").addEventListener("click", scan.cancel);
+    if ($("scan-new-cta")) {
+      $("scan-new-cta").addEventListener("click", function () {
+        dispatch({ type: A.SET_NEW_ONLY, on: true }, { immediate: true });
+        var card = $("results-card");
+        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
 
-    $("paper-add").addEventListener("click", papers.add);
+    if ($("paper-form")) {
+      $("paper-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        papers.add();
+      });
+    } else {
+      $("paper-add").addEventListener("click", papers.add);
+    }
     $("paper-create").addEventListener("click", papers.showCreate);
     $("paper-test").addEventListener("click", papers.testForm);
     $("paper-clear").addEventListener("click", papers.clearForm);
@@ -340,6 +388,10 @@ import { shiftDate, todayIso } from "./format.js";
     papers.load();
     scan.resume();
     load();
+    var healthTimer = window.setInterval(function () {
+      if (!document.hidden) system.loadHealth();
+    }, 60000);
+    window.addEventListener("beforeunload", function () { window.clearInterval(healthTimer); });
   }
 
   init();

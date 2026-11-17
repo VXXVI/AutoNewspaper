@@ -29,14 +29,76 @@ function toggleLinked(ctx, filter) {
   var current = ctx.getState().linkedFilter;
   var same = current && current.type === filter.type && current.key === filter.key;
   ctx.dispatch({ type: A.SET_LINKED, filter: same ? null : filter }, { immediate: true });
-  var card = $("results-card");
-  if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!same) {
+    var card = $("results-card");
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function renderLoadingState(state) {
+  var loading = Boolean(state.system && state.system.loading);
+  var reload = $("reload");
+  if (reload) {
+    reload.disabled = loading;
+    reload.setAttribute("aria-busy", loading ? "true" : "false");
+  }
+  var results = $("results-card");
+  if (results) results.setAttribute("aria-busy", loading ? "true" : "false");
+}
+
+function rebuildChips(box, items, makeNode) {
+  if (!box) return;
+  var active = document.activeElement;
+  var activeLabel = active && box.contains(active) ? active.getAttribute("data-chip-key") : null;
+  clearNode(box);
+  var toFocus = null;
+  items.forEach(function (item) {
+    var node = makeNode(item);
+    var key = node.getAttribute("data-chip-key") || node.textContent;
+    node.setAttribute("data-chip-key", key);
+    box.appendChild(node);
+    if (activeLabel !== null && key === activeLabel) toFocus = node;
+  });
+  if (toFocus && typeof toFocus.focus === "function") toFocus.focus();
+}
+
+function highlightTerms(state, record) {
+  var seen = {};
+  var terms = [];
+  (record && record.matched ? record.matched : []).forEach(function (kw) {
+    var s = String(kw || "").trim();
+    if (s && !seen[s.toLowerCase()]) { seen[s.toLowerCase()] = true; terms.push(s); }
+  });
+  var q = state && state.q ? state.q.trim() : "";
+  if (q && !seen[q.toLowerCase()]) terms.push(q);
+  terms.sort(function (a, b) { return b.length - a.length; });
+  return terms;
+}
+
+function appendHighlighted(parent, text, terms) {
+  var raw = String(text === undefined || text === null ? "" : text);
+  if (!raw || !terms || !terms.length) {
+    parent.appendChild(document.createTextNode(raw));
+    return;
+  }
+  var escaped = terms.map(function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); });
+  var re = new RegExp("(" + escaped.join("|") + ")", "gi");
+  var last = 0;
+  var m;
+  while ((m = re.exec(raw)) !== null) {
+    if (m.index > last) parent.appendChild(document.createTextNode(raw.slice(last, m.index)));
+    mount(parent, "mark", "kw-mark", m[0]);
+    last = re.lastIndex;
+    if (!m[0].length) break;
+  }
+  if (last < raw.length) parent.appendChild(document.createTextNode(raw.slice(last)));
 }
 
 export function renderApp(ctx) {
   var state = ctx.getState();
   renderMeta(state);
   renderHealth(state);
+  renderLoadingState(state);
   renderFilterInputs(state);
   renderDateBounds(state);
   renderFilterPopover(state);
@@ -53,7 +115,7 @@ export function renderApp(ctx) {
     renderResultContext(state, list);
     renderActiveFilters(ctx, state);
     renderShown(state, all, list);
-    renderEmpty(state, all, list);
+    renderEmpty(ctx, state, all, list);
     renderRangeHint(state);
     renderPaperRanking(state);
     renderKeywordRanking(ctx, list);
@@ -179,34 +241,26 @@ function renderDateBounds(state) {
 /* ------------------------------------------------------- 筛选 / 扫描 chips */
 export function renderControls(ctx, state) {
   var data = state.data;
-  var paperBox = $("paper-chips");
-  if (paperBox) {
-    clearNode(paperBox);
-    (data ? data.papers : []).forEach(function (name) {
-      paperBox.appendChild(chip({
-        label: name, on: state.papers.has(name),
-        onClick: function () {
-          ctx.dispatch({ type: A.TOGGLE_PAPER, name: name, on: !state.papers.has(name) });
-          ctx.dispatch({ type: A.CLEAR_LINKED });
-        }
-      }));
+  rebuildChips($("paper-chips"), data ? data.papers : [], function (name) {
+    return chip({
+      label: name, on: state.papers.has(name),
+      onClick: function () {
+        ctx.dispatch({ type: A.TOGGLE_PAPER, name: name, on: !state.papers.has(name) });
+        ctx.dispatch({ type: A.CLEAR_LINKED });
+      }
     });
-  }
-  var kwBox = $("keyword-chips");
-  if (kwBox) {
-    clearNode(kwBox);
-    var names = data ? data.keywords.slice() : [];
-    (state.focusKeywords || []).forEach(function (kw) { if (names.indexOf(kw) === -1) names.unshift(kw); });
-    names.forEach(function (kw) {
-      kwBox.appendChild(chip({
-        label: kw, on: state.keywords.has(kw),
-        onClick: function () {
-          ctx.dispatch({ type: A.TOGGLE_KEYWORD, name: kw, on: !state.keywords.has(kw) });
-          ctx.dispatch({ type: A.CLEAR_LINKED });
-        }
-      }));
+  });
+  var kwNames = data ? data.keywords.slice() : [];
+  (state.focusKeywords || []).forEach(function (kw) { if (kwNames.indexOf(kw) === -1) kwNames.unshift(kw); });
+  rebuildChips($("keyword-chips"), kwNames, function (kw) {
+    return chip({
+      label: kw, on: state.keywords.has(kw),
+      onClick: function () {
+        ctx.dispatch({ type: A.TOGGLE_KEYWORD, name: kw, on: !state.keywords.has(kw) });
+        ctx.dispatch({ type: A.CLEAR_LINKED });
+      }
     });
-  }
+  });
   var presetBox = $("preset-chips");
   if (presetBox) {
     Array.prototype.forEach.call(presetBox.querySelectorAll("[data-preset]"), function (btn) {
@@ -216,17 +270,13 @@ export function renderControls(ctx, state) {
     });
   }
   renderNewOnlyChip(state);
-  var scanBox = $("scan-papers");
-  if (scanBox) {
-    clearNode(scanBox);
-    state.scan.paperNames.forEach(function (name) {
-      var on = !state.scan.selected || state.scan.selected.has(name);
-      scanBox.appendChild(chip({
-        label: name, on: on, ariaLabel: (on ? "取消选择" : "选择") + name,
-        onClick: function () { ctx.dispatch({ type: A.SCAN_TOGGLE_PAPER, name: name, on: !on }); }
-      }));
+  rebuildChips($("scan-papers"), state.scan.paperNames, function (name) {
+    var on = !state.scan.selected || state.scan.selected.has(name);
+    return chip({
+      label: name, on: on, ariaLabel: (on ? "取消选择" : "选择") + name,
+      onClick: function () { ctx.dispatch({ type: A.SCAN_TOGGLE_PAPER, name: name, on: !on }); }
     });
-  }
+  });
 }
 
 /* 「只看本次新增」chip：数据来自 state/last_new.json（后端下发的 new_urls）。
@@ -284,7 +334,15 @@ export function renderScanPanel(state) {
       (summary && typeof summary.new_hits === "number" ? " · 新增 " + summary.new_hits + " 篇" : "")
       : (scan.history === null ? "正在读取最近扫描…" : "开始首次扫描，命中报道会自动出现在下方。"));
   }
-  renderScanProgress(!scan.running && !(scan.progress && scan.progress.total) ? null : scan.progress);
+  renderScanProgress(!scan.running && !(scan.progress && scan.progress.total) ? null : scan.progress, scan.durationSeconds);
+  var newCta = $("scan-new-cta");
+  if (newCta) {
+    var newCount = !scan.running && scan.lastSummary && typeof scan.lastSummary.new_hits === "number"
+      ? scan.lastSummary.new_hits : 0;
+    var hasNewUrls = Boolean(state.data && (state.data.new_urls || []).length);
+    newCta.hidden = !(scan.newUrlsSynced && newCount > 0 && hasNewUrls);
+    if (!newCta.hidden) setText(newCta, "只看本次新增（" + newCount + "）→");
+  }
   var log = $("scan-log");
   if (log) {
     // 智能吸底：用户往上翻看历史日志时不要把他拽回底部；只有本来就在底部才跟随。
@@ -294,7 +352,7 @@ export function renderScanPanel(state) {
     if (atBottom) log.scrollTop = log.scrollHeight;
   }
 }
-function renderScanProgress(progress) {
+function renderScanProgress(progress, durationSeconds) {
   var wrap = $("scan-progress"), bar = $("scan-progress-bar"), text = $("scan-progress-text");
   if (!wrap) return;
   if (!progress) {
@@ -308,7 +366,17 @@ function renderScanProgress(progress) {
   wrap.hidden = false;
   if (bar) bar.style.width = Math.max(0, Math.min(100, percent)) + "%";
   wrap.setAttribute("aria-valuenow", String(percent));
-  setText(text, progress.total ? progress.completed + " / " + progress.total + "（" + percent + "%）" : "正在扫描…");
+  var line = progress.total ? progress.completed + " / " + progress.total + "（" + percent + "%）" : "正在扫描…";
+  if (typeof durationSeconds === "number" && Number.isFinite(durationSeconds)) {
+    line += " · 已用 " + Math.round(durationSeconds) + "s";
+  }
+  if (progress.current) {
+    var cur = String(progress.current).replace(/^[✓✗]\s*/, "").trim();
+    var chars = Array.from(cur);
+    if (chars.length > 26) cur = chars.slice(0, 26).join("") + "…";
+    if (cur) line += " · " + cur;
+  }
+  setText(text, line);
 }
 
 var HISTORY_STATUS = {
@@ -343,6 +411,7 @@ export function renderScanHistory(state) {
 /* ------------------------------------------------------- 报社列表 */
 export function renderPapersPanel(ctx, state) {
   var view = state.papersPanel.view;
+  var busy = Boolean(state.papersPanel.busy);
   var box = $("papers-list");
   if (box) {
     clearNode(box);
@@ -361,25 +430,25 @@ export function renderPapersPanel(ctx, state) {
         var actions = mount(row, "span", "paper-actions");
         paperButton(actions, "试抓", "试抓" + name, function () {
           ctx.features.papers.runTest(item.config || { name: name });
-        });
+        }, "chip", busy);
         paperButton(actions, item.source === "builtin" ? "修改规则" : "编辑", "编辑" + name + "抓取规则", function () {
           ctx.features.papers.fillForm(item.config || {}, item.source);
-        });
+        }, "chip", busy);
         var toggleBtn = paperButton(actions, enabled ? "停用" : "恢复", (enabled ? "停用" : "恢复") + name,
           function () { ctx.features.papers.setEnabled(name, !enabled, row, toggleBtn); },
-          enabled ? "chip danger" : "chip enable");
+          enabled ? "chip danger" : "chip enable", busy);
         toggleBtn.setAttribute("role", "switch");
         toggleBtn.setAttribute("aria-checked", enabled ? "true" : "false");
         if (item.source === "override") {
           // 覆盖层可以单独摘掉：摘掉后回到内置默认规则（内置本身还在）
           paperButton(actions, "恢复默认", "恢复" + name + "的内置默认规则", function () {
             ctx.features.papers.deletePaper(name, item.source);
-          });
+          }, "chip", busy);
         }
         // 所有报社（含内置六家）都能**彻底删除**：删后从本列表消失、没有恢复入口。
         paperButton(actions, "删除", "彻底删除" + name, function () {
           ctx.features.papers.removePaper(name);
-        }, "chip danger");
+        }, "chip danger", busy);
       });
     }
   }
@@ -390,12 +459,16 @@ export function renderPapersPanel(ctx, state) {
     feedback.setAttribute("data-state", state.papersPanel.tone);
   }
   setText($("papers-hint"), state.papersPanel.hint || "试抓只检查网页结构，不抓正文、不写入结果。");
+  if ($("paper-add")) $("paper-add").disabled = busy;
+  if ($("paper-test")) $("paper-test").disabled = busy;
+  if ($("paper-clear")) $("paper-clear").disabled = busy;
   var commit = $("papers-commit-row");
   if (commit) commit.hidden = !(view && ((view.custom && view.custom.length) || (view.disabled && view.disabled.length)));
 }
-function paperButton(parent, label, ariaLabel, onClick, className) {
+function paperButton(parent, label, ariaLabel, onClick, className, disabled) {
   var btn = mount(parent, "button", className || "chip", label);
   btn.type = "button";
+  btn.disabled = Boolean(disabled);
   btn.setAttribute("aria-label", ariaLabel);
   btn.addEventListener("click", onClick);
   return btn;
@@ -610,9 +683,14 @@ function rowMap(ctx, state, record, groupUrls) {
 }
 
 /** 归档只保留命中片段，预览不会请求或伪造完整正文。原文始终保留独立入口。 */
-export function openArticlePreview(ctx, state, record, trigger) {
+export function openArticlePreview(ctx, state, record, trigger, records, initialIndex) {
   var existing = $("article-preview");
   if (existing) existing.remove();
+  var items = Array.isArray(records) && records.length ? records : [record];
+  var currentIndex = typeof initialIndex === "number" && initialIndex >= 0 && initialIndex < items.length
+    ? initialIndex : Math.max(0, items.indexOf(record));
+  var currentRecord = items[currentIndex] || record;
+
   var dialog = el("dialog", "article-preview");
   dialog.id = "article-preview";
   dialog.setAttribute("aria-labelledby", "article-preview-title");
@@ -621,47 +699,92 @@ export function openArticlePreview(ctx, state, record, trigger) {
   var close = mount(head, "button", "btn secondary article-preview-close", "关闭");
   close.type = "button";
   close.setAttribute("aria-label", "关闭报道预览");
-  var title = mount(dialog, "h2", null, record.title || "未命名报道");
+  var title = mount(dialog, "h2", null, "");
   title.id = "article-preview-title";
-  mount(dialog, "p", "article-preview-meta", [record.paper, record.date, record.section].filter(Boolean).join(" · "));
+  title.setAttribute("aria-live", "polite");
+  var meta = mount(dialog, "p", "article-preview-meta", "");
   var body = mount(dialog, "div", "article-preview-body");
-  if ((record.matched || []).length) {
-    var tags = mount(body, "div", "tags");
-    record.matched.forEach(function (keyword) { mount(tags, "span", "tag", keyword); });
-  }
-  mount(body, "h3", null, "命中片段");
-  if ((record.snippets || []).length) {
-    record.snippets.forEach(function (snippet) { mount(body, "p", "article-preview-snippet", snippet); });
-  } else mount(body, "p", "empty-hint", "这条归档没有保存命中片段，可打开原文阅读。");
-  mount(body, "p", "hint", "预览内容为归档中的命中片段，完整报道请查看原文。");
-  var position = geomText(record.geometry);
-  var map = rowMap(ctx, state, record, new Set([record.url]));
-  if (map || position) {
-    var location = mount(body, "div", "article-preview-location");
-    mount(location, "h3", null, "版面位置");
-    if (position) mount(location, "p", null, position);
-    if (map) {
-      // 预览里的缩略图只展示位置，避免在阅读时意外改变列表筛选。
-      var figure = mount(location, "div", "row-map preview-map");
-      figure.style.aspectRatio = map.style.aspectRatio;
-      figure.setAttribute("role", "img");
-      figure.setAttribute("aria-label", (record.section || "本版") + "，高亮区域为此报道的位置");
-      figure.appendChild(map.querySelector("svg"));
-    }
-  }
   var actions = mount(dialog, "div", "article-preview-actions");
-  var url = safeUrl(record.url);
-  if (url) {
-    var original = mount(actions, "a", "btn primary", "打开原文 ↗");
-    original.href = url; original.target = "_blank"; original.rel = "noopener noreferrer";
+
+  var original = mount(actions, "a", "btn primary", "打开原文 ↗");
+  original.target = "_blank";
+  original.rel = "noopener noreferrer";
+  var prevBtn = null, nextBtn = null, posText = null;
+  if (items.length > 1) {
+    var nav = mount(actions, "div", "article-preview-nav");
+    prevBtn = mount(nav, "button", "btn ghost small", "‹ 上一篇");
+    prevBtn.type = "button";
+    posText = mount(nav, "span", "article-preview-pos", "");
+    nextBtn = mount(nav, "button", "btn ghost small", "下一篇 ›");
+    nextBtn.type = "button";
   }
-  function restoreFocus() {
-    if (trigger && trigger.isConnected) trigger.focus();
-    else {
-      var replacement = Array.from(document.querySelectorAll(".article-preview-trigger"))
-        .find(function (button) { return button.getAttribute("aria-label") === "预览报道：" + (record.title || record.url); });
-      if (replacement) replacement.focus(); else if ($("filter-toggle")) $("filter-toggle").focus();
+
+  function renderRecord(idx) {
+    currentIndex = idx;
+    currentRecord = items[currentIndex] || record;
+    setText(title, currentRecord.title || "未命名报道");
+    setText(meta, [currentRecord.paper, currentRecord.date, currentRecord.section].filter(Boolean).join(" · "));
+    clearNode(body);
+    if ((currentRecord.matched || []).length) {
+      var tags = mount(body, "div", "tags");
+      currentRecord.matched.forEach(function (keyword) { mount(tags, "span", "tag", keyword); });
     }
+    mount(body, "h3", null, "命中片段");
+    var terms = highlightTerms(ctx.getState() || state, currentRecord);
+    if ((currentRecord.snippets || []).length) {
+      currentRecord.snippets.forEach(function (snippet) {
+        var p = mount(body, "p", "article-preview-snippet");
+        appendHighlighted(p, snippet, terms);
+      });
+    } else mount(body, "p", "empty-hint", "这条归档没有保存命中片段，可打开原文阅读。");
+    mount(body, "p", "hint", "预览内容为归档中的命中片段，完整报道请查看原文。");
+    var position = geomText(currentRecord.geometry);
+    var map = rowMap(ctx, ctx.getState() || state, currentRecord, new Set([currentRecord.url]));
+    if (map || position) {
+      var location = mount(body, "div", "article-preview-location");
+      mount(location, "h3", null, "版面位置");
+      if (position) mount(location, "p", null, position);
+      if (map) {
+        // 预览里的缩略图只展示位置，避免在阅读时意外改变列表筛选。
+        var figure = mount(location, "div", "row-map preview-map");
+        figure.style.aspectRatio = map.style.aspectRatio;
+        figure.setAttribute("role", "img");
+        figure.setAttribute("aria-label", (currentRecord.section || "本版") + "，高亮区域为此报道的位置");
+        figure.appendChild(map.querySelector("svg"));
+      }
+    }
+    var url = safeUrl(currentRecord.url);
+    if (url) {
+      original.href = url;
+      original.hidden = false;
+    } else {
+      original.removeAttribute("href");
+      original.hidden = true;
+    }
+    if (prevBtn && nextBtn && posText) {
+      prevBtn.disabled = currentIndex <= 0;
+      nextBtn.disabled = currentIndex >= items.length - 1;
+      setText(posText, (currentIndex + 1) + " / " + items.length);
+      if (prevBtn.disabled && document.activeElement === prevBtn) {
+        (nextBtn.disabled ? close : nextBtn).focus();
+      } else if (nextBtn.disabled && document.activeElement === nextBtn) {
+        (prevBtn.disabled ? close : prevBtn).focus();
+      }
+    }
+    if (dialog.hasAttribute("open") && !dialog.contains(document.activeElement)) close.focus();
+    dialog.scrollTop = 0;
+  }
+
+  if (prevBtn) prevBtn.addEventListener("click", function () { if (currentIndex > 0) renderRecord(currentIndex - 1); });
+  if (nextBtn) nextBtn.addEventListener("click", function () { if (currentIndex < items.length - 1) renderRecord(currentIndex + 1); });
+
+  function restoreFocus() {
+    var targetLabel = "预览报道：" + (currentRecord.title || currentRecord.url);
+    var replacement = Array.from(document.querySelectorAll(".article-preview-trigger"))
+      .find(function (button) { return button.getAttribute("aria-label") === targetLabel; });
+    if (replacement) replacement.focus();
+    else if (trigger && trigger.isConnected) trigger.focus();
+    else if ($("filter-toggle")) $("filter-toggle").focus();
   }
   function dismiss() {
     if (typeof dialog.close === "function") dialog.close();
@@ -677,13 +800,19 @@ export function openArticlePreview(ctx, state, record, trigger) {
   });
   dialog.addEventListener("keydown", function (event) {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); dismiss(); }
-    else if (event.key === "Tab") {
-      var focusable = Array.from(dialog.querySelectorAll("button, a[href]"));
+    else if (event.key === "ArrowLeft" && prevBtn && currentIndex > 0) {
+      event.preventDefault(); renderRecord(currentIndex - 1);
+    } else if (event.key === "ArrowRight" && nextBtn && currentIndex < items.length - 1) {
+      event.preventDefault(); renderRecord(currentIndex + 1);
+    } else if (event.key === "Tab") {
+      var focusable = Array.from(dialog.querySelectorAll("button:not(:disabled), a[href]:not([hidden])"));
       var first = focusable[0], last = focusable[focusable.length - 1];
+      if (!focusable.length) return;
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }
   });
+  renderRecord(currentIndex);
   document.body.appendChild(dialog);
   if (typeof dialog.showModal === "function") dialog.showModal();
   else { dialog.setAttribute("open", ""); dialog.setAttribute("aria-modal", "true"); }
@@ -703,7 +832,8 @@ export function renderRows(ctx, state, records) {
   });
   var fragment = document.createDocumentFragment();
   var newUrls = newUrlSet(state.data);
-  records.slice(0, state.visibleRows).forEach(function (r) {
+  var visibleList = records.slice(0, state.visibleRows);
+  visibleList.forEach(function (r, idx) {
     var isNew = newUrls.has(r.url);
     var tr = document.createElement("tr");
     if (isNew) {
@@ -725,7 +855,11 @@ export function renderRows(ctx, state, records) {
       if (isNew) td.appendChild(el("span", "tag-new", "新增"));
       mount(td, "span", null, r.title);
     }
-    (r.snippets || []).slice(0, 2).forEach(function (s) { mount(td, "div", "sn", s); });
+    var terms = highlightTerms(state, r);
+    (r.snippets || []).slice(0, 2).forEach(function (s) {
+      var sn = mount(td, "div", "sn");
+      appendHighlighted(sn, s, terms);
+    });
     if (Array.isArray(r.matched) && r.matched.length) {
       var tags = mount(td, "div", "tags");
       r.matched.filter(function (k) { return state.keywords.has(k); })
@@ -735,7 +869,9 @@ export function renderRows(ctx, state, records) {
     preview.type = "button";
     preview.setAttribute("aria-label", "预览报道：" + (r.title || r.url));
     preview.setAttribute("aria-haspopup", "dialog");
-    preview.addEventListener("click", function () { openArticlePreview(ctx, state, r, preview); });
+    preview.addEventListener("click", function () {
+      openArticlePreview(ctx, state, r, preview, records, idx);
+    });
     // 版面位置：一条报道对应一格缩略位置图，紧跟在命中报道右侧。
     var posCell = mount(tr, "td", "col-section");
     posCell.setAttribute("data-label", "版面位置");
@@ -777,7 +913,7 @@ function renderShown(state, all, list) {
   setText($("results-limit"), list.length > visibleCount
     ? "已显示前 " + visibleCount + " 条，还有 " + (list.length - visibleCount) + " 条" : "");
 }
-function renderEmpty(state, all, list) {
+function renderEmpty(ctx, state, all, list) {
   var box = $("empty");
   if (!box) return;
   if (all.length === 0) {
@@ -794,15 +930,38 @@ function renderEmpty(state, all, list) {
     }
     return;
   }
+  clearNode(box);
   box.hidden = list.length > 0;
-  if (state.newOnly && !(state.data.new_urls || []).length) {
-    box.textContent = "还没有新增记录；完成一次扫描后即可按「只看本次新增」筛选。";
+  if (list.length > 0) return;
+
+  var msg = "没有符合条件的命中。";
+  if (state.from && state.to && state.from > state.to) {
+    msg = "开始日期晚于结束日期，请调整时间范围。";
+  } else if (state.newOnly && !(state.data.new_urls || []).length) {
+    msg = "还没有新增记录；完成一次扫描后即可按「只看本次新增」筛选。";
   } else if (state.newOnly) {
-    box.textContent = "本次新增在当前其它筛选条件下没有匹配报道，可放宽筛选或关闭「只看本次新增」。";
+    msg = "本次新增在当前其它筛选条件下没有匹配报道，可放宽筛选或关闭「只看本次新增」。";
   } else if (state.focusKeywords) {
-    box.textContent = "当前关键词「" + state.focusKeywords.join("、") + "」暂无命中；历史归档仍保留。";
-  } else {
-    box.textContent = "没有符合条件的命中。";
+    msg = "当前关键词「" + state.focusKeywords.join("、") + "」暂无命中；历史归档仍保留。";
+  }
+  mount(box, "p", null, msg);
+
+  var actions = mount(box, "div", "empty-actions");
+  if (state.newOnly) {
+    var offNew = mount(actions, "button", "btn ghost small", "关闭「只看本次新增」");
+    offNew.type = "button";
+    offNew.addEventListener("click", function () { ctx.dispatch({ type: A.SET_NEW_ONLY, on: false }, { immediate: true }); });
+  }
+  if (state.focusKeywords) {
+    var showHist = mount(actions, "button", "btn ghost small", "查看全部历史");
+    showHist.type = "button";
+    showHist.addEventListener("click", function () { ctx.dispatch({ type: A.SHOW_ALL_HISTORY }, { immediate: true }); });
+  }
+  var extraFilters = activeFilterCount(state) - (state.focusKeywords ? 1 : 0);
+  if (extraFilters > 0) {
+    var resetAll = mount(actions, "button", "btn subtle small", "清除全部筛选");
+    resetAll.type = "button";
+    resetAll.addEventListener("click", function () { ctx.dispatch({ type: A.RESET_VIEW }, { immediate: true }); });
   }
 }
 function renderRangeHint(state) {
