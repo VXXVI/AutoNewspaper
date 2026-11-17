@@ -467,8 +467,23 @@ def test_pooled_http_recovers_from_stale_keepalive_and_follows_redirect(monkeypa
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
+            if self.path == "/bad-redir":
+                self.send_response(302)
+                self.send_header("Location", "http://127.0.0.1:bad/x")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if req_count["n"] == 2:
                 # 模拟服务端在空闲复用连接上直接断连
+                self.connection.close()
+                return
+            if self.path == "/truncate-once" and req_count["n"] == 4:
+                # 模拟复用连接在读正文阶段触发 IncompleteRead
+                self.send_response(200)
+                self.send_header("Content-Length", "500")
+                self.end_headers()
+                self.wfile.write(b"partial")
+                self.wfile.flush()
                 self.connection.close()
                 return
             data = ("正文内容" * 100).encode()
@@ -490,9 +505,40 @@ def test_pooled_http_recovers_from_stale_keepalive_and_follows_redirect(monkeypa
         # 第二次复用池中连接触发服务端断连，应透明重连并拿到 200
         code2, body2 = http._stdlib_once(base + "/ok", 5)
         assert code2 == 200 and "正文内容" in body2
-        # 302 重定向
+        # 302 相对路径重定向
         code3, body3 = http._stdlib_once(base + "/redir", 5)
         assert code3 == 200 and "正文内容" in body3
+        # 复用连接在读正文阶段发生 IncompleteRead，应透明重连并拿到 200
+        code4, body4 = http._stdlib_once(base + "/truncate-once", 5)
+        assert code4 == 200 and "正文内容" in body4
+        # 重定向到非法端口不能抛 ValueError 逸出
+        assert http._stdlib_once(base + "/bad-redir", 5) == (0, "")
+    finally:
+        http.reset_pool()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_pooled_http_follows_cross_host_redirect(http_base, monkeypatch):
+    monkeypatch.setattr(http.urllib.request, "getproxies", lambda: {})
+
+    class _RedirectHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", http_base + "/ok")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _RedirectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        code, body = http._stdlib_once(f"http://127.0.0.1:{server.server_address[1]}/go", 5)
+        assert code == 200 and "正文内容" in body
     finally:
         http.reset_pool()
         server.shutdown()

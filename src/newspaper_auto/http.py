@@ -301,12 +301,16 @@ def _pooled_http_once(
     }
     try:
         for _ in range(_MAX_REDIRECTS + 1):
-            parts = urlsplit(current_url)
-            scheme = parts.scheme.lower()
-            host = parts.hostname
+            try:
+                parts = urlsplit(current_url)
+                scheme = parts.scheme.lower()
+                host = parts.hostname
+                port = parts.port or (443 if scheme == "https" else 80)
+            except ValueError:
+                _LOGGER.info("标准库抓取失败 %s：非法 URL 或端口", current_url)
+                return 0, ""
             if scheme not in ("http", "https") or not host:
                 return 0, ""
-            port = parts.port or (443 if scheme == "https" else 80)
             req_path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
             req_headers = dict(headers)
             req_headers["Host"] = parts.netloc
@@ -361,13 +365,14 @@ def _pooled_http_once(
     except (http.client.HTTPException, OSError, ValueError) as exc:
         if not explicit_context and tls.should_retry_relaxed(exc):
             _LOGGER.info("握手被拒，改用放宽套件重试 %s：%s", url, exc)
-            parts = urlsplit(current_url)
-            if parts.hostname:
-                _drop_host_pool(
-                    parts.scheme.lower(),
-                    parts.hostname,
-                    parts.port or (443 if parts.scheme.lower() == "https" else 80),
-                )
+            with contextlib.suppress(ValueError):
+                parts = urlsplit(current_url)
+                if parts.hostname:
+                    _drop_host_pool(
+                        parts.scheme.lower(),
+                        parts.hostname,
+                        parts.port or (443 if parts.scheme.lower() == "https" else 80),
+                    )
             code, body = _pooled_http_once(url, timeout, tls.relaxed_context(), explicit_context=True)
             if code == 0:
                 return 0, ""
