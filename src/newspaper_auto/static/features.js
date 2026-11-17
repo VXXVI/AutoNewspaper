@@ -14,7 +14,7 @@ export var PAPERS_COMMIT_CMD =
 
 /* ============================================================ 扫描 */
 export function createScanController(ctx) {
-  var scanTimer = null, scanStream = null, pollInFlight = false, pollRetries = 0;
+  var scanTimer = null, scanStream = null, pollInFlight = false, pollRetries = 0, runToken = 0;
 
   function toneOf(text) {
     if (/失败|未完整|错误|至少|不能|最多|请选择|晚于|超过/.test(text)) return "error";
@@ -50,7 +50,10 @@ export function createScanController(ctx) {
     scanTimer = window.setTimeout(function () { scanTimer = null; pollScan(); }, delay);
   }
   function beginPolling() { schedulePoll(0); }
-  function stopPolling() { if (scanTimer) { window.clearTimeout(scanTimer); scanTimer = null; } }
+  function stopPolling() {
+    runToken += 1;
+    if (scanTimer) { window.clearTimeout(scanTimer); scanTimer = null; }
+  }
   function consume(task, replace) { ctx.dispatch({ type: A.SCAN_INGEST, task: task, replace: replace }); }
   function refreshHistory() { if (ctx.features && ctx.features.system) ctx.features.system.loadScanHistory(); }
 
@@ -77,19 +80,28 @@ export function createScanController(ctx) {
   function pollScan() {
     if (pollInFlight) return;
     pollInFlight = true;
+    var token = runToken;
     ctx.api.get("/api/scan?after=" + encodeURIComponent(ctx.getState().scan.logCursor))
       .then(function (task) {
+        if (token !== runToken) return;
         pollRetries = 0;
         consume(task, false);
         if (applyOutcome(task)) return;
-        var progress = task.progress || {};
-        setStatus(progress.total ? "扫描中：" + progress.completed + " / " + progress.total : "扫描中…");
+        if (!ctx.getState().scan.cancelling) {
+          var progress = task.progress || {};
+          setStatus(progress.total ? "扫描中：" + progress.completed + " / " + progress.total : "扫描中…");
+        }
         schedulePoll(SCAN_POLL_MS);
       })
       .catch(function (err) {
-        if (ctx.getState().scan.running && pollRetries < 3) {
+        if (token !== runToken) return;
+        var scan = ctx.getState().scan;
+        if (scan.running && pollRetries < 3) {
           pollRetries += 1;
-          setStatus("连接波动，正在重试（" + pollRetries + "/3）…", "running");
+          setStatus(
+            scan.cancelling ? "正在取消，重连中（" + pollRetries + "/3）…" : "连接波动，正在重试（" + pollRetries + "/3）…",
+            "running"
+          );
           schedulePoll(2000);
           return;
         }

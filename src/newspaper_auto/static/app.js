@@ -248,7 +248,11 @@ import { shiftDate, todayIso } from "./format.js";
       var tag = el.tagName;
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     }
+    function modalOpen() {
+      return Boolean($("article-preview") || ($("export-dialog") && $("export-dialog").hasAttribute("open")));
+    }
     document.addEventListener("keydown", function (event) {
+      if (event.isComposing || modalOpen()) return;
       if ((event.ctrlKey || event.metaKey) && event.key && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setFiltersOpen(true);
@@ -256,7 +260,6 @@ import { shiftDate, todayIso } from "./format.js";
         return;
       }
       if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target)) {
-        if ($("article-preview") || ($("export-dialog") && $("export-dialog").hasAttribute("open"))) return;
         event.preventDefault();
         setFiltersOpen(true);
         if ($("q")) { $("q").focus(); $("q").select(); }

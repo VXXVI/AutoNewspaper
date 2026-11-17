@@ -718,10 +718,19 @@ export const domTests = [
         assert.equal(dialog.querySelector(".kw-mark").textContent, "示例大学");
         assert.equal(dialog.querySelector(".article-preview-pos").textContent, "1 / 2");
 
-        dialog.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+        // Ctrl+K 在预览弹窗打开时不得劫持焦点到筛选框
+        doc.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
+        assert.equal(dialog.contains(doc.activeElement), true);
+
+        // 通过下一篇按钮跳到最后一条：下一篇按钮被禁用时焦点必须保留在弹窗内，后续 ArrowLeft 仍生效
+        const nextBtn = [...dialog.querySelectorAll(".article-preview-nav button")][1];
+        nextBtn.focus();
+        nextBtn.click();
         assert.match(doc.getElementById("article-preview-title").textContent, /人工智能赋能教育/);
         assert.equal(dialog.querySelector(".article-preview-pos").textContent, "2 / 2");
         assert.equal(dialog.querySelector(".kw-mark").textContent, "人工智能");
+        assert.equal(nextBtn.disabled, true);
+        assert.equal(dialog.contains(doc.activeElement), true, "禁用当前焦点按钮后，焦点必须留在弹窗内");
 
         dialog.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
         assert.match(doc.getElementById("article-preview-title").textContent, /中秋非遗活动进校园/);

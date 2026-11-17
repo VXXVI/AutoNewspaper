@@ -340,7 +340,7 @@ export function renderScanPanel(state) {
     var newCount = !scan.running && scan.lastSummary && typeof scan.lastSummary.new_hits === "number"
       ? scan.lastSummary.new_hits : 0;
     var hasNewUrls = Boolean(state.data && (state.data.new_urls || []).length);
-    newCta.hidden = !(newCount > 0 && hasNewUrls);
+    newCta.hidden = !(scan.newUrlsSynced && newCount > 0 && hasNewUrls);
     if (!newCta.hidden) setText(newCta, "只看本次新增（" + newCount + "）→");
   }
   var log = $("scan-log");
@@ -762,7 +762,13 @@ export function openArticlePreview(ctx, state, record, trigger, records, initial
       prevBtn.disabled = currentIndex <= 0;
       nextBtn.disabled = currentIndex >= items.length - 1;
       setText(posText, (currentIndex + 1) + " / " + items.length);
+      if (prevBtn.disabled && document.activeElement === prevBtn) {
+        (nextBtn.disabled ? close : nextBtn).focus();
+      } else if (nextBtn.disabled && document.activeElement === nextBtn) {
+        (prevBtn.disabled ? close : prevBtn).focus();
+      }
     }
+    if (dialog.hasAttribute("open") && !dialog.contains(document.activeElement)) close.focus();
     dialog.scrollTop = 0;
   }
 

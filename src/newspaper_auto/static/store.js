@@ -91,6 +91,7 @@ export function createInitialState() {
       progress: null,
       durationSeconds: null,
       lastSummary: null,
+      newUrlsSynced: false,
       history: null
     },
     // 报社管理面板（filter 用的 papers 是 Set，见上方）
@@ -153,7 +154,10 @@ export function reducer(state, action) {
   switch (action.type) {
     case A.LOAD_DATA: {
       var data = action.data;
-      var patch = { data: data };
+      var patch = {
+        data: data,
+        scan: Object.assign({}, state.scan, { newUrlsSynced: true })
+      };
       if (action.mode === "reset") {
         patch.papers = new Set(data.papers);
         patch.focusKeywords = action.requestedFocus ? action.requestedFocus.slice() : null;
@@ -283,7 +287,11 @@ export function reducer(state, action) {
       return slicePatch(state, "scan", { selected: base, pendingOnly: null });
     }
     case A.SCAN_RUNNING:
-      return slicePatch(state, "scan", { running: Boolean(action.running), cancelling: false });
+      return slicePatch(state, "scan", {
+        running: Boolean(action.running),
+        cancelling: false,
+        newUrlsSynced: action.running ? false : state.scan.newUrlsSynced
+      });
     case A.SCAN_CANCELLING:
       return slicePatch(state, "scan", { cancelling: Boolean(action.cancelling) });
     case A.SCAN_STATUS:
@@ -298,7 +306,8 @@ export function reducer(state, action) {
         logCursor: 0,
         progress: null,
         durationSeconds: null,
-        lastSummary: null
+        lastSummary: null,
+        newUrlsSynced: false
       });
     case A.SCAN_INGEST: {
       var scan = state.scan;
