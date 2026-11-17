@@ -609,6 +609,8 @@ export function createExportController(ctx) {
 
 /* ============================================================ 系统状态 */
 export function createSystemController(ctx) {
+  var historyReqId = 0;
+
   function setHealth(ok, health) {
     ctx.dispatch({ type: A.SYSTEM_HEALTH, ok: ok, version: (health && health.version) || "",
       checkedAt: new Date().toISOString() });
@@ -630,33 +632,67 @@ export function createSystemController(ctx) {
     }).catch(function () { setHealth(false, null); return false; });
   }
   function loadScanHistory() {
+    var reqId = ++historyReqId;
     ctx.api.get("/api/scan/history")
-      .then(function (data) { ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] }); })
-      .catch(function () { ctx.dispatch({ type: A.SCAN_HISTORY, tasks: [] }); });
+      .then(function (data) {
+        if (reqId !== historyReqId) return;
+        ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] });
+      })
+      .catch(function () {
+        if (reqId !== historyReqId) return;
+        ctx.dispatch({ type: A.SCAN_HISTORY, tasks: [] });
+      });
   }
   function setHistoryBusy(busy) { ctx.dispatch({ type: A.SCAN_HISTORY_BUSY, busy: busy }, { immediate: true }); }
+  function restoreHistoryFocus(indexHint) {
+    var box = $("scan-history");
+    var btns = box ? box.querySelectorAll(".history-delete") : [];
+    if (btns.length) {
+      btns[Math.min(Math.max(0, indexHint), btns.length - 1)].focus();
+    } else if ($("history-title")) {
+      $("history-title").focus();
+    }
+  }
   function deleteScanHistory(taskId) {
     if (!taskId || ctx.getState().scan.historyBusy) return;
     if (!window.confirm("删除这条扫描历史记录？仅移除摘要，不影响已有报道归档。")) return;
+    var box = $("scan-history");
+    var hadFocus = Boolean(box && box.contains(document.activeElement));
+    var cur = (ctx.getState().scan.history || []).slice().reverse();
+    var idx = cur.findIndex(function (t) { return t && t.task_id === taskId; });
+    var reqId = ++historyReqId;
     setHistoryBusy(true);
     ctx.api.post("/api/scan/history/delete", { task_id: taskId }).then(function (data) {
+      if (reqId !== historyReqId) return;
       ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] });
       ctx.dispatch({ type: A.SCAN_STATUS, text: "已删除该条扫描历史", tone: "idle" });
+      setHistoryBusy(false);
+      if (hadFocus) restoreHistoryFocus(idx);
     }).catch(function (err) {
+      if (reqId !== historyReqId) return;
       ctx.dispatch({ type: A.SCAN_STATUS, text: "删除历史失败：" + err.message, tone: "error" });
-    }).finally(function () { setHistoryBusy(false); });
+    }).finally(function () { if (ctx.getState().scan.historyBusy) setHistoryBusy(false); });
   }
   function clearScanHistory() {
     var history = ctx.getState().scan.history;
     if (!history || !history.length || ctx.getState().scan.historyBusy) return;
     if (!window.confirm("清空全部扫描历史记录？仅清除摘要列表，不影响已有报道归档。")) return;
+    var box = $("scan-history");
+    var hadFocus = Boolean(
+      document.activeElement === $("scan-history-clear") || (box && box.contains(document.activeElement))
+    );
+    var reqId = ++historyReqId;
     setHistoryBusy(true);
     ctx.api.post("/api/scan/history/clear", {}).then(function (data) {
+      if (reqId !== historyReqId) return;
       ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] });
       ctx.dispatch({ type: A.SCAN_STATUS, text: "已清空扫描历史", tone: "idle" });
+      setHistoryBusy(false);
+      if (hadFocus && $("history-title")) $("history-title").focus();
     }).catch(function (err) {
+      if (reqId !== historyReqId) return;
       ctx.dispatch({ type: A.SCAN_STATUS, text: "清空历史失败：" + err.message, tone: "error" });
-    }).finally(function () { setHistoryBusy(false); });
+    }).finally(function () { if (ctx.getState().scan.historyBusy) setHistoryBusy(false); });
   }
   function reuseHistoryParams(task) {
     if (!task) return;

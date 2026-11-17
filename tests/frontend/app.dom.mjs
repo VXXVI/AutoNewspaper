@@ -870,16 +870,20 @@ export const domTests = [
         assert.equal(doc.getElementById("scan-kw").value, "低空经济");
         assert.match(page.text("scan-kw-hint"), /1 \/ 10/);
 
-        // 删除单条
+        // 删除单条（验证键盘聚焦的删除按钮删除后焦点移至剩余行，不被丢回 body）
         const delBtn = doc.querySelector("#scan-history .history-delete");
+        delBtn.focus();
         delBtn.click();
         await settle();
         assert.equal(doc.querySelectorAll("#scan-history .history-row").length, 1);
+        assert.equal(doc.activeElement, doc.querySelector("#scan-history .history-delete"));
 
-        // 清空全部
+        // 清空全部后焦点回落到历史标题
+        clearBtn.focus();
         clearBtn.click();
         await settle();
         assert.equal(clearBtn.hidden, true);
+        assert.equal(doc.activeElement.id, "history-title");
         assert.ok(doc.querySelector("#scan-history [role=status]"), "清空后恢复 role=status 空态");
       });
     },
