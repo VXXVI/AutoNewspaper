@@ -26,6 +26,7 @@ def test_clean_empty():
 def test_clean_strips_html_comments_without_leaking_arrow():
     html = "<p>正文<!-- 注释里带<tag>内容 -->继续</p><!-- 尾注 -->"
     assert parse.clean(html) == "正文 继续"
+    assert parse.clean("<p>正文</p><!-- 未闭合注释") == "正文"
 
 
 # ---------------------------------------------------------------- tidy_title

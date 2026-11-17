@@ -24,6 +24,7 @@ from urllib.parse import urljoin
 from . import config
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+_COMMENT_UNCLOSED_RE = re.compile(r"<!--.*\Z", re.S)
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.S | re.I)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -98,6 +99,7 @@ def clean(html_fragment: str) -> str:
         return ""
     text = _SCRIPT_STYLE_RE.sub(" ", html_fragment)
     text = _COMMENT_RE.sub(" ", text)
+    text = _COMMENT_UNCLOSED_RE.sub(" ", text)
     text = _TAG_RE.sub(" ", text)
     text = unescape(text).replace("\u3000", " ").replace("\xa0", " ")
     return _WS_RE.sub(" ", text).strip()

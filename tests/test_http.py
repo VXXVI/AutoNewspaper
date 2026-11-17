@@ -548,3 +548,37 @@ def test_pooled_http_follows_cross_host_redirect(http_base, monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_connect_socket_continues_when_socket_creation_raises_oserror(http_base, monkeypatch):
+    import socket
+
+    real_socket_cls = socket.socket
+    port = int(http_base.rsplit(":", 1)[1])
+
+    def _fake_socket(fam, st, pr, *a, **k):
+        if fam == socket.AF_INET6 and "fileno" not in k:
+            raise OSError("Address family not supported")
+        return real_socket_cls(fam, st, pr, *a, **k)
+
+    monkeypatch.setattr(
+        http.socket,
+        "getaddrinfo",
+        lambda host, p, *a, **k: [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", port, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port)),
+        ],
+    )
+    monkeypatch.setattr(http.socket, "socket", _fake_socket)
+    monkeypatch.setattr(http.urllib.request, "getproxies", lambda: {})
+
+    code, body = http._stdlib_once("http://dualstack.example.com/ok", 5)
+    assert code == 200 and "正文内容" in body
+
+
+def test_curl_once_handles_permission_error(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise PermissionError("not executable")
+
+    monkeypatch.setattr(http.subprocess, "run", _boom)
+    assert http._curl_once("http://x", 5) == (0, "")
