@@ -36,6 +36,7 @@ export var A = {
   SCAN_SET_PAPERS: "SCAN_SET_PAPERS",
   SCAN_CONFIG_ONLY: "SCAN_CONFIG_ONLY",
   SCAN_TOGGLE_PAPER: "SCAN_TOGGLE_PAPER",
+  SCAN_SET_SELECTED: "SCAN_SET_SELECTED",
   SCAN_RUNNING: "SCAN_RUNNING",
   SCAN_CANCELLING: "SCAN_CANCELLING",
   SCAN_STATUS: "SCAN_STATUS",
@@ -43,6 +44,7 @@ export var A = {
   SCAN_RESET_LOG: "SCAN_RESET_LOG",
   SCAN_INGEST: "SCAN_INGEST",
   SCAN_HISTORY: "SCAN_HISTORY",
+  SCAN_HISTORY_BUSY: "SCAN_HISTORY_BUSY",
   // 报社管理
   PAPERS_VIEW: "PAPERS_VIEW",
   PAPERS_STATUS: "PAPERS_STATUS",
@@ -92,7 +94,8 @@ export function createInitialState() {
       durationSeconds: null,
       lastSummary: null,
       newUrlsSynced: false,
-      history: null
+      history: null,
+      historyBusy: false
     },
     // 报社管理面板（filter 用的 papers 是 Set，见上方）
     papersPanel: {
@@ -286,6 +289,11 @@ export function reducer(state, action) {
       if (action.on) base.add(action.name); else base.delete(action.name);
       return slicePatch(state, "scan", { selected: base, pendingOnly: null });
     }
+    case A.SCAN_SET_SELECTED:
+      return slicePatch(state, "scan", {
+        selected: action.all ? null : new Set(),
+        pendingOnly: null
+      });
     case A.SCAN_RUNNING:
       return slicePatch(state, "scan", {
         running: Boolean(action.running),
@@ -338,6 +346,8 @@ export function reducer(state, action) {
       return slicePatch(state, "scan", {
         history: Array.isArray(action.tasks) ? action.tasks.slice() : []
       });
+    case A.SCAN_HISTORY_BUSY:
+      return slicePatch(state, "scan", { historyBusy: Boolean(action.busy) });
 
     /* ---------------------------------------------------------- 报社管理 */
     case A.PAPERS_VIEW:
@@ -445,7 +455,9 @@ export function selectSorted(state) {
     "date-desc": byDateDesc,
     "date-asc": function (a, b) { return -byDateDesc(a, b); },
     "paper": function (a, b) { return a.paper.localeCompare(b.paper, "zh") || byDateDesc(a, b); },
-    "title": function (a, b) { return a.title.localeCompare(b.title, "zh"); }
+    "paper-desc": function (a, b) { return b.paper.localeCompare(a.paper, "zh") || byDateDesc(a, b); },
+    "title": function (a, b) { return a.title.localeCompare(b.title, "zh"); },
+    "title-desc": function (a, b) { return b.title.localeCompare(a.title, "zh"); }
   }[state.sort] || byDateDesc;
   return list.slice().sort(cmp);
 }

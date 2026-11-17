@@ -17,7 +17,12 @@ from urllib.parse import parse_qs, urlsplit
 from . import __version__, config, dialogs, exporter, papers
 from .web_dashboard import build_dashboard, load_web_config, save_web_config
 from .web_papers import _resolve_paper_by_name, build_papers_view
-from .web_scan import ScanRequestError, load_task_history
+from .web_scan import (
+    ScanRequestError,
+    clear_task_history,
+    delete_task_history,
+    load_task_history,
+)
 from .web_static import SCAN_EVENT_INTERVAL
 from .web_validate import (
     filter_export_records,
@@ -140,6 +145,48 @@ class _ApiHandlersMixin:
                 self._error_json(409, f"扫描已结束（{snapshot['status']}），无需取消")
             return
         self._send_json(202, task.snapshot())
+
+    def _handle_scan_history_delete(self, payload: Any) -> None:
+        """删除单条扫描历史摘要（不影响 hits/ 与 seen.json）。"""
+        if not isinstance(payload, dict):
+            self._error_json(400, "请求体必须是 JSON 对象")
+            return
+        unknown = set(payload) - {"task_id"}
+        if unknown:
+            self._error_json(400, f"不支持的字段：{'、'.join(sorted(unknown))}")
+            return
+        raw_id = payload.get("task_id")
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            self._error_json(400, "task_id 必须是非空字符串")
+            return
+        task_id = raw_id.strip()
+        if len(task_id) > 64 or any(ord(ch) < 32 or ord(ch) == 127 for ch in task_id):
+            self._error_json(400, "task_id 格式不合法")
+            return
+        try:
+            tasks, removed = delete_task_history(self.server.data_dir, task_id)
+        except OSError as exc:
+            self._error_json(500, f"删除扫描历史失败：{exc}")
+            return
+        if not removed:
+            self._error_json(404, "未找到该扫描历史记录")
+            return
+        self._send_json(200, {"tasks": tasks})
+
+    def _handle_scan_history_clear(self, payload: Any) -> None:
+        """清空全部扫描历史摘要（不影响 hits/ 与 seen.json）。"""
+        if not isinstance(payload, dict):
+            self._error_json(400, "请求体必须是 JSON 对象")
+            return
+        if payload:
+            self._error_json(400, f"不支持的字段：{'、'.join(sorted(payload))}")
+            return
+        try:
+            tasks = clear_task_history(self.server.data_dir)
+        except OSError as exc:
+            self._error_json(500, f"清空扫描历史失败：{exc}")
+            return
+        self._send_json(200, {"tasks": tasks})
 
     def _handle_config_save(self, payload: Any) -> None:
         cfg, error = validate_web_config(payload)

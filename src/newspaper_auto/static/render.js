@@ -103,12 +103,16 @@ export function renderApp(ctx) {
   renderDateBounds(state);
   renderFilterPopover(state);
   renderControls(ctx, state);
+  renderSortHeaders(state);
   renderScanPanel(state);
-  renderScanHistory(state);
+  renderScanHistory(state, ctx);
   renderPapersPanel(ctx, state);
+  var resetBtn = $("reset"), exportBtn = $("export");
   if (state.data) {
     var all = state.data.records;
     var list = selectSorted(state);
+    if (resetBtn) resetBtn.disabled = activeFilterCount(state) === 0;
+    if (exportBtn) exportBtn.disabled = list.length === 0;
     renderStats(state, all, list);
     renderChart(ctx, list);
     renderRows(ctx, state, list);
@@ -121,8 +125,31 @@ export function renderApp(ctx) {
     renderKeywordRanking(ctx, list);
     renderHeatmap(ctx, list);
     renderFooter(state);
+  } else {
+    if (resetBtn) resetBtn.disabled = true;
+    if (exportBtn) exportBtn.disabled = true;
   }
   renderExportPanel(state);
+}
+
+var SORT_COL_MAP = {
+  "date-desc": ["date", "descending"],
+  "date-asc": ["date", "ascending"],
+  "paper": ["paper", "ascending"],
+  "paper-desc": ["paper", "descending"],
+  "title": ["title", "ascending"],
+  "title-desc": ["title", "descending"],
+};
+function renderSortHeaders(state) {
+  var active = SORT_COL_MAP[state.sort] || ["date", "descending"];
+  var buttons = document.querySelectorAll(".th-sort[data-sort-col]");
+  Array.prototype.forEach.call(buttons, function (btn) {
+    var col = btn.getAttribute("data-sort-col");
+    var dir = col === active[0] ? active[1] : "none";
+    var th = btn.parentNode;
+    if (th && th.tagName === "TH") th.setAttribute("aria-sort", dir);
+    btn.setAttribute("data-sort-dir", dir);
+  });
 }
 
 function renderMeta(state) {
@@ -322,6 +349,9 @@ export function renderScanPanel(state) {
     else if (selectedCount === 0) setText(hint, "⚠ 至少选择一家报社才能扫描");
     else setText(hint, "已选 " + selectedCount + " / " + scan.paperNames.length + " 家");
   }
+  var allBtn = $("scan-papers-all"), noneBtn = $("scan-papers-none");
+  if (allBtn) allBtn.disabled = !scan.paperNames.length || selectedCount === scan.paperNames.length;
+  if (noneBtn) noneBtn.disabled = !scan.paperNames.length || selectedCount === 0;
   var recent = $("scan-recent");
   if (recent) {
     recent.hidden = scan.running;
@@ -383,11 +413,17 @@ var HISTORY_STATUS = {
   done: ["完成", "success"], error: ["未完整", "error"], cancelled: ["已取消", "idle"],
   running: ["进行中", "running"], idle: ["准备", "idle"],
 };
-export function renderScanHistory(state) {
+export function renderScanHistory(state, ctx) {
   var box = $("scan-history");
   if (!box) return;
   clearNode(box);
   var history = state.scan.history;
+  var busy = Boolean(state.scan.historyBusy);
+  var clearBtn = $("scan-history-clear");
+  if (clearBtn) {
+    clearBtn.hidden = !history || !history.length;
+    clearBtn.disabled = busy;
+  }
   if (history === null) return emptyHint(box, "正在加载扫描历史…");
   if (!history.length) return emptyHint(box, "暂无扫描历史记录。");
   history.slice().reverse().slice(0, MAX_HISTORY).forEach(function (task) {
@@ -397,8 +433,26 @@ export function renderScanHistory(state) {
     var row = mount(box, "article", "history-row");
     row.setAttribute("aria-label", meta[0] + " " + when + "，命中 " + (hits === null ? "未知" : hits) + " 篇");
     var head = mount(row, "div", "history-head");
-    mount(head, "span", "history-state tone-" + meta[1], meta[0]);
-    mount(head, "span", "history-time", when);
+    var headLeft = mount(head, "div", "history-head-main");
+    mount(headLeft, "span", "history-state tone-" + meta[1], meta[0]);
+    mount(headLeft, "span", "history-time", when);
+    if (ctx && ctx.features && ctx.features.system) {
+      var actions = mount(head, "div", "history-actions");
+      if (Array.isArray(task.keywords) && task.keywords.length) {
+        var reuseBtn = mount(actions, "button", "btn text small", "填入参数");
+        reuseBtn.type = "button";
+        reuseBtn.disabled = busy;
+        reuseBtn.setAttribute("aria-label", "填入" + when + "的扫描参数");
+        reuseBtn.addEventListener("click", function () { ctx.features.system.reuseHistoryParams(task); });
+      }
+      if (task.task_id) {
+        var delBtn = mount(actions, "button", "btn text small history-delete", "删除");
+        delBtn.type = "button";
+        delBtn.disabled = busy;
+        delBtn.setAttribute("aria-label", "删除" + when + "的扫描历史");
+        delBtn.addEventListener("click", function () { ctx.features.system.deleteScanHistory(task.task_id); });
+      }
+    }
     mount(row, "p", "history-meta", ((task.keywords || []).join("、") || "（未记录关键词）") +
       (task.only ? " · 报社：" + task.only : ""));
     var detail = hits === null ? "命中未知" : "命中 " + hits + " 篇";

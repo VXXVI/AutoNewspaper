@@ -108,7 +108,7 @@ MAX_KEYWORD_LEN = config.MAX_KEYWORD_LEN
 MAX_WORKERS = config.MAX_WORKERS
 MAX_EXPORT_QUERY_LEN = 200
 MAX_EXPORT_FILTER_ITEMS = 100
-EXPORT_SORTS = ("date-desc", "date-asc", "paper", "title")
+EXPORT_SORTS = ("date-desc", "date-asc", "paper", "paper-desc", "title", "title-desc")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # 扫描范围模式：按天数 / 按日期范围（互斥，缺省按天数以兼容旧配置）
 SCAN_MODES = ("days", "range")
