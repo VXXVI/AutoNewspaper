@@ -208,11 +208,24 @@ export function createScanController(ctx) {
       if (typeof cfg.since === "string" && ISO_DATE_RE.test(cfg.since)) $("scan-since").value = cfg.since;
       if (typeof cfg.until === "string" && ISO_DATE_RE.test(cfg.until)) $("scan-until").value = cfg.until;
       ctx.dispatch({ type: A.SCAN_CONFIG_ONLY, only: typeof cfg.only === "string" ? cfg.only : "" });
-      ensureRangeDefaults(); updateModeUI();
+      ensureRangeDefaults(); updateModeUI(); updateKeywordHint();
     }).catch(function () {
       ctx.dispatch({ type: A.SCAN_CONFIG_ONLY, only: "" });
-      ensureRangeDefaults(); updateModeUI();
+      ensureRangeDefaults(); updateModeUI(); updateKeywordHint();
     });
+  }
+  function updateKeywordHint() {
+    var input = $("scan-kw"), hint = $("scan-kw-hint");
+    if (!input || !hint) return;
+    var kws = splitKeywords(input.value);
+    var tooLong = kws.some(function (k) { return k.length > 50; });
+    var invalid = kws.length > 10 || tooLong;
+    input.setAttribute("aria-invalid", invalid ? "true" : "false");
+    hint.setAttribute("data-state", invalid ? "error" : "");
+    if (kws.length > 10) setText(hint, "已填 " + kws.length + " / 10 个关键词（超出上限，最多 10 个）");
+    else if (tooLong) setText(hint, "单个关键词不能超过 50 个字符（当前 " + kws.length + " / 10 个）");
+    else if (kws.length) setText(hint, "已填 " + kws.length + " / 10 个关键词（逗号、顿号或换行分隔）");
+    else setText(hint, "多个关键词可用逗号、顿号或换行分隔，最多 10 个");
   }
   function ensureRangeDefaults() {
     // 「今天」优先用服务端下发值（应用时区），与后端校验同一口径；未加载时回落本地日期。
@@ -245,7 +258,10 @@ export function createScanController(ctx) {
   }
   function onModeChange() { if ($("scan-mode").value === "range") ensureRangeDefaults(); updateModeUI(); }
 
-  return { loadConfig: loadConfig, onModeChange: onModeChange, start: start, cancel: cancel, resume: resume };
+  return {
+    loadConfig: loadConfig, onModeChange: onModeChange, updateKeywordHint: updateKeywordHint,
+    start: start, cancel: cancel, resume: resume,
+  };
 }
 
 /* ============================================================ 报社管理 */
@@ -593,6 +609,9 @@ export function createExportController(ctx) {
 
 /* ============================================================ 系统状态 */
 export function createSystemController(ctx) {
+  var historyReqId = 0;
+  var historyReloadQueued = false;
+
   function setHealth(ok, health) {
     ctx.dispatch({ type: A.SYSTEM_HEALTH, ok: ok, version: (health && health.version) || "",
       checkedAt: new Date().toISOString() });
@@ -614,9 +633,94 @@ export function createSystemController(ctx) {
     }).catch(function () { setHealth(false, null); return false; });
   }
   function loadScanHistory() {
+    if (ctx.getState().scan.historyBusy) {
+      historyReloadQueued = true;
+      return;
+    }
+    var reqId = ++historyReqId;
     ctx.api.get("/api/scan/history")
-      .then(function (data) { ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] }); })
-      .catch(function () { ctx.dispatch({ type: A.SCAN_HISTORY, tasks: [] }); });
+      .then(function (data) {
+        if (reqId !== historyReqId) return;
+        ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] });
+      })
+      .catch(function () {
+        if (reqId !== historyReqId) return;
+        ctx.dispatch({ type: A.SCAN_HISTORY, tasks: [] });
+      });
   }
-  return { loadHealth: loadHealth, loadScanHistory: loadScanHistory, markOffline: markOffline, reconnect: reconnect };
+  function setHistoryBusy(busy) { ctx.dispatch({ type: A.SCAN_HISTORY_BUSY, busy: busy }, { immediate: true }); }
+  function finishHistoryMutation() {
+    if (ctx.getState().scan.historyBusy) setHistoryBusy(false);
+    if (historyReloadQueued) {
+      historyReloadQueued = false;
+      loadScanHistory();
+    }
+  }
+  function restoreHistoryFocus(indexHint) {
+    var box = $("scan-history");
+    var btns = box ? box.querySelectorAll(".history-delete") : [];
+    if (btns.length) {
+      btns[Math.min(Math.max(0, indexHint), btns.length - 1)].focus();
+    } else if ($("history-title")) {
+      $("history-title").focus();
+    }
+  }
+  function deleteScanHistory(taskId) {
+    if (!taskId || ctx.getState().scan.historyBusy) return;
+    if (!window.confirm("删除这条扫描历史记录？仅移除摘要，不影响已有报道归档。")) return;
+    var box = $("scan-history");
+    var hadFocus = Boolean(box && box.contains(document.activeElement));
+    var cur = (ctx.getState().scan.history || []).slice().reverse();
+    var idx = cur.findIndex(function (t) { return t && t.task_id === taskId; });
+    var reqId = ++historyReqId;
+    setHistoryBusy(true);
+    ctx.api.post("/api/scan/history/delete", { task_id: taskId }).then(function (data) {
+      if (reqId !== historyReqId) return;
+      ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] });
+      ctx.dispatch({ type: A.SCAN_STATUS, text: "已删除该条扫描历史", tone: "idle" });
+      setHistoryBusy(false);
+      if (hadFocus) restoreHistoryFocus(idx);
+    }).catch(function (err) {
+      if (reqId !== historyReqId) return;
+      ctx.dispatch({ type: A.SCAN_STATUS, text: "删除历史失败：" + err.message, tone: "error" });
+    }).finally(finishHistoryMutation);
+  }
+  function clearScanHistory() {
+    var history = ctx.getState().scan.history;
+    if (!history || !history.length || ctx.getState().scan.historyBusy) return;
+    if (!window.confirm("清空全部扫描历史记录？仅清除摘要列表，不影响已有报道归档。")) return;
+    var box = $("scan-history");
+    var hadFocus = Boolean(
+      document.activeElement === $("scan-history-clear") || (box && box.contains(document.activeElement))
+    );
+    var reqId = ++historyReqId;
+    setHistoryBusy(true);
+    ctx.api.post("/api/scan/history/clear", {}).then(function (data) {
+      if (reqId !== historyReqId) return;
+      ctx.dispatch({ type: A.SCAN_HISTORY, tasks: (data && data.tasks) || [] });
+      ctx.dispatch({ type: A.SCAN_STATUS, text: "已清空扫描历史", tone: "idle" });
+      setHistoryBusy(false);
+      if (hadFocus && $("history-title")) $("history-title").focus();
+    }).catch(function (err) {
+      if (reqId !== historyReqId) return;
+      ctx.dispatch({ type: A.SCAN_STATUS, text: "清空历史失败：" + err.message, tone: "error" });
+    }).finally(finishHistoryMutation);
+  }
+  function reuseHistoryParams(task) {
+    if (!task) return;
+    var input = $("scan-kw");
+    if (input && Array.isArray(task.keywords) && task.keywords.length) {
+      input.value = task.keywords.join(", ");
+      if (ctx.features && ctx.features.scan) ctx.features.scan.updateKeywordHint();
+    }
+    ctx.dispatch({ type: A.SCAN_CONFIG_ONLY, only: typeof task.only === "string" ? task.only : "" });
+    ctx.dispatch({ type: A.SCAN_STATUS, text: "已回填该次扫描的关键词与报社", tone: "idle" });
+    var card = $("scan-card");
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (input) input.focus();
+  }
+  return {
+    loadHealth: loadHealth, loadScanHistory: loadScanHistory, markOffline: markOffline, reconnect: reconnect,
+    deleteScanHistory: deleteScanHistory, clearScanHistory: clearScanHistory, reuseHistoryParams: reuseHistoryParams,
+  };
 }

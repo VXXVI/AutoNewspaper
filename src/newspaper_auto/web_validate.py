@@ -353,7 +353,9 @@ def filter_export_records(records: list[dict[str, Any]], filters: dict[str, Any]
         if to_date and (not record["date"] or record["date"] > to_date):
             continue
         if query:
-            haystack = " ".join((record["title"], record["section"], *record["snippets"])).casefold()
+            haystack = " ".join(
+                (record["title"], record["section"], *record["snippets"], *record.get("matched", ()))
+            ).casefold()
             if query not in haystack:
                 continue
         selected.append(export_record)
@@ -367,6 +369,10 @@ def filter_export_records(records: list[dict[str, Any]], filters: dict[str, Any]
         selected.reverse()
     elif sort == "paper":
         selected.sort(key=lambda item: item["paper"])
+    elif sort == "paper-desc":
+        selected.sort(key=lambda item: item["paper"], reverse=True)
     elif sort == "title":
         selected.sort(key=lambda item: item["title"])
+    elif sort == "title-desc":
+        selected.sort(key=lambda item: item["title"], reverse=True)
     return selected

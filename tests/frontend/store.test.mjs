@@ -17,6 +17,7 @@ import {
   selectActiveFilters,
   selectFiltered,
   selectScanNames,
+  selectSorted,
 } from "../../src/newspaper_auto/static/store.js";
 
 function sampleData() {
@@ -442,4 +443,32 @@ test("LOAD_DATA：扫描运行中不把 newUrlsSynced 置为 true，结束后刷
     allKeywordsSelected: true,
   });
   assert.equal(loadedAfter.scan.newUrlsSynced, true);
+});
+
+test("SCAN_SET_SELECTED / SCAN_HISTORY_BUSY 与倒序排序", () => {
+  let s = reducer(createInitialState(), { type: A.SCAN_SET_PAPERS, names: ["A", "B"] });
+  s = reducer(s, { type: A.SCAN_SET_SELECTED, all: false });
+  assert.deepEqual([...s.scan.selected], []);
+  s = reducer(s, { type: A.SCAN_SET_SELECTED, all: true });
+  assert.equal(s.scan.selected, null);
+  s = reducer(s, { type: A.SCAN_HISTORY_BUSY, busy: true });
+  assert.equal(s.scan.historyBusy, true);
+
+  const data = {
+    papers: ["光明日报", "湛江日报"],
+    keywords: ["k"],
+    records: [
+      { paper: "光明日报", date: "2026-09-23", title: "甲标题", url: "u1", matched: ["k"] },
+      { paper: "湛江日报", date: "2026-09-22", title: "乙标题", url: "u2", matched: ["k"] },
+    ],
+  };
+  const state = Object.assign(createInitialState(), {
+    data,
+    papers: new Set(data.papers),
+    keywords: new Set(data.keywords),
+    sort: "paper-desc",
+  });
+  assert.deepEqual(selectSorted(state).map((r) => r.paper), ["湛江日报", "光明日报"]);
+  const titleDesc = Object.assign({}, state, { sort: "title-desc" });
+  assert.deepEqual(selectSorted(titleDesc).map((r) => r.title), ["乙标题", "甲标题"]);
 });

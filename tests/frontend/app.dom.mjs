@@ -819,4 +819,116 @@ export const domTests = [
       });
     },
   },
+  {
+    name: "扫描历史：支持填入参数、删除单条与清空全部",
+    fn: () => {
+      let tasks = [
+        {
+          task_id: "h1",
+          status: "done",
+          started_at: "2026-09-24 09:00:00",
+          finished_at: "2026-09-24 09:02:00",
+          duration_seconds: 120,
+          keywords: ["人工智能"],
+          only: "光明日报",
+          summary: { hits: 3, new_hits: 1 },
+        },
+        {
+          task_id: "h2",
+          status: "error",
+          started_at: "2026-09-24 10:00:00",
+          finished_at: "2026-09-24 10:01:00",
+          keywords: ["低空经济"],
+          only: "",
+          summary: null,
+        },
+      ];
+      const routes = (path, init) => {
+        const method = (init?.method || "GET").toUpperCase();
+        if (method === "GET" && path === "/api/scan/history") return { body: { tasks } };
+        if (method === "POST" && path === "/api/scan/history/delete") {
+          const body = JSON.parse(init.body);
+          tasks = tasks.filter((t) => t.task_id !== body.task_id);
+          return { body: { tasks } };
+        }
+        if (method === "POST" && path === "/api/scan/history/clear") {
+          tasks = [];
+          return { body: { tasks: [] } };
+        }
+        return defaultRoutes(path, init);
+      };
+      return withPage({ routes }, async (page) => {
+        const doc = page.document;
+        assert.equal(doc.querySelectorAll("#scan-history .history-row").length, 2);
+        const clearBtn = doc.getElementById("scan-history-clear");
+        assert.equal(clearBtn.hidden, false);
+
+        // 填入参数：第一行渲染的是最新一条 h2
+        const reuseBtn = doc.querySelector("#scan-history .history-row button");
+        reuseBtn.click();
+        await settle();
+        assert.equal(doc.getElementById("scan-kw").value, "低空经济");
+        assert.match(page.text("scan-kw-hint"), /1 \/ 10/);
+
+        // 删除单条（验证键盘聚焦的删除按钮删除后焦点移至剩余行，不被丢回 body）
+        const delBtn = doc.querySelector("#scan-history .history-delete");
+        delBtn.focus();
+        delBtn.click();
+        await settle();
+        assert.equal(doc.querySelectorAll("#scan-history .history-row").length, 1);
+        assert.equal(doc.activeElement, doc.querySelector("#scan-history .history-delete"));
+
+        // 清空全部后焦点回落到历史标题
+        clearBtn.focus();
+        clearBtn.click();
+        await settle();
+        assert.equal(clearBtn.hidden, true);
+        assert.equal(doc.activeElement.id, "history-title");
+        assert.ok(doc.querySelector("#scan-history [role=status]"), "清空后恢复 role=status 空态");
+      });
+    },
+  },
+  {
+    name: "报社全选/清空、关键词计数与可点击表头排序及重置禁用态",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        // 快捷全选/清空扫描报社
+        doc.getElementById("scan-papers-none").click();
+        await settle();
+        assert.equal(doc.getElementById("scan-run").disabled, true);
+        assert.match(page.text("scan-papers-hint"), /至少选择一家报社/);
+        doc.getElementById("scan-papers-all").click();
+        await settle();
+        assert.equal(doc.getElementById("scan-run").disabled, false);
+
+        // 关键词计数超限标记 aria-invalid
+        const kwInput = doc.getElementById("scan-kw");
+        kwInput.value = "a,b,c,d,e,f,g,h,i,j,k";
+        kwInput.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+        assert.equal(kwInput.getAttribute("aria-invalid"), "true");
+        assert.match(page.text("scan-kw-hint"), /11 \/ 10/);
+
+        // 表头点击排序与 aria-sort 同步
+        const dateThBtn = doc.querySelector('.th-sort[data-sort-col="date"]');
+        assert.equal(dateThBtn.parentNode.getAttribute("aria-sort"), "descending");
+        dateThBtn.click();
+        await settle();
+        assert.equal(dateThBtn.parentNode.getAttribute("aria-sort"), "ascending");
+        assert.equal(doc.getElementById("sort").value, "date-asc");
+
+        // 无筛选时 #reset 禁用，空结果时 #export 禁用
+        doc.querySelector('#active-filters [data-filter-key="keywords"]').click();
+        await settle();
+        assert.equal(doc.getElementById("reset").disabled, true);
+        assert.equal(doc.getElementById("export").disabled, false);
+
+        const q = doc.getElementById("q");
+        q.value = "绝对不存在的词";
+        q.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+        await settle();
+        assert.equal(doc.getElementById("export").disabled, true);
+        assert.equal(doc.getElementById("reset").disabled, false);
+      }),
+  },
 ];

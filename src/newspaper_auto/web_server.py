@@ -49,6 +49,8 @@ _POST_ROUTES: dict[str, str] = {
     "/api/config": "_handle_config_save",
     "/api/scan": "_handle_scan_start",
     "/api/scan/cancel": "_handle_scan_cancel",
+    "/api/scan/history/delete": "_handle_scan_history_delete",
+    "/api/scan/history/clear": "_handle_scan_history_clear",
     "/api/papers": "_handle_paper_add",
     "/api/papers/delete": "_handle_paper_delete",
     "/api/papers/remove": "_handle_paper_remove",

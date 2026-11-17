@@ -81,11 +81,11 @@ export function initTheme() {
   });
 
   // 「跟随系统」时系统切换要即时生效；已显式选定则不受系统影响。
-  if (media && media.addEventListener) {
-    media.addEventListener("change", function () {
-      if (readPreference() === "auto") apply("auto");
-    });
-  }
+  var onMediaChange = function () {
+    if (readPreference() === "auto") apply("auto");
+  };
+  if (media && media.addEventListener) media.addEventListener("change", onMediaChange);
+  else if (media && media.addListener) media.addListener(onMediaChange);
 
   apply(readPreference());
 }

@@ -650,7 +650,12 @@ main {
   gap: 20px;
   margin-top: 16px;
 }
-.advanced-grid .field-wide legend { margin-bottom: 7px; }
+.advanced-grid .field-wide legend { margin-bottom: 0; }
+.scan-papers-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+.scan-papers-tools { display: inline-flex; gap: 6px; }
+.scan-papers-tools .btn { min-height: 24px; padding: 2px 6px; font-size: 11.5px; }
+#scan-kw[aria-invalid="true"] { border-color: var(--danger); }
+#scan-kw-hint[data-state="error"] { color: var(--danger); font-weight: 600; }
 .technical-details { grid-column: 1 / -1; }
 
 /* 运行状态侧栏 */
@@ -907,7 +912,12 @@ main {
   transition: border-color .16s ease, background .16s ease;
 }
 .history-row:hover { border-color: var(--line); background: var(--surface-3); }
-.history-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.history-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.history-head-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.history-actions { display: inline-flex; align-items: center; gap: 4px; }
+.history-actions .btn { min-height: 26px; padding: 2px 8px; font-size: 11.5px; }
+.history-delete { color: var(--danger); }
+.history-delete:hover { color: var(--danger); background: var(--danger-soft); }
 .history-state { padding: 1px 8px; border-radius: var(--r-pill); font-size: 11px; font-weight: 680; }
 .history-state.tone-success { background: var(--ok-soft); color: var(--ok); }
 .history-state.tone-error { background: var(--danger-soft); color: var(--danger); }
@@ -1036,6 +1046,22 @@ th {
   letter-spacing: .03em;
   white-space: nowrap;
 }
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.th-sort:hover { color: var(--brand-ink); }
+.th-sort[data-sort-dir="ascending"]::after { content: "↑"; color: var(--brand); }
+.th-sort[data-sort-dir="descending"]::after { content: "↓"; color: var(--brand); }
+.th-sort[data-sort-dir="none"]::after { content: "↕"; opacity: .45; }
 td { font-size: 13.5px; }
 tbody tr { transition: background .14s ease; }
 tbody tr:hover { background: var(--surface-2); }

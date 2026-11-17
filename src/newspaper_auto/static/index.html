@@ -59,7 +59,7 @@
           <label class="field field-keywords">
             <span>监测关键词</span>
             <input id="scan-kw" type="text" placeholder="例如：人工智能、生成式人工智能" autocomplete="off">
-            <small>多个关键词可用逗号、顿号或换行分隔，最多 10 个</small>
+            <small id="scan-kw-hint">多个关键词可用逗号、顿号或换行分隔，最多 10 个</small>
           </label>
 
           <div class="range-fields">
@@ -103,7 +103,13 @@
               <small>通常保持 8 即可</small>
             </label>
             <fieldset class="field field-wide fieldset-reset" aria-describedby="scan-papers-hint">
-              <legend>本次扫描的报社</legend>
+              <div class="scan-papers-head">
+                <legend>本次扫描的报社</legend>
+                <span class="scan-papers-tools">
+                  <button type="button" class="btn text small" id="scan-papers-all">全选</button>
+                  <button type="button" class="btn text small" id="scan-papers-none">清空</button>
+                </span>
+              </div>
               <div class="chips" id="scan-papers"></div>
               <small id="scan-papers-hint"></small>
             </fieldset>
@@ -185,8 +191,10 @@
           <select id="sort">
             <option value="date-desc">最新优先</option>
             <option value="date-asc">最早优先</option>
-            <option value="paper">按报社</option>
-            <option value="title">按标题</option>
+            <option value="paper">按报社（升序）</option>
+            <option value="paper-desc">按报社（降序）</option>
+            <option value="title">按标题（升序）</option>
+            <option value="title-desc">按标题（降序）</option>
           </select>
         </label>
 
@@ -243,7 +251,12 @@
         <table>
           <caption class="sr-only">当前筛选条件下的命中报道</caption>
           <thead>
-            <tr><th class="col-paper" scope="col">报社</th><th class="col-date" scope="col">日期</th><th scope="col">标题与命中上下文</th><th class="col-section" scope="col">版面位置</th></tr>
+            <tr>
+              <th class="col-paper" scope="col" aria-sort="none"><button type="button" class="th-sort" data-sort-col="paper">报社</button></th>
+              <th class="col-date" scope="col" aria-sort="descending"><button type="button" class="th-sort" data-sort-col="date">日期</button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-sort-col="title">标题与命中上下文</button></th>
+              <th class="col-section" scope="col">版面位置</th>
+            </tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
@@ -309,8 +322,9 @@
         <div class="section-heading compact-heading">
           <div>
             <span class="eyebrow">扫描历史</span>
-            <h2 id="history-title">最近几次扫描</h2>
+            <h2 id="history-title" tabindex="-1">最近几次扫描</h2>
           </div>
+          <button id="scan-history-clear" class="btn subtle small" type="button" hidden>清空历史</button>
         </div>
         <div class="history-list" id="scan-history" role="group" aria-label="最近的扫描任务历史"></div>
       </section>

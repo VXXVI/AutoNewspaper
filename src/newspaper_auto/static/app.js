@@ -290,15 +290,17 @@ import { shiftDate, todayIso } from "./format.js";
       if (!store.getState().scan.running) scan.start();
     });
     $("scan-mode").addEventListener("change", scan.onModeChange);
-    $("scan-since").addEventListener("change", function (event) {
-      var today = serverToday();
-      if (event.target.value && event.target.value > today) event.target.value = today;
-    });
-    $("scan-until").addEventListener("change", function (event) {
-      var today = serverToday();
-      if (event.target.value && event.target.value > today) event.target.value = today;
+    $("scan-kw").addEventListener("input", scan.updateKeywordHint);
+    if ($("scan-papers-all")) $("scan-papers-all").addEventListener("click", function () { dispatch({ type: A.SCAN_SET_SELECTED, all: true }, { immediate: true }); });
+    if ($("scan-papers-none")) $("scan-papers-none").addEventListener("click", function () { dispatch({ type: A.SCAN_SET_SELECTED, all: false }, { immediate: true }); });
+    ["scan-since", "scan-until"].forEach(function (id) {
+      $(id).addEventListener("change", function (event) {
+        var today = serverToday();
+        if (event.target.value && event.target.value > today) event.target.value = today;
+      });
     });
     if ($("scan-cancel")) $("scan-cancel").addEventListener("click", scan.cancel);
+    if ($("scan-history-clear")) $("scan-history-clear").addEventListener("click", system.clearScanHistory);
     if ($("scan-new-cta")) {
       $("scan-new-cta").addEventListener("click", function () {
         dispatch({ type: A.SET_NEW_ONLY, on: true }, { immediate: true });
@@ -308,10 +310,7 @@ import { shiftDate, todayIso } from "./format.js";
     }
 
     if ($("paper-form")) {
-      $("paper-form").addEventListener("submit", function (event) {
-        event.preventDefault();
-        papers.add();
-      });
+      $("paper-form").addEventListener("submit", function (event) { event.preventDefault(); papers.add(); });
     } else {
       $("paper-add").addEventListener("click", papers.add);
     }
@@ -322,36 +321,29 @@ import { shiftDate, todayIso } from "./format.js";
     $("papers-commit-cmd").value = PAPERS_COMMIT_CMD;
     $("papers-commit").addEventListener("click", papers.copyCommitCommand);
 
-    $("result-clear-linked").addEventListener("click", function () {
-      dispatch({ type: A.CLEAR_LINKED }, { immediate: true });
-    });
-    $("result-show-history").addEventListener("click", function () {
-      dispatch({ type: A.SHOW_ALL_HISTORY });
-    });
+    $("result-clear-linked").addEventListener("click", function () { dispatch({ type: A.CLEAR_LINKED }, { immediate: true }); });
+    $("result-show-history").addEventListener("click", function () { dispatch({ type: A.SHOW_ALL_HISTORY }); });
 
-    $("q").addEventListener("input", function (event) {
-      dispatch({ type: A.SET_QUERY, value: event.target.value });
-    });
-    $("from").addEventListener("change", function (event) {
-      var val = event.target.value;
-      var today = serverToday();
-      if (val && val > today) {
-        val = today;
-        event.target.value = today;
-      }
-      dispatch({ type: A.SET_DATE_RANGE, from: val });
-    });
-    $("to").addEventListener("change", function (event) {
-      var val = event.target.value;
-      var today = serverToday();
-      if (val && val > today) {
-        val = today;
-        event.target.value = today;
-      }
-      dispatch({ type: A.SET_DATE_RANGE, to: val });
+    $("q").addEventListener("input", function (event) { dispatch({ type: A.SET_QUERY, value: event.target.value }); });
+    ["from", "to"].forEach(function (id) {
+      $(id).addEventListener("change", function (event) {
+        var val = event.target.value, today = serverToday();
+        if (val && val > today) { val = today; event.target.value = today; }
+        var act = { type: A.SET_DATE_RANGE };
+        act[id] = val;
+        dispatch(act);
+      });
     });
     $("sort").addEventListener("change", function (event) {
       dispatch({ type: A.SET_SORT, value: event.target.value }, { immediate: true });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".th-sort[data-sort-col]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var col = btn.getAttribute("data-sort-col"), cur = store.getState().sort;
+        var next = col === "date" ? (cur === "date-desc" ? "date-asc" : "date-desc")
+          : (cur === col ? col + "-desc" : col);
+        dispatch({ type: A.SET_SORT, value: next }, { immediate: true });
+      });
     });
 
     $("export").addEventListener("click", exporter.open);

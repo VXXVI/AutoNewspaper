@@ -1993,6 +1993,70 @@ def test_scan_history_persisted_and_listed(tmp_path):
         assert (tmp_path / "state" / "tasks.json").exists()
 
 
+def test_scan_history_delete_and_clear(tmp_path):
+    history_path = tmp_path / "state" / "tasks.json"
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    history_path.write_text(
+        json.dumps(
+            [
+                {"task_id": "t1", "status": "done", "keywords": ["a"]},
+                {"task_id": "t2", "status": "error", "keywords": ["b"]},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with _serve(tmp_path) as url:
+        archive_path = tmp_path / "hits" / "archive.json"
+        archive_before = archive_path.read_text(encoding="utf-8")
+
+        assert _request("POST", url + "/api/scan/history/delete", [])[0] == 400
+        assert _request("POST", url + "/api/scan/history/delete", {"task_id": ""})[0] == 400
+        assert _request("POST", url + "/api/scan/history/delete", {"task_id": "t1", "extra": 1})[0] == 400
+        assert _request("POST", url + "/api/scan/history/delete", {"task_id": "missing"})[0] == 404
+
+        status, body = _request("POST", url + "/api/scan/history/delete", {"task_id": "t1"})
+        assert status == 200
+        assert [item["task_id"] for item in json.loads(body)["tasks"]] == ["t2"]
+        assert archive_path.read_text(encoding="utf-8") == archive_before
+
+        assert _request("POST", url + "/api/scan/history/clear", {"extra": 1})[0] == 400
+        status, body = _request("POST", url + "/api/scan/history/clear", {})
+        assert status == 200
+        assert json.loads(body) == {"tasks": []}
+
+        status, body = _request("GET", url + "/api/scan/history")
+        assert status == 200
+        assert json.loads(body) == {"tasks": []}
+
+
+def test_export_supports_paper_desc_and_title_desc_sorts():
+    records = [
+        {
+            "paper": "光明日报",
+            "date": "2026-09-23",
+            "section": "",
+            "title": "A标题",
+            "url": "u1",
+            "snippets": [],
+            "matched": ["AI"],
+        },
+        {
+            "paper": "湛江日报",
+            "date": "2026-09-22",
+            "section": "",
+            "title": "B标题",
+            "url": "u2",
+            "snippets": [],
+            "matched": ["AI"],
+        },
+    ]
+    by_paper_desc = web.filter_export_records(records, {"sort": "paper-desc"})
+    assert [r["paper"] for r in by_paper_desc] == ["湛江日报", "光明日报"]
+    by_title_desc = web.filter_export_records(records, {"sort": "title-desc"})
+    assert [r["title"] for r in by_title_desc] == ["B标题", "A标题"]
+
+
 def test_scan_events_streams_idle_and_closes(tmp_path):
     with _serve(tmp_path) as url, _open(url + "/api/scan/events") as resp:
         assert "text/event-stream" in (resp.headers.get("Content-Type") or "")

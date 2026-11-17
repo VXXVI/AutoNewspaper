@@ -105,6 +105,27 @@ def record_task_history(data_dir: Path | str, task: Any) -> None:
             )
 
 
+def delete_task_history(data_dir: Path | str, task_id: str) -> tuple[list[dict[str, Any]], bool]:
+    """按 ``task_id`` 删除一条扫描历史；返回 ``(最新列表, 是否确实删掉)``。"""
+    with _HISTORY_LOCK:
+        history = load_task_history(data_dir)
+        remaining = [item for item in history if item.get("task_id") != task_id]
+        if len(remaining) == len(history):
+            return history, False
+        report.write_text(
+            paths.task_history_file(Path(data_dir)),
+            json.dumps(remaining[-MAX_TASK_HISTORY:], ensure_ascii=False, indent=1),
+        )
+        return remaining, True
+
+
+def clear_task_history(data_dir: Path | str) -> list[dict[str, Any]]:
+    """清空扫描历史摘要（不动归档 ``hits/archive.json`` 与增量状态）。"""
+    with _HISTORY_LOCK:
+        report.write_text(paths.task_history_file(Path(data_dir)), "[]\n")
+        return []
+
+
 def _main_accepts_cancel(main: Callable[..., Any]) -> bool:
     """判断（可能是被测试替换的）``cli.main`` 是否接受 ``cancel`` 关键字。"""
     try:
