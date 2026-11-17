@@ -14,12 +14,12 @@ export var PAPERS_COMMIT_CMD =
 
 /* ============================================================ 扫描 */
 export function createScanController(ctx) {
-  var scanTimer = null, scanStream = null, pollInFlight = false;
+  var scanTimer = null, scanStream = null, pollInFlight = false, pollRetries = 0;
 
   function toneOf(text) {
     if (/失败|未完整|错误|至少|不能|最多|请选择|晚于|超过/.test(text)) return "error";
     if (/完成/.test(text)) return "success";
-    if (/正在|扫描中|已启动|接入进度/.test(text)) return "running";
+    if (/正在|扫描中|已启动|接入进度|重试/.test(text)) return "running";
     return "idle";
   }
   function setStatus(text, tone) { ctx.dispatch({ type: A.SCAN_STATUS, text: text, tone: tone || toneOf(text) }); }
@@ -79,23 +79,35 @@ export function createScanController(ctx) {
     pollInFlight = true;
     ctx.api.get("/api/scan?after=" + encodeURIComponent(ctx.getState().scan.logCursor))
       .then(function (task) {
+        pollRetries = 0;
         consume(task, false);
         if (applyOutcome(task)) return;
         var progress = task.progress || {};
         setStatus(progress.total ? "扫描中：" + progress.completed + " / " + progress.total : "扫描中…");
         schedulePoll(SCAN_POLL_MS);
       })
-      .catch(function (err) { stopPolling(); setRunning(false); setStatus("轮询失败：" + err.message); })
+      .catch(function (err) {
+        if (ctx.getState().scan.running && pollRetries < 3) {
+          pollRetries += 1;
+          setStatus("连接波动，正在重试（" + pollRetries + "/3）…", "running");
+          schedulePoll(2000);
+          return;
+        }
+        stopPolling();
+        setRunning(false);
+        setStatus("轮询失败：" + err.message);
+        if (err && err.offline && ctx.features && ctx.features.system) ctx.features.system.markOffline();
+      })
       .finally(function () { pollInFlight = false; });
   }
 
   function buildBody() {
     var keywords = splitKeywords($("scan-kw").value);
     var workers = parseInt10($("scan-workers").value);
-    if (!keywords.length) return { error: "请至少填写一个关键词" };
-    if (keywords.length > 10) return { error: "关键词最多 10 个" };
-    if (keywords.some(function (k) { return k.length > 50; })) return { error: "单个关键词不能超过 50 个字符" };
-    if (isNaN(workers) || workers < 1 || workers > 16) return { error: "并发需为 1 ~ 16 之间的整数" };
+    if (!keywords.length) return { error: "请至少填写一个关键词", field: "scan-kw" };
+    if (keywords.length > 10) return { error: "关键词最多 10 个", field: "scan-kw" };
+    if (keywords.some(function (k) { return k.length > 50; })) return { error: "单个关键词不能超过 50 个字符", field: "scan-kw" };
+    if (isNaN(workers) || workers < 1 || workers > 16) return { error: "并发需为 1 ~ 16 之间的整数", field: "scan-workers" };
     var names = ctx.getState().scan.paperNames;
     var selected = selectedNames();
     if (names.length && selected.length === 0) return { error: "请至少选择一家报社" };
@@ -103,23 +115,30 @@ export function createScanController(ctx) {
     if ($("scan-mode").value === "range") {
       var since = $("scan-since").value, until = $("scan-until").value;
       var today = todayIso();
-      if (!ISO_DATE_RE.test(since) || !ISO_DATE_RE.test(until)) return { error: "请选择合法的起始与结束日期" };
-      if (since > today || until > today) return { error: "报纸尚未发行，不能选择未来日期" };
-      if (since > until) return { error: "起始日期不能晚于结束日期" };
-      if (spanDays(since, until) > 62) return { error: "日期跨度不能超过 62 天" };
+      if (!ISO_DATE_RE.test(since)) return { error: "请选择合法的起始日期", field: "scan-since" };
+      if (!ISO_DATE_RE.test(until)) return { error: "请选择合法的结束日期", field: "scan-until" };
+      if (since > today) return { error: "报纸尚未发行，不能选择未来日期", field: "scan-since" };
+      if (until > today) return { error: "报纸尚未发行，不能选择未来日期", field: "scan-until" };
+      if (since > until) return { error: "起始日期不能晚于结束日期", field: "scan-since" };
+      if (spanDays(since, until) > 62) return { error: "日期跨度不能超过 62 天", field: "scan-since" };
       return { body: { keywords: keywords, workers: workers, mode: "range", since: since, until: until, only: only } };
     }
     var days = parseInt10($("scan-days").value);
-    if (isNaN(days) || days < 1 || days > 62) return { error: "天数需为 1 ~ 62 之间的整数" };
+    if (isNaN(days) || days < 1 || days > 62) return { error: "天数需为 1 ~ 62 之间的整数", field: "scan-days" };
     return { body: { keywords: keywords, workers: workers, mode: "days", days: days, only: only } };
   }
 
   function start() {
     var built = buildBody();
-    if (built.error) return setStatus(built.error);
+    if (built.error) {
+      setStatus(built.error);
+      if (built.field && $(built.field)) $(built.field).focus();
+      return;
+    }
     var body = built.body;
     ctx.api.post("/api/config", body).catch(function () { /* 保存失败不影响本次扫描 */ });
     stopStreaming(); stopPolling();
+    pollRetries = 0;
     ctx.dispatch({ type: A.SCAN_RESET_LOG });
     ctx.dispatch({ type: A.SCAN_CANCELLING, cancelling: false });
     setRunning(true);
@@ -220,6 +239,7 @@ export function createPapersController(ctx) {
   }
   function setStatus(text, tone) { ctx.dispatch({ type: A.PAPERS_STATUS, text: text, tone: tone || toneOf(text) }); }
   function setHint(text) { ctx.dispatch({ type: A.PAPERS_HINT, text: text }); }
+  function setBusy(busy) { ctx.dispatch({ type: A.PAPERS_BUSY, busy: busy }, { immediate: true }); }
 
   function applyView(view) {
     ctx.dispatch({ type: A.PAPERS_VIEW, view: view });
@@ -235,17 +255,17 @@ export function createPapersController(ctx) {
     var style = $("paper-style").value;
     var tpl = $("paper-tpl").value.trim();
     var editing = ctx.getState().papersPanel.editing;
-    if (!name) return { error: "请填写报社名称" };
-    if (editing && name !== editing) return { error: "编辑时不能修改报社名称；请新建报社" };
-    if (name.length > 30) return { error: "名称不能超过 30 个字符" };
-    if (!/^https?:\/\//.test(tpl)) return { error: "版面页链接必须以 http:// 或 https:// 开头" };
-    if (tpl.indexOf("{a}") === -1) return { error: "版面页链接必须包含 {a} 占位符" };
+    if (!name) return { error: "请填写报社名称", field: "paper-name" };
+    if (editing && name !== editing) return { error: "编辑时不能修改报社名称；请新建报社", field: "paper-name" };
+    if (name.length > 30) return { error: "名称不能超过 30 个字符", field: "paper-name" };
+    if (!/^https?:\/\//.test(tpl)) return { error: "版面页链接必须以 http:// 或 https:// 开头", field: "paper-tpl" };
+    if (tpl.indexOf("{a}") === -1) return { error: "版面页链接必须包含 {a} 占位符", field: "paper-tpl" };
     var paper = { name: name, style: style, tpl: tpl };
     if (style === "custom") {
       var dateFormat = $("paper-date-format").value.trim();
-      if (!dateFormat) return { error: "自定义日期格式不能为空" };
+      if (!dateFormat) return { error: "自定义日期格式不能为空", field: "paper-date-format" };
       if (!/^(?:%[Yymd]|[-_./])+$/.test(dateFormat) || dateFormat.indexOf("%d") === -1) {
-        return { error: "日期格式只允许 %Y/%y/%m/%d 与 -_./，并且必须包含 %d" };
+        return { error: "日期格式只允许 %Y/%y/%m/%d 与 -_./，并且必须包含 %d", field: "paper-date-format" };
       }
       paper.date_format = dateFormat;
     }
@@ -256,13 +276,13 @@ export function createPapersController(ctx) {
     var timeout = $("paper-timeout").value.trim();
     if (timeout !== "") {
       var t = parseInt10(timeout);
-      if (isNaN(t) || t < 5 || t > 120) return { error: "超时需为 5 ~ 120 之间的整数" };
+      if (isNaN(t) || t < 5 || t > 120) return { error: "超时需为 5 ~ 120 之间的整数", field: "paper-timeout" };
       paper.timeout = t;
     }
     var retries = $("paper-retries").value.trim();
     if (retries !== "") {
       var r = parseInt10(retries);
-      if (isNaN(r) || r < 0 || r > 6) return { error: "重试需为 0 ~ 6 之间的整数" };
+      if (isNaN(r) || r < 0 || r > 6) return { error: "重试需为 0 ~ 6 之间的整数", field: "paper-retries" };
       paper.retries = r;
     }
     var exclude = $("paper-exclude").value.trim();
@@ -313,15 +333,23 @@ export function createPapersController(ctx) {
     window.setTimeout(function () { $("paper-tpl").focus(); }, 0);
   }
   function add() {
+    if (ctx.getState().papersPanel.busy) return;
     var got = collect();
-    if (got.error) return setStatus(got.error);
+    if (got.error) {
+      setStatus(got.error);
+      if (got.field && $(got.field)) $(got.field).focus();
+      return;
+    }
+    setBusy(true);
     setStatus("正在保存…");
     ctx.api.post("/api/papers", got.paper).then(function (data) {
       applyView(data);
       clearForm();
       $("paper-form-details").open = false;
       setStatus("已保存「" + got.paper.name + "」");
-    }).catch(function (err) { setStatus("保存失败：" + err.message); });
+    }).catch(function (err) {
+      setStatus("保存失败：" + err.message);
+    }).finally(function () { setBusy(false); });
   }
   function setEnabled(name, enabled, row, button) {
     if (!enabled && !window.confirm("停用报社「" + name + "」？它将不再参与后续扫描，但历史报道和抓取规则都会保留。")) return;
@@ -338,31 +366,41 @@ export function createPapersController(ctx) {
     });
   }
   function remove(name, source) {
+    if (ctx.getState().papersPanel.busy) return;
     var restoring = source === "override";
     var question = restoring
       ? "恢复「" + name + "」的内置默认规则？当前自定义覆盖会被删除，启用状态和历史报道不变。"
       : "删除自定义报社「" + name + "」？它将不再参与扫描，但已有历史报道不会被删除。";
     if (!window.confirm(question)) return;
+    setBusy(true);
     setStatus("正在删除…");
     ctx.api.post("/api/papers/delete", { name: name }).then(function (data) {
       applyView(data);
       setStatus(restoring ? "已恢复「" + name + "」的内置默认规则" : "已删除「" + name + "」");
-    }).catch(function (err) { setStatus("删除失败：" + err.message); });
+    }).catch(function (err) {
+      setStatus("删除失败：" + err.message);
+    }).finally(function () { setBusy(false); });
   }
   /* 彻底删除：内置六家也能删，删后从列表消失且没有恢复入口。 */
   function removePaper(name) {
+    if (ctx.getState().papersPanel.busy) return;
     var question = "彻底删除报社「" + name + "」？\n\n" +
       "· 它将不再出现在列表里，也不再参与扫描；\n" +
       "· 没有「恢复」按钮，要恢复得手工编辑 papers.custom.json；\n" +
       "· 已有的历史报道不会被删除。";
     if (!window.confirm(question)) return;
+    setBusy(true);
     setStatus("正在删除…");
     ctx.api.post("/api/papers/remove", { name: name }).then(function (data) {
       applyView(data);
       setStatus("已彻底删除「" + name + "」");
-    }).catch(function (err) { setStatus("删除失败：" + err.message); });
+    }).catch(function (err) {
+      setStatus("删除失败：" + err.message);
+    }).finally(function () { setBusy(false); });
   }
   function runTest(paper) {
+    if (ctx.getState().papersPanel.busy) return;
+    setBusy(true);
     setHint("试抓中…（会真实联网抓取入口页）");
     ctx.api.post("/api/papers/test", paper, { timeout: 150000 }).then(function (data) {
       var text = (data.ok ? "✓" : "✗") + " 入口 " + data.entry_code + " · 版面 " + data.sections;
@@ -370,11 +408,17 @@ export function createPapersController(ctx) {
       if (data.note) text += " · " + data.note;
       if (data.entry) text += " · " + data.entry;
       setHint(text);
-    }).catch(function (err) { setHint("试抓失败：" + err.message); });
+    }).catch(function (err) {
+      setHint("试抓失败：" + err.message);
+    }).finally(function () { setBusy(false); });
   }
   function testForm() {
     var got = collect();
-    if (got.error) return setStatus(got.error);
+    if (got.error) {
+      setStatus(got.error);
+      if (got.field && $(got.field)) $(got.field).focus();
+      return;
+    }
     runTest(got.paper);
   }
   function copyCommitCommand() {

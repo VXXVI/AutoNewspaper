@@ -48,6 +48,7 @@ export var A = {
   PAPERS_STATUS: "PAPERS_STATUS",
   PAPERS_HINT: "PAPERS_HINT",
   PAPERS_EDITING: "PAPERS_EDITING",
+  PAPERS_BUSY: "PAPERS_BUSY",
   // 导出对话框
   EXPORT_BUSY: "EXPORT_BUSY",
   EXPORT_STATUS: "EXPORT_STATUS",
@@ -88,6 +89,8 @@ export function createInitialState() {
       taskId: null,
       status: { text: "准备就绪", tone: "idle" },
       progress: null,
+      durationSeconds: null,
+      lastSummary: null,
       history: null
     },
     // 报社管理面板（filter 用的 papers 是 Set，见上方）
@@ -96,7 +99,8 @@ export function createInitialState() {
       status: "—",
       tone: "idle",
       hint: "",
-      editing: null
+      editing: null,
+      busy: false
     },
     // 导出对话框
     exportDialog: {
@@ -193,7 +197,7 @@ export function reducer(state, action) {
     case A.SET_LINKED:
       return withPatch(state, { linkedFilter: action.filter, visibleRows: INITIAL_ROWS });
     case A.CLEAR_LINKED:
-      return withPatch(state, { linkedFilter: null, visibleRows: INITIAL_ROWS });
+      return state.linkedFilter ? withPatch(state, { linkedFilter: null, visibleRows: INITIAL_ROWS }) : state;
     case A.SET_NEW_ONLY:
       return withPatch(state, { newOnly: action.on === true, visibleRows: INITIAL_ROWS });
     case A.TOGGLE_PAPER:
@@ -289,7 +293,13 @@ export function reducer(state, action) {
     case A.SCAN_PROGRESS:
       return slicePatch(state, "scan", { progress: action.progress || null });
     case A.SCAN_RESET_LOG:
-      return slicePatch(state, "scan", { logLines: [], logCursor: 0, progress: null });
+      return slicePatch(state, "scan", {
+        logLines: [],
+        logCursor: 0,
+        progress: null,
+        durationSeconds: null,
+        lastSummary: null
+      });
     case A.SCAN_INGEST: {
       var scan = state.scan;
       var task = action.task || {};
@@ -303,11 +313,16 @@ export function reducer(state, action) {
         lines = lines.concat(task.log).slice(-MAX_SCAN_LOG_LINES);
       }
       if (typeof task.log_cursor === "number") cursor = task.log_cursor;
+      var lastSummary = scan.lastSummary;
+      if (task.status === "done") lastSummary = task.summary || null;
+      else if (task.status === "running" || task.status === "error" || task.status === "cancelled") lastSummary = null;
       return slicePatch(state, "scan", {
         taskId: taskId,
         logLines: lines,
         logCursor: cursor,
-        progress: task.progress === undefined ? scan.progress : task.progress
+        progress: task.progress === undefined ? scan.progress : task.progress,
+        durationSeconds: typeof task.duration_seconds === "number" ? task.duration_seconds : scan.durationSeconds,
+        lastSummary: lastSummary
       });
     }
     case A.SCAN_HISTORY:
@@ -327,6 +342,8 @@ export function reducer(state, action) {
       return slicePatch(state, "papersPanel", { hint: String(action.text || "") });
     case A.PAPERS_EDITING:
       return slicePatch(state, "papersPanel", { editing: action.name || null });
+    case A.PAPERS_BUSY:
+      return slicePatch(state, "papersPanel", { busy: Boolean(action.busy) });
 
     /* ---------------------------------------------------------- 导出对话框 */
     case A.EXPORT_BUSY:
@@ -377,7 +394,9 @@ export function selectFiltered(state) {
     if (state.from && (!r.date || r.date < state.from)) return false;
     if (state.to && (!r.date || r.date > state.to)) return false;
     if (q) {
-      var hay = (r.title + " " + r.section + " " + (r.snippets || []).join(" ")).toLowerCase();
+      var hay = (
+        r.title + " " + r.section + " " + (r.snippets || []).join(" ") + " " + (r.matched || []).join(" ")
+      ).toLowerCase();
       if (hay.indexOf(q) === -1) return false;
     }
     if (state.linkedFilter) {

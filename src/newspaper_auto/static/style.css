@@ -504,6 +504,7 @@ details > summary:hover { color: var(--brand); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .chip {
+  max-width: 100%;
   min-height: 32px;
   padding: 5px 11px;
   border: 1px solid var(--line);
@@ -511,6 +512,8 @@ details > summary:hover { color: var(--brand); }
   background: var(--surface);
   color: var(--ink-3);
   font-size: 12.5px;
+  overflow-wrap: anywhere;
+  text-align: left;
   cursor: pointer;
   transition: background .15s ease, border-color .15s ease, color .15s ease;
 }
@@ -732,6 +735,8 @@ main {
 }
 .progress-copy { margin-top: 7px; color: var(--panel-ink-2); font-size: 12px; text-align: right; }
 .scan-recent { margin: 16px 0 6px; color: var(--panel-ink); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.scan-new-cta { margin: 4px 0 10px; border-color: var(--panel-line); background: color-mix(in srgb, var(--brand) 22%, transparent); color: var(--panel-ink); }
+.scan-new-cta:hover { background: color-mix(in srgb, var(--brand) 36%, transparent); }
 .activity-guidance { margin: 0 0 14px; color: var(--panel-ink-2); font-size: 12px; }
 .log-details { padding-top: 13px; border-top: 1px solid var(--panel-line-soft); }
 .activity-panel .log-details > summary { color: var(--panel-ink-2); min-height: var(--tap); }
@@ -1088,6 +1093,13 @@ tbody tr.is-new > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
   letter-spacing: .3px;
 }
 .sn { max-width: 760px; margin-top: 6px; color: var(--ink-2); font-size: 12.5px; line-height: 1.58; word-break: break-word; }
+.kw-mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--warn) 24%, transparent);
+  color: var(--ink);
+  font-weight: 640;
+}
 .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .tag {
   padding: 2px 8px;
@@ -1114,6 +1126,7 @@ tbody tr.is-new > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
 .empty p { margin: 7px 0; }
 .empty code { font-size: 11.5px; }
 .empty-hint { margin: 6px 0 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.55; }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
 
 /* 已选条件始终可见，点击即可逐项取消。 */
 .active-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 16px; }
@@ -1147,8 +1160,10 @@ tbody tr.is-new > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
 .article-preview-location { padding: 16px; border: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--surface-2); }
 .article-preview-location .cell-body { justify-content: flex-start; }
 .article-preview-location .row-map { height: 120px; }
-.article-preview-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 18px 24px 24px; border-top: 1px solid var(--line-soft); }
+.article-preview-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 18px 24px 24px; border-top: 1px solid var(--line-soft); }
 .article-preview-actions a { text-decoration: none; }
+.article-preview-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.article-preview-pos { color: var(--ink-3); font-size: 12px; min-width: 44px; text-align: center; }
 
 /* ---------------------------------------------------- 10. 时间趋势 */
 .analysis-heading { align-items: flex-end; padding: 6px 2px 0; }
@@ -1411,7 +1426,8 @@ tbody tr.is-new > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
   .brand-mark { width: 36px; height: 36px; }
   .brand h1 { font-size: 16px; }
   .sub { max-width: 52vw; }
-  .health, .badge { display: none; }
+  .health #health-text, .badge { display: none; }
+  .health { padding: 6px; }
   main { gap: 18px; padding: 18px 12px 52px; }
   .scan-heading { display: block; padding: 16px 18px; }
   .scan-heading p { margin-top: 4px; }
@@ -1541,9 +1557,16 @@ tbody tr.is-new > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
 
 @media print {
   .topbar, .page-nav, .top-actions, .command-card, .disclosure,
+  .results-heading .button-group, .filter-popover, .result-context,
   .results-footer, .skip-link { display: none !important; }
   body { background: #fff; }
   main { padding: 0; gap: 12px; }
   .card, .stat, .history-row { box-shadow: none; break-inside: avoid; }
   .table-wrap { max-height: none; overflow: visible; }
+  table { display: table; }
+  thead { display: table-header-group; }
+  tbody { display: table-row-group; padding: 0; background: transparent; }
+  tbody tr { display: table-row; border: 0; box-shadow: none; }
+  td { display: table-cell; border-bottom: 1px solid var(--line-soft); }
+  td::before { display: none; }
 }

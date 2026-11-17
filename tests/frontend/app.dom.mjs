@@ -672,4 +672,142 @@ export const domTests = [
         assert.match(page.text("new-only-hint"), /还没有新增记录/);
       }),
   },
+  {
+    name: "快捷键 / 打开搜索并聚焦，Esc 先清空再关闭；空态带清除筛选按钮",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        const panel = doc.getElementById("filter-panel");
+        const q = doc.getElementById("q");
+        doc.body.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "/", bubbles: true }));
+        await settle();
+        assert.equal(panel.hidden, false);
+        assert.equal(doc.activeElement, q);
+
+        q.value = "不存在的词";
+        q.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+        await settle();
+        assert.equal(rows(doc).length, 0);
+        const resetBtn = doc.querySelector("#empty .empty-actions button");
+        assert.ok(resetBtn, "空态应提供快捷重置按钮");
+
+        // 第一次 Esc 先清空搜索词，不关浮层
+        q.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await settle();
+        assert.equal(q.value, "");
+        assert.equal(panel.hidden, false);
+        assert.equal(rows(doc).length, 2);
+
+        // 第二次 Esc 关闭浮层并恢复焦点到触发按钮
+        q.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await settle();
+        assert.equal(panel.hidden, true);
+        assert.equal(doc.activeElement.id, "filter-toggle");
+      }),
+  },
+  {
+    name: "报道预览：高亮命中关键词并支持上一篇/下一篇键盘导航",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        const triggers = [...doc.querySelectorAll(".article-preview-trigger")];
+        assert.equal(triggers.length, 2);
+        triggers[0].click();
+        const dialog = doc.getElementById("article-preview");
+        assert.ok(dialog);
+        assert.equal(dialog.querySelector(".kw-mark").textContent, "示例大学");
+        assert.equal(dialog.querySelector(".article-preview-pos").textContent, "1 / 2");
+
+        dialog.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+        assert.match(doc.getElementById("article-preview-title").textContent, /人工智能赋能教育/);
+        assert.equal(dialog.querySelector(".article-preview-pos").textContent, "2 / 2");
+        assert.equal(dialog.querySelector(".kw-mark").textContent, "人工智能");
+
+        dialog.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+        assert.match(doc.getElementById("article-preview-title").textContent, /中秋非遗活动进校园/);
+      }),
+  },
+  {
+    name: "报社表单：提交期间禁用保存/试抓防止连点，并支持 form submit",
+    fn: () =>
+      withPage(undefined, async (page) => {
+        const doc = page.document;
+        let release;
+        const origFetch = page.window.fetch;
+        const postCalls = [];
+        page.window.fetch = (path, init = {}) => {
+          const method = (init.method || "GET").toUpperCase();
+          if (method === "POST" && path === "/api/papers") {
+            postCalls.push(path);
+            return new Promise((resolve) => {
+              release = () => resolve({
+                ok: true,
+                status: 200,
+                headers: { get: () => "application/json" },
+                json: () => Promise.resolve(papersPayload()),
+                text: () => Promise.resolve(JSON.stringify(papersPayload())),
+              });
+            });
+          }
+          return origFetch(path, init);
+        };
+        doc.getElementById("paper-name").value = "测试日报";
+        doc.getElementById("paper-tpl").value = "https://example.test/{a}/node_01.html";
+        const form = doc.getElementById("paper-form");
+        form.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+        form.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+        await page.flush(3);
+        assert.equal(postCalls.length, 1, "busy 期间不得重复发出 POST /api/papers");
+        assert.equal(doc.getElementById("paper-add").disabled, true);
+        assert.equal(doc.getElementById("paper-test").disabled, true);
+        release();
+        await settle();
+        assert.equal(doc.getElementById("paper-add").disabled, false);
+      }),
+  },
+  {
+    name: "扫描完成后若存在新增命中，显示「只看本次新增」直达按钮",
+    fn: () => {
+      let scanCalls = 0;
+      const routes = (path, init) => {
+        const method = (init?.method || "GET").toUpperCase();
+        if (method === "POST" && path === "/api/scan") {
+          return { status: 202, body: runningScan({ params: { keywords: ["人工智能"] } }) };
+        }
+        if (method === "GET" && path.startsWith("/api/scan?")) {
+          scanCalls += 1;
+          return {
+            body: {
+              ...runningScan({ params: { keywords: ["人工智能"] } }),
+              status: "done",
+              duration_seconds: 12.3,
+              summary: { articles: 10, hits: 1, new_hits: 1, elapsed: 12.3 },
+            },
+          };
+        }
+        if (path.startsWith("/api/hits")) {
+          const payload = hitsPayload();
+          payload.new_urls = ["http://example.test/gm/2"];
+          return { body: payload };
+        }
+        return defaultRoutes(path, init);
+      };
+      return withPage({ routes }, async (page) => {
+        const doc = page.document;
+        doc.getElementById("scan-kw").value = "人工智能";
+        doc.getElementById("scan-form").dispatchEvent(
+          new page.window.Event("submit", { bubbles: true, cancelable: true }),
+        );
+        for (let i = 0; i < 8; i += 1) await page.flush(3);
+        await settle();
+        assert.ok(scanCalls >= 1);
+        const cta = doc.getElementById("scan-new-cta");
+        assert.equal(cta.hidden, false);
+        assert.match(cta.textContent, /只看本次新增（1）/);
+        cta.click();
+        await settle();
+        assert.equal(rows(doc).length, 1);
+      });
+    },
+  },
 ];
