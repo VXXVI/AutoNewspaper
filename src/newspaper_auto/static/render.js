@@ -372,7 +372,8 @@ function renderScanProgress(progress, durationSeconds) {
   }
   if (progress.current) {
     var cur = String(progress.current).replace(/^[✓✗]\s*/, "").trim();
-    if (cur.length > 26) cur = cur.slice(0, 26) + "…";
+    var chars = Array.from(cur);
+    if (chars.length > 26) cur = chars.slice(0, 26).join("") + "…";
     if (cur) line += " · " + cur;
   }
   setText(text, line);
@@ -410,6 +411,7 @@ export function renderScanHistory(state) {
 /* ------------------------------------------------------- 报社列表 */
 export function renderPapersPanel(ctx, state) {
   var view = state.papersPanel.view;
+  var busy = Boolean(state.papersPanel.busy);
   var box = $("papers-list");
   if (box) {
     clearNode(box);
@@ -428,25 +430,25 @@ export function renderPapersPanel(ctx, state) {
         var actions = mount(row, "span", "paper-actions");
         paperButton(actions, "试抓", "试抓" + name, function () {
           ctx.features.papers.runTest(item.config || { name: name });
-        });
+        }, "chip", busy);
         paperButton(actions, item.source === "builtin" ? "修改规则" : "编辑", "编辑" + name + "抓取规则", function () {
           ctx.features.papers.fillForm(item.config || {}, item.source);
-        });
+        }, "chip", busy);
         var toggleBtn = paperButton(actions, enabled ? "停用" : "恢复", (enabled ? "停用" : "恢复") + name,
           function () { ctx.features.papers.setEnabled(name, !enabled, row, toggleBtn); },
-          enabled ? "chip danger" : "chip enable");
+          enabled ? "chip danger" : "chip enable", busy);
         toggleBtn.setAttribute("role", "switch");
         toggleBtn.setAttribute("aria-checked", enabled ? "true" : "false");
         if (item.source === "override") {
           // 覆盖层可以单独摘掉：摘掉后回到内置默认规则（内置本身还在）
           paperButton(actions, "恢复默认", "恢复" + name + "的内置默认规则", function () {
             ctx.features.papers.deletePaper(name, item.source);
-          });
+          }, "chip", busy);
         }
         // 所有报社（含内置六家）都能**彻底删除**：删后从本列表消失、没有恢复入口。
         paperButton(actions, "删除", "彻底删除" + name, function () {
           ctx.features.papers.removePaper(name);
-        }, "chip danger");
+        }, "chip danger", busy);
       });
     }
   }
@@ -457,16 +459,16 @@ export function renderPapersPanel(ctx, state) {
     feedback.setAttribute("data-state", state.papersPanel.tone);
   }
   setText($("papers-hint"), state.papersPanel.hint || "试抓只检查网页结构，不抓正文、不写入结果。");
-  var busy = Boolean(state.papersPanel.busy);
   if ($("paper-add")) $("paper-add").disabled = busy;
   if ($("paper-test")) $("paper-test").disabled = busy;
   if ($("paper-clear")) $("paper-clear").disabled = busy;
   var commit = $("papers-commit-row");
   if (commit) commit.hidden = !(view && ((view.custom && view.custom.length) || (view.disabled && view.disabled.length)));
 }
-function paperButton(parent, label, ariaLabel, onClick, className) {
+function paperButton(parent, label, ariaLabel, onClick, className, disabled) {
   var btn = mount(parent, "button", className || "chip", label);
   btn.type = "button";
+  btn.disabled = Boolean(disabled);
   btn.setAttribute("aria-label", ariaLabel);
   btn.addEventListener("click", onClick);
   return btn;
@@ -699,6 +701,7 @@ export function openArticlePreview(ctx, state, record, trigger, records, initial
   close.setAttribute("aria-label", "关闭报道预览");
   var title = mount(dialog, "h2", null, "");
   title.id = "article-preview-title";
+  title.setAttribute("aria-live", "polite");
   var meta = mount(dialog, "p", "article-preview-meta", "");
   var body = mount(dialog, "div", "article-preview-body");
   var actions = mount(dialog, "div", "article-preview-actions");
@@ -954,7 +957,8 @@ function renderEmpty(ctx, state, all, list) {
     showHist.type = "button";
     showHist.addEventListener("click", function () { ctx.dispatch({ type: A.SHOW_ALL_HISTORY }, { immediate: true }); });
   }
-  if (activeFilterCount(state) > 0) {
+  var extraFilters = activeFilterCount(state) - (state.focusKeywords ? 1 : 0);
+  if (extraFilters > 0) {
     var resetAll = mount(actions, "button", "btn subtle small", "清除全部筛选");
     resetAll.type = "button";
     resetAll.addEventListener("click", function () { ctx.dispatch({ type: A.RESET_VIEW }, { immediate: true }); });

@@ -253,25 +253,25 @@ import { shiftDate, todayIso } from "./format.js";
       var exportDlg = $("export-dialog");
       return Boolean((preview && preview.hasAttribute("open")) || (exportDlg && exportDlg.hasAttribute("open")));
     }
+    function openSearch() {
+      setFiltersOpen(true);
+      if ($("q")) { $("q").focus(); $("q").select(); }
+    }
     document.addEventListener("keydown", function (event) {
       if (event.isComposing || modalOpen()) return;
-      if ((event.ctrlKey || event.metaKey) && event.key && event.key.toLowerCase() === "k") {
+      var k = event.key;
+      if ((event.ctrlKey || event.metaKey) && !event.repeat && k && k.toLowerCase() === "k") {
         event.preventDefault();
-        setFiltersOpen(true);
-        if ($("q")) { $("q").focus(); $("q").select(); }
-        return;
+        return openSearch();
       }
-      if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target)) {
+      if (k === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target)) {
         event.preventDefault();
-        setFiltersOpen(true);
-        if ($("q")) { $("q").focus(); $("q").select(); }
-        return;
+        return openSearch();
       }
-      if (event.key !== "Escape" || !filtersOpen()) return;
+      if (k !== "Escape" || !filtersOpen()) return;
       if (document.activeElement === $("q") && $("q").value) {
         $("q").value = "";
-        dispatch({ type: A.SET_QUERY, value: "" }, { immediate: true });
-        return;
+        return dispatch({ type: A.SET_QUERY, value: "" }, { immediate: true });
       }
       setFiltersOpen(false);
       $("filter-toggle").focus();

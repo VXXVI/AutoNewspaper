@@ -49,7 +49,7 @@ export function createScanController(ctx) {
     if (scanTimer) return;
     scanTimer = window.setTimeout(function () { scanTimer = null; pollScan(); }, delay);
   }
-  function beginPolling() { schedulePoll(0); }
+  function beginPolling() { pollRetries = 0; schedulePoll(0); }
   function stopPolling() {
     runToken += 1;
     if (scanTimer) { window.clearTimeout(scanTimer); scanTimer = null; }
@@ -370,7 +370,9 @@ export function createPapersController(ctx) {
     }).finally(function () { setBusy(false); });
   }
   function setEnabled(name, enabled, row, button) {
+    if (ctx.getState().papersPanel.busy) return;
     if (!enabled && !window.confirm("停用报社「" + name + "」？它将不再参与后续扫描，但历史报道和抓取规则都会保留。")) return;
+    setBusy(true);
     if (row) row.setAttribute("aria-busy", "true");
     if (button) button.disabled = true;
     setStatus(enabled ? "正在恢复…" : "正在停用…");
@@ -381,7 +383,7 @@ export function createPapersController(ctx) {
       if (row) row.removeAttribute("aria-busy");
       if (button) button.disabled = false;
       setStatus((enabled ? "恢复失败：" : "停用失败：") + err.message);
-    });
+    }).finally(function () { setBusy(false); });
   }
   function remove(name, source) {
     if (ctx.getState().papersPanel.busy) return;
