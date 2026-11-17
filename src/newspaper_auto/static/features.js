@@ -610,6 +610,7 @@ export function createExportController(ctx) {
 /* ============================================================ 系统状态 */
 export function createSystemController(ctx) {
   var historyReqId = 0;
+  var historyReloadQueued = false;
 
   function setHealth(ok, health) {
     ctx.dispatch({ type: A.SYSTEM_HEALTH, ok: ok, version: (health && health.version) || "",
@@ -632,6 +633,10 @@ export function createSystemController(ctx) {
     }).catch(function () { setHealth(false, null); return false; });
   }
   function loadScanHistory() {
+    if (ctx.getState().scan.historyBusy) {
+      historyReloadQueued = true;
+      return;
+    }
     var reqId = ++historyReqId;
     ctx.api.get("/api/scan/history")
       .then(function (data) {
@@ -644,6 +649,13 @@ export function createSystemController(ctx) {
       });
   }
   function setHistoryBusy(busy) { ctx.dispatch({ type: A.SCAN_HISTORY_BUSY, busy: busy }, { immediate: true }); }
+  function finishHistoryMutation() {
+    if (ctx.getState().scan.historyBusy) setHistoryBusy(false);
+    if (historyReloadQueued) {
+      historyReloadQueued = false;
+      loadScanHistory();
+    }
+  }
   function restoreHistoryFocus(indexHint) {
     var box = $("scan-history");
     var btns = box ? box.querySelectorAll(".history-delete") : [];
@@ -671,7 +683,7 @@ export function createSystemController(ctx) {
     }).catch(function (err) {
       if (reqId !== historyReqId) return;
       ctx.dispatch({ type: A.SCAN_STATUS, text: "删除历史失败：" + err.message, tone: "error" });
-    }).finally(function () { if (ctx.getState().scan.historyBusy) setHistoryBusy(false); });
+    }).finally(finishHistoryMutation);
   }
   function clearScanHistory() {
     var history = ctx.getState().scan.history;
@@ -692,7 +704,7 @@ export function createSystemController(ctx) {
     }).catch(function (err) {
       if (reqId !== historyReqId) return;
       ctx.dispatch({ type: A.SCAN_STATUS, text: "清空历史失败：" + err.message, tone: "error" });
-    }).finally(function () { if (ctx.getState().scan.historyBusy) setHistoryBusy(false); });
+    }).finally(finishHistoryMutation);
   }
   function reuseHistoryParams(task) {
     if (!task) return;
