@@ -111,7 +111,7 @@ export function renderApp(ctx) {
   if (state.data) {
     var all = state.data.records;
     var list = selectSorted(state);
-    if (resetBtn) resetBtn.disabled = activeFilterCount(state) === 0;
+    if (resetBtn) resetBtn.disabled = activeFilterCount(state) === 0 && state.sort === "date-desc";
     if (exportBtn) exportBtn.disabled = list.length === 0;
     renderStats(state, all, list);
     renderChart(ctx, list);
@@ -416,9 +416,13 @@ var HISTORY_STATUS = {
 export function renderScanHistory(state, ctx) {
   var box = $("scan-history");
   if (!box) return;
+  var active = document.activeElement;
+  var focusTaskId = active && box.contains(active) ? active.getAttribute("data-task-id") : null;
+  var focusKind = active && box.contains(active) ? active.getAttribute("data-history-action") : null;
   clearNode(box);
   var history = state.scan.history;
   var busy = Boolean(state.scan.historyBusy);
+  var running = Boolean(state.scan.running);
   var clearBtn = $("scan-history-clear");
   if (clearBtn) {
     clearBtn.hidden = !history || !history.length;
@@ -426,6 +430,7 @@ export function renderScanHistory(state, ctx) {
   }
   if (history === null) return emptyHint(box, "正在加载扫描历史…");
   if (!history.length) return emptyHint(box, "暂无扫描历史记录。");
+  var toFocus = null;
   history.slice().reverse().slice(0, MAX_HISTORY).forEach(function (task) {
     var meta = HISTORY_STATUS[task.status] || ["未知", "idle"];
     var hits = task.summary && typeof task.summary.hits === "number" ? task.summary.hits : null;
@@ -441,15 +446,23 @@ export function renderScanHistory(state, ctx) {
       if (Array.isArray(task.keywords) && task.keywords.length) {
         var reuseBtn = mount(actions, "button", "btn text small", "填入参数");
         reuseBtn.type = "button";
-        reuseBtn.disabled = busy;
+        reuseBtn.disabled = busy || running;
         reuseBtn.setAttribute("aria-label", "填入" + when + "的扫描参数");
+        if (task.task_id) {
+          reuseBtn.setAttribute("data-task-id", task.task_id);
+          reuseBtn.setAttribute("data-history-action", "reuse");
+          if (focusTaskId === task.task_id && focusKind === "reuse") toFocus = reuseBtn;
+        }
         reuseBtn.addEventListener("click", function () { ctx.features.system.reuseHistoryParams(task); });
       }
       if (task.task_id) {
         var delBtn = mount(actions, "button", "btn text small history-delete", "删除");
         delBtn.type = "button";
         delBtn.disabled = busy;
+        delBtn.setAttribute("data-task-id", task.task_id);
+        delBtn.setAttribute("data-history-action", "delete");
         delBtn.setAttribute("aria-label", "删除" + when + "的扫描历史");
+        if (focusTaskId === task.task_id && focusKind === "delete") toFocus = delBtn;
         delBtn.addEventListener("click", function () { ctx.features.system.deleteScanHistory(task.task_id); });
       }
     }
@@ -460,6 +473,7 @@ export function renderScanHistory(state, ctx) {
     else if (typeof task.exit_code === "number") detail += " · 退出码 " + task.exit_code;
     mount(row, "p", "history-detail", detail);
   });
+  if (toFocus && !toFocus.disabled) toFocus.focus();
 }
 
 /* ------------------------------------------------------- 报社列表 */

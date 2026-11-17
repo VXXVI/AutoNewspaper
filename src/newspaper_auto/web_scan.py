@@ -111,12 +111,13 @@ def delete_task_history(data_dir: Path | str, task_id: str) -> tuple[list[dict[s
         history = load_task_history(data_dir)
         remaining = [item for item in history if item.get("task_id") != task_id]
         if len(remaining) == len(history):
-            return history, False
+            return history[-MAX_TASK_HISTORY:], False
+        trimmed = remaining[-MAX_TASK_HISTORY:]
         report.write_text(
             paths.task_history_file(Path(data_dir)),
-            json.dumps(remaining[-MAX_TASK_HISTORY:], ensure_ascii=False, indent=1),
+            json.dumps(trimmed, ensure_ascii=False, indent=1),
         )
-        return remaining, True
+        return trimmed, True
 
 
 def clear_task_history(data_dir: Path | str) -> list[dict[str, Any]]:

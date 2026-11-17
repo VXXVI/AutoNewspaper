@@ -909,7 +909,7 @@ export const domTests = [
         assert.equal(kwInput.getAttribute("aria-invalid"), "true");
         assert.match(page.text("scan-kw-hint"), /11 \/ 10/);
 
-        // 表头点击排序与 aria-sort 同步
+        // 表头点击排序与 aria-sort 同步（含切回默认时的 #reset 状态）
         const dateThBtn = doc.querySelector('.th-sort[data-sort-col="date"]');
         assert.equal(dateThBtn.parentNode.getAttribute("aria-sort"), "descending");
         dateThBtn.click();
@@ -917,9 +917,22 @@ export const domTests = [
         assert.equal(dateThBtn.parentNode.getAttribute("aria-sort"), "ascending");
         assert.equal(doc.getElementById("sort").value, "date-asc");
 
-        // 无筛选时 #reset 禁用，空结果时 #export 禁用
+        const paperThBtn = doc.querySelector('.th-sort[data-sort-col="paper"]');
+        paperThBtn.click();
+        await settle();
+        assert.equal(doc.getElementById("sort").value, "paper");
+        paperThBtn.click();
+        await settle();
+        assert.equal(doc.getElementById("sort").value, "paper-desc");
+        assert.equal(paperThBtn.parentNode.getAttribute("aria-sort"), "descending");
+
+        // 仅改排序时 #reset 也应可用
         doc.querySelector('#active-filters [data-filter-key="keywords"]').click();
         await settle();
+        assert.equal(doc.getElementById("reset").disabled, false);
+        doc.getElementById("reset").click();
+        await settle();
+        assert.equal(doc.getElementById("sort").value, "date-desc");
         assert.equal(doc.getElementById("reset").disabled, true);
         assert.equal(doc.getElementById("export").disabled, false);
 
