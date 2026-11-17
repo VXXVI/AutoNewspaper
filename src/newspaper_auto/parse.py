@@ -23,6 +23,7 @@ from urllib.parse import urljoin
 
 from . import config
 
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.S | re.I)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
@@ -34,7 +35,10 @@ _ENP_RE = re.compile(r"<!--\s*enpcontent\s*-->(.*?)<!--\s*/enpcontent\s*-->", re
 _BODY_RE = re.compile(r"<body[^>]*>(.*?)</body>", re.S | re.I)
 
 # 方正系部分站点（如中国教育报 paper.jyb.cn）的文章标题不用 <h1>，而在 <div class="title1"> 内
-_TITLE1_RE = re.compile(r'<[a-z]+[^>]*class="title1"[^>]*>(.*?)</[a-z]+>', re.S | re.I)
+_TITLE1_RE = re.compile(
+    r"""<([a-z][a-z0-9]*)\b[^>]*\bclass\s*=\s*["'][^"']*\btitle1\b[^"']*["'][^>]*>(.*?)</\1>""",
+    re.S | re.I,
+)
 
 # 版面名：方正系站点把「当前版面」标注在这个锚点上
 _PAGELINK_RE = re.compile(r'<a[^>]*id="pageLink"[^>]*>(.*?)</a>', re.S | re.I)
@@ -89,10 +93,11 @@ def _start_tags(html: str) -> list[tuple[str, dict[str, str]]]:
 
 
 def clean(html_fragment: str) -> str:
-    """去标签、去脚本样式、反转义实体、压缩空白。"""
+    """去注释、去标签、去脚本样式、反转义实体、压缩空白。"""
     if not html_fragment:
         return ""
     text = _SCRIPT_STYLE_RE.sub(" ", html_fragment)
+    text = _COMMENT_RE.sub(" ", text)
     text = _TAG_RE.sub(" ", text)
     text = unescape(text).replace("\u3000", " ").replace("\xa0", " ")
     return _WS_RE.sub(" ", text).strip()
@@ -240,18 +245,24 @@ def extract_title(html: str) -> str:
     其 ``<title>`` 又是站点通用串（"《中国教育报》电子版 - 中国教育新闻网 - …"），
     被 ``SITE_JUNK`` 清洗后正好得到**空字符串** —— 表现为命中记录标题、版面名全空。
     """
+    short_fallback = ""
     match = _H1_RE.search(html)
     if match:
         title = tidy_title(clean(match.group(1)))
         if len(title) >= 4:
             return title
+        if title:
+            short_fallback = title
     match = _TITLE1_RE.search(html)
     if match:
-        title = tidy_title(clean(match.group(1)))
+        title = tidy_title(clean(match.group(2)))
         if len(title) >= 4:
             return title
+        if title and not short_fallback:
+            short_fallback = title
     match = _TITLE_RE.search(html)
-    return tidy_title(clean(match.group(1))) if match else ""
+    page_title = tidy_title(clean(match.group(1))) if match else ""
+    return page_title or short_fallback
 
 
 def _looks_like_section(text: str) -> bool:

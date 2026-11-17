@@ -33,6 +33,8 @@ PARTIAL_FAILURE_RATIO = 0.5
 FETCH_TIMEOUT = 25
 FETCH_RETRIES = 2
 RETRY_BACKOFF = 0.8
+# 单域名最大并发连接数：全局 workers=8..16 时避免对同一报社站点同时发起过多连接导致读超时。
+HOST_CONCURRENCY = 4
 # 低于该字节数视为「内容异常」（正常版面页远大于此）。
 MIN_HTML_BYTES = 300
 
